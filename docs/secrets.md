@@ -82,35 +82,31 @@ immediately.
 - **Codespaces:** both are installed automatically by `post-create.sh` — nothing to do.
 - **macOS (local):** `brew install sops age`
 - **Linux (local):** see [SOPS releases](https://github.com/getsops/sops/releases) and [age releases](https://github.com/FiloSottile/age/releases)
-- **Windows (local):** `winget install Mozilla.SOPS FiloSottile.age` or use WSL and follow the Linux instructions
+- **Windows (local):** `winget install Mozilla.SOPS FiloSottile.age` or use WSL and follow the Linux instructions. You should almost certainly be using WSL. 
 
 ### 1. New developer: generate an age keypair
 
 Run this on your own machine:
 
 ```bash
+mkdir -p ~/.config/sops/age
 age-keygen -o ~/.config/sops/age/keys.txt
+cat ~/.config/sops/age/keys.txt
+
 ```
 
 This prints your public key (starts with `age1...`). Share it with the team.
 
-### 2. Teammate with access: add the public key to `.sops.yaml`
+### 2. Teammate with access: add the key and re-encrypt
 
-Comma-separate the new key with the existing ones:
-
-```yaml
-creation_rules:
-  - path_regex: secrets/[^/]+\.(?:env|json|yaml|yml|txt|conf)$
-    age: >-
-      age1alice...,age1bob...,age1newdev...
-```
-
-### 3. Teammate with access: re-encrypt for the new key
+Run the interactive script — it handles both steps:
 
 ```bash
-sops updatekeys secrets/dev.env
-sops updatekeys secrets/prod.env
+npm run secrets:add-key
 ```
+
+It will prompt for the new age public key, append it to `.sops.yaml`, and
+run `sops updatekeys` on every encrypted file in `secrets/`.
 
 Commit and push the updated `.sops.yaml` and re-encrypted files.
 

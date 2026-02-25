@@ -17,6 +17,8 @@
     "build": "cd server && npm run build && cd ../client && npm run build",
     "build:docker": "set -a && . ./deploy.env && set +a && DOCKER_CONTEXT=$DEV_DOCKER_CONTEXT docker compose -f docker-compose.prod.yml build server",
 
+    "secrets:add-key": "./scripts/add-age-key.sh",
+
     "secrets:prod": "set -a && . ./deploy.env && set +a && ./scripts/load-secrets.sh prod",
     "secrets:prod:rm": "set -a && . ./deploy.env && set +a && ./scripts/load-secrets.sh prod --rm",
 
