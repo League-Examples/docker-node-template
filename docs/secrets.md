@@ -44,6 +44,10 @@ install it automatically on every new Codespace.
 
 ### 1. Find your age private key
 
+If you don't have a keypair yet, generate one first (see
+[Onboarding a New Developer](#onboarding-a-new-developer)), then have a
+teammate add your public key to `.sops.yaml` and re-encrypt the secrets.
+
 On your local machine:
 
 ```bash
