@@ -77,6 +77,12 @@ immediately.
 
 ## Onboarding a New Developer
 
+**Prerequisites:** `sops` and `age` must be installed.
+
+- **Codespaces:** both are installed automatically by `post-create.sh` — nothing to do.
+- **macOS (local):** `brew install sops age`
+- **Linux (local):** see [SOPS releases](https://github.com/getsops/sops/releases) and [age releases](https://github.com/FiloSottile/age/releases)
+
 ### 1. New developer: generate an age keypair
 
 Run this on your own machine:
