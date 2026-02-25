@@ -54,7 +54,7 @@ Copy the full output (the comment lines and the `AGE-SECRET-KEY-1...` line).
 
 ### 2. Store it as a Codespaces secret
 
-1. Go to **GitHub → Settings → Codespaces → New secret**
+1. Go to [GitHub → Settings → Codespaces → New secret](https://github.com/settings/codespaces)
 2. Name: `AGE_PRIVATE_KEY`
 3. Value: paste the full key contents
 4. Under **Repository access**, authorize this repository
