@@ -82,6 +82,7 @@ immediately.
 - **Codespaces:** both are installed automatically by `post-create.sh` — nothing to do.
 - **macOS (local):** `brew install sops age`
 - **Linux (local):** see [SOPS releases](https://github.com/getsops/sops/releases) and [age releases](https://github.com/FiloSottile/age/releases)
+- **Windows (local):** `winget install Mozilla.SOPS FiloSottile.age` or use WSL and follow the Linux instructions
 
 ### 1. New developer: generate an age keypair
 
