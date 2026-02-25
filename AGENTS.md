@@ -224,7 +224,7 @@ instructions for tasks covered here.
 
 | Guide | Covers |
 |-------|--------|
-| [`docs/setup.md`](docs/setup.md) | Prerequisites, local setup, dev modes, running tests |
+| [`docs/setup.md`](docs/setup.md) | First checkout to running dev server, dev modes, tests, Codespaces notes |
 | [`docs/deployment.md`](docs/deployment.md) | Production architecture, deploy steps, rollback, troubleshooting |
 | [`docs/secrets.md`](docs/secrets.md) | SOPS + age setup, onboarding, adding/rotating secrets, swarm loading |
 | [`docs/template-spec.md`](docs/template-spec.md) | Full template specification, technology decisions, integration guidelines |
