@@ -65,9 +65,10 @@ DEV_DOCKER_CONTEXT=default          # Codespaces / Linux / plain Docker
 The server reads secrets from `.env` at the project root. This file is
 gitignored and must be created locally.
 
-### Option A — Decrypt with SOPS (standard)
+### Option A — Decrypt with SOPS (standard, including Codespaces)
 
-If SOPS and age are installed and your key is onboarded:
+If your age key is configured (see [Secrets Management](secrets.md#codespaces-key-setup)
+for Codespaces setup):
 
 ```bash
 sops -d secrets/dev.env > .env
