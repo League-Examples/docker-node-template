@@ -215,24 +215,37 @@ Database Engineer → Backend Engineer → Frontend Engineer → Test Engineer.
 
 ---
 
+## Developer Documentation
+
+All agents **must** read and follow the guides in `docs/` when performing
+setup, deployment, or secrets operations. These docs are the single source
+of truth for operational procedures — do not improvise or give ad-hoc
+instructions for tasks covered here.
+
+| Guide | Covers |
+|-------|--------|
+| [`docs/setup.md`](docs/setup.md) | Prerequisites, local setup, dev modes, running tests |
+| [`docs/deployment.md`](docs/deployment.md) | Production architecture, deploy steps, rollback, troubleshooting |
+| [`docs/secrets.md`](docs/secrets.md) | SOPS + age setup, onboarding, adding/rotating secrets, swarm loading |
+| [`docs/template-spec.md`](docs/template-spec.md) | Full template specification, technology decisions, integration guidelines |
+
+---
+
 ## Deployment Agent Notes
 
 Deployment is not a separate agent but a shared responsibility. All agents
-must understand:
+must understand the deployment workflow documented in
+[`docs/deployment.md`](docs/deployment.md) and the secrets lifecycle in
+[`docs/secrets.md`](docs/secrets.md).
 
-- **Docker contexts:** Configured in `.dev.env` — `DEV_DOCKER_CONTEXT` (default:
-  `orbstack`) for local dev, `PROD_DOCKER_CONTEXT` (default: `swarm1`) for
-  production. All npm scripts source this file automatically.
-- **Local dev:** `npm run dev` starts DB on the dev Docker context, server
-  and client natively on the host
-- **Docker dev:** `npm run dev:docker` runs all services in Docker on the
-  dev context
-- **Production:** `npm run deploy:prod` targets the production Docker context
-- **Secrets flow:** SOPS → decrypt → `docker secret create` → mounted at
-  `/run/secrets/` → loaded by `entrypoint.sh` into env vars
-- **Domain names:** `<appname>.jtlapp.net` via Caddy labels on swarm services
-- **Migrations:** Run `prisma migrate deploy` after deployment, before routing
-  traffic to new containers
+Quick reference:
+
+- **Local dev:** `npm run dev` — see [`docs/setup.md`](docs/setup.md)
+- **Docker dev:** `npm run dev:docker`
+- **Secrets:** `npm run secrets:prod` — see [`docs/secrets.md`](docs/secrets.md)
+- **Production:** `npm run deploy` — see [`docs/deployment.md`](docs/deployment.md)
+- **Migrations:** `npx prisma migrate deploy` after deployment
+- **Domain names:** `<appname>.jtlapp.net` via Caddy labels
 
 <!-- CLASI:START -->
 ## CLASI Software Engineering Process

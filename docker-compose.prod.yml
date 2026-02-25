@@ -3,12 +3,10 @@
 services:
   db:
     image: postgres:16-alpine
-    secrets:
-      - db_password
     environment:
       POSTGRES_DB: app
       POSTGRES_USER: app
-      POSTGRES_PASSWORD_FILE: /run/secrets/db_password
+      POSTGRES_PASSWORD: apppassword
     volumes:
       - pgdata:/var/lib/postgresql/data
     deploy:
@@ -16,14 +14,16 @@ services:
         constraints: [node.role == manager]
 
   server:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.server
     image: ${REGISTRY:-registry.local}/myapp-server:${TAG:-latest}
     secrets:
-      - db_password
       - session_secret
     entrypoint: ["/app/entrypoint.sh"]
     command: ["node", "dist/index.js"]
     environment:
-      DATABASE_URL: postgres://app:@db:5432/app
+      DATABASE_URL: postgres://app:apppassword@db:5432/app
       NODE_ENV: production
       PORT: "3000"
     deploy:
@@ -34,17 +34,7 @@ services:
     depends_on:
       - db
 
-  client:
-    image: ${REGISTRY:-registry.local}/myapp-client:${TAG:-latest}
-    deploy:
-      labels:
-        caddy: ${APP_DOMAIN:-myapp.jtlapp.net}
-        caddy.path: /
-        caddy.reverse_proxy: "{{upstreams 80}}"
-
 secrets:
-  db_password:
-    external: true
   session_secret:
     external: true
 

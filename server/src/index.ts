@@ -27,6 +27,16 @@ app.use('/api', counterRouter);
 
 app.use(errorHandler);
 
+// In production, serve the built React app from /app/public.
+// All non-API routes fall through to index.html for SPA routing.
+if (process.env.NODE_ENV === 'production') {
+  const publicDir = path.resolve(__dirname, '../public');
+  app.use(express.static(publicDir));
+  app.get('*', (_req, res) => {
+    res.sendFile(path.join(publicDir, 'index.html'));
+  });
+}
+
 app.listen(port, '0.0.0.0', () => {
   console.log(`Server listening on http://localhost:${port}`);
 });
