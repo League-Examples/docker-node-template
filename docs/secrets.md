@@ -77,18 +77,19 @@ immediately.
 
 ## Onboarding a New Developer
 
-### 1. Generate an age keypair
+### 1. New developer: generate an age keypair
+
+Run this on your own machine:
 
 ```bash
 age-keygen -o ~/.config/sops/age/keys.txt
 ```
 
-This prints your public key (starts with `age1...`). Share it with the
-team.
+This prints your public key (starts with `age1...`). Share it with the team.
 
-### 2. Add the public key to `.sops.yaml`
+### 2. Teammate with access: add the public key to `.sops.yaml`
 
-Comma-separate multiple keys:
+Comma-separate the new key with the existing ones:
 
 ```yaml
 creation_rules:
@@ -97,7 +98,7 @@ creation_rules:
       age1alice...,age1bob...,age1newdev...
 ```
 
-### 3. Re-encrypt for the new key
+### 3. Teammate with access: re-encrypt for the new key
 
 ```bash
 sops updatekeys secrets/dev.env
