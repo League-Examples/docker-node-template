@@ -36,6 +36,41 @@ Application code never reads files from `/run/secrets/` directly. The
 Additional secrets are added per-application as needed (OAuth tokens,
 third-party API keys, etc.).
 
+## Codespaces Key Setup
+
+Codespaces environments are ephemeral — your age private key is not present
+by default. Store it as a GitHub Codespaces secret and the devcontainer will
+install it automatically on every new Codespace.
+
+### 1. Find your age private key
+
+On your local machine:
+
+```bash
+cat ~/.config/sops/age/keys.txt
+```
+
+Copy the full output (the comment lines and the `AGE-SECRET-KEY-1...` line).
+
+### 2. Store it as a Codespaces secret
+
+1. Go to **GitHub → Settings → Codespaces → New secret**
+2. Name: `AGE_PRIVATE_KEY`
+3. Value: paste the full key contents
+4. Under **Repository access**, authorize this repository
+
+### 3. Use the key in a new Codespace
+
+When you next create (or rebuild) a Codespace, `post-create.sh` reads
+`$AGE_PRIVATE_KEY` and writes it to `~/.config/sops/age/keys.txt`
+automatically. Option A (`sops -d`) in [setup.md](setup.md) will work
+immediately.
+
+> **Note:** The secret is user-scoped. Each developer must add their own
+> `AGE_PRIVATE_KEY` and have their public key onboarded to `.sops.yaml`.
+
+---
+
 ## Onboarding a New Developer
 
 ### 1. Generate an age keypair
