@@ -75,7 +75,7 @@ sops -d secrets/dev.env > .env
 
 See [Secrets Management](secrets.md) for key setup and onboarding.
 
-### Option B — Create manually (Codespaces / no SOPS)
+### Option B — Create manually (age key not configured)
 
 Create `.env` from the example file plus the dev database credentials from
 `docker-compose.yml`:
