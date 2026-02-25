@@ -31,7 +31,6 @@ Application code never reads files from `/run/secrets/` directly. The
 
 | Secret | Used By | Description |
 |--------|---------|-------------|
-| `db_password` | db, server | PostgreSQL password |
 | `session_secret` | server | Express session signing key |
 
 Additional secrets are added per-application as needed (OAuth tokens,
@@ -119,7 +118,7 @@ npm run secrets:prod
 These scripts use `scripts/load-secrets.sh` which:
 - Decrypts `secrets/prod.env` via SOPS
 - Creates each `KEY=value` as a lowercase Docker Swarm secret
-- Uses the production Docker context from `.dev.env`
+- Uses the production Docker context from `deploy.env`
 
 ## Security Rules
 

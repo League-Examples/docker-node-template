@@ -29,7 +29,7 @@ stack with the following components:
 .
 ├── AGENTS.md                     # AI agent configuration (CLASI + custom agents)
 ├── CLAUDE.md                     # Claude Code project instructions
-├── .dev.env                      # Docker context names (dev + prod)
+├── deploy.env                      # Docker context names (dev + prod)
 ├── .devcontainer/                # VS Code / Codespace devcontainer config
 ├── .mcp.json                     # CLASI MCP server config
 ├── .sops.yaml                    # SOPS encryption policy

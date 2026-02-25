@@ -10,7 +10,7 @@
 
 ## 1. Clone and Configure Docker Contexts
 
-Edit `.dev.env` to match your local setup:
+Edit `deploy.env` to match your local setup:
 
 ```bash
 # Docker context for local development
