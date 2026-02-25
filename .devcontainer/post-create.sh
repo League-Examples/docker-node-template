@@ -49,4 +49,7 @@ echo "=== Initializing CLASI ==="
 export PATH="$HOME/.local/bin:$PATH"
 clasi init || echo "CLASI init skipped (may already be initialized)"
 
+echo "=== Configuring shell prompt ==="
+grep -q 'PS1=.*\\n\$ ' ~/.bashrc || echo 'PS1="${PS1%\\\$ }\n$ "' >> ~/.bashrc
+
 echo "=== Done ==="
