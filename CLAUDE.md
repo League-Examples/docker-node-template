@@ -25,12 +25,13 @@ Only skip the process if the stakeholder says "out of process" or "direct change
 
 ## Docker Contexts
 
-Docker context names are configured in `deploy.env`:
+Docker context names are configured in `.env` (generated from `.env.template`
+by `scripts/install.sh`):
 - `DEV_DOCKER_CONTEXT` — local Docker daemon for development (default: `orbstack`)
 - `PROD_DOCKER_CONTEXT` — remote Docker host for production (default: `swarm1`)
 
-All npm scripts that invoke Docker source `deploy.env` and set `DOCKER_CONTEXT`
-automatically. Developers should edit `deploy.env` to match their local setup.
+All npm scripts source `.env` and set `DOCKER_CONTEXT` automatically.
+To change contexts, edit `.env` or delete it and re-run `./scripts/install.sh`.
 
 ## Conventions
 

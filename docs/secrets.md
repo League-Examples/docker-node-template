@@ -161,7 +161,7 @@ npm run secrets:prod
 These scripts use `scripts/load-secrets.sh` which:
 - Decrypts `secrets/prod.env` via SOPS
 - Creates each `KEY=value` as a lowercase Docker Swarm secret
-- Uses the production Docker context from `deploy.env`
+- Uses the production Docker context from `.env`
 
 ## Security Rules
 

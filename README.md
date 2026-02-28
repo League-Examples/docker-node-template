@@ -18,20 +18,10 @@ production-ready app development. Clone, configure, and deploy.
 ## Quick Start
 
 ```bash
-# 1. Install dependencies
-npm install
-cd server && npm install && cd ..
-cd client && npm install && cd ..
+# 1. Install dependencies, detect Docker contexts, decrypt secrets
+./scripts/install.sh
 
-# 2. Configure Docker context (edit to match your local daemon)
-#    Options: orbstack | desktop-linux | default
-#    Default in deploy.env is: orbstack
-
-# 3. Create .env (decrypt with SOPS, or manually for Codespaces)
-sops -d secrets/dev.env > .env
-# or: cat secrets/dev.env.example > .env && echo "DATABASE_URL=..." >> .env
-
-# 4. Start dev server
+# 2. Start dev server
 npm run dev
 ```
 
