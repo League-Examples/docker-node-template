@@ -340,15 +340,8 @@ fi
 if [ "$HAS_SOPS_AGE" = true ] && [ -n "$AGE_KEY" ]; then
   info "Decrypting secrets/dev.env..."
 
-  # Build sops env — explicitly pass the key so sops doesn't rely on auto-detection
-  SOPS_ENV=()
-  if [ -n "$AGE_KEY_FILE" ]; then
-    SOPS_ENV+=(SOPS_AGE_KEY_FILE="$AGE_KEY_FILE")
-  else
-    SOPS_ENV+=(SOPS_AGE_KEY="$AGE_KEY")
-  fi
-
-  if env "${SOPS_ENV[@]}" sops -d secrets/dev.env >> .env 2>/dev/null; then
+  # Pass the key inline so sops doesn't rely on auto-detection of key files
+  if SOPS_AGE_KEY="$AGE_KEY" sops -d secrets/dev.env >> .env 2>/dev/null; then
     success "Appended decrypted secrets to .env"
   else
     echo ""
