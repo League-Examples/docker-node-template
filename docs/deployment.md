@@ -71,14 +71,14 @@ deploy:
     caddy.reverse_proxy: "{{upstreams 3000}}"
 ```
 
-`APP_DOMAIN` is set in `deploy.env` and sourced by the deploy script.
+`APP_DOMAIN` is set in `.env` and sourced by the deploy script.
 
 ## Rollback
 
 To roll back to a previous image, re-deploy with the previous tag:
 
 ```bash
-set -a && . deploy.env && set +a
+set -a && . .env && set +a
 DOCKER_CONTEXT=$PROD_DOCKER_CONTEXT TAG=v1 docker stack deploy -c docker-compose.prod.yml myapp
 ```
 

@@ -39,59 +39,27 @@ fail immediately.
 
 ---
 
-## 2. Configure Your Docker Context
+## 2. Review `.env`
 
-`deploy.env` controls which Docker context is used for development. The
-default is `orbstack`, but it must match what's available on your machine:
+The install script generates `.env` from `.env.template`. It contains Docker
+context configuration, SOPS/age key settings, and decrypted application
+secrets — all in one file sourced by every npm script.
 
-```bash
-docker context ls
-```
+The install script auto-detects your Docker context (`orbstack`,
+`desktop-linux`, or `default`) and writes it to `.env`. To change it later,
+edit `.env` directly or delete it and re-run `./scripts/install.sh`.
 
-Edit `deploy.env` with the correct value:
+> **Codespaces:** The only available Docker context is `default`.
 
-```bash
-DEV_DOCKER_CONTEXT=orbstack         # OrbStack (macOS)
-DEV_DOCKER_CONTEXT=desktop-linux    # Docker Desktop (macOS/Windows)
-DEV_DOCKER_CONTEXT=default          # Codespaces / Linux / plain Docker
-```
-
-> **Codespaces:** The only available context is `default`.
-
----
-
-## 3. Create `.env`
-
-The server reads secrets from `.env` at the project root. This file is
-gitignored and must be created locally.
-
-### Option A — Decrypt with SOPS (standard, including Codespaces)
-
-If your age key is configured (see [Secrets Management](secrets.md#codespaces-key-setup)
-for Codespaces setup):
+If the install script couldn't decrypt secrets (new key, not yet authorised),
+add them manually:
 
 ```bash
-sops -d secrets/dev.env > .env
-```
-
-See [Secrets Management](secrets.md) for key setup and onboarding.
-
-### Option B — Create manually (age key not configured)
-
-Create `.env` from the example file plus the dev database credentials from
-`docker-compose.yml`:
-
-```bash
-cat secrets/dev.env.example > .env
+echo "SESSION_SECRET=dev-session-secret-change-me" >> .env
 echo "DATABASE_URL=postgresql://app:devpassword@localhost:${DB_PORT:-5433}/app" >> .env
 ```
 
-The result should look like:
-
-```
-SESSION_SECRET=dev-session-secret-change-me
-DATABASE_URL=postgresql://app:devpassword@localhost:5433/app
-```
+See [Secrets Management](secrets.md) for key setup and onboarding.
 
 > **Codespaces:** The devcontainer sets `DB_PORT=5432`, which causes Docker
 > Compose to map Postgres to host port **5432** instead of the default 5433.
@@ -194,7 +162,7 @@ npm run test:e2e      # End-to-end (Playwright, requires running containers)
 The root `npm install` was skipped. Run `npm install` from the project root.
 
 **`Waiting for database...` hangs or times out**
-Either the Docker daemon isn't running, the Docker context in `deploy.env`
+Either the Docker daemon isn't running, the Docker context in `.env`
 is wrong, or the `DATABASE_URL` port in `.env` doesn't match the port Docker
 actually bound. Check `docker ps` to confirm the port.
 
