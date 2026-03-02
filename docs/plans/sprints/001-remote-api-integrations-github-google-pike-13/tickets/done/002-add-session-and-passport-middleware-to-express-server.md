@@ -1,12 +1,12 @@
 ---
-id: "002"
+id: '002'
 title: Add session and Passport middleware to Express server
-status: todo
+status: done
 use-cases:
-  - SUC-002
-  - SUC-003
+- SUC-002
+- SUC-003
 depends-on:
-  - "001"
+- '001'
 ---
 
 # Add session and Passport middleware to Express server

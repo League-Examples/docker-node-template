@@ -46,6 +46,10 @@ Include these URLs in 501 error responses and code comments:
 
 ## Testing
 
-- **Existing tests to run**: `npm run build`
-- **New tests to write**: None
-- **Verification command**: `npm run build`
+- **Existing tests to run**: `npm run test:server`
+- **New tests to write**: `tests/server/pike13.test.ts`
+  - `GET /api/pike13/events` when not configured → 501 with `{ error, docs }` shape
+  - `GET /api/pike13/people` when not configured → 501 with `{ error, docs }` shape
+  - 501 response bodies contain Pike 13 docs URLs
+  - (Actual API calls require real Pike 13 token — manual test only)
+- **Verification command**: `npm run test:server`

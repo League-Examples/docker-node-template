@@ -35,6 +35,9 @@ authenticated user's access token stored in the session.
 
 ## Testing
 
-- **Existing tests to run**: `npm run build`
-- **New tests to write**: None
-- **Verification command**: `npm run build`
+- **Existing tests to run**: `npm run test:server`
+- **New tests to write**: `tests/server/github.test.ts`
+  - `GET /api/github/repos` when not authenticated → 401
+  - `GET /api/github/repos` when GitHub not configured → 501 with docs URL
+  - (Actual repo fetch requires real GitHub token — manual test only)
+- **Verification command**: `npm run test:server`
