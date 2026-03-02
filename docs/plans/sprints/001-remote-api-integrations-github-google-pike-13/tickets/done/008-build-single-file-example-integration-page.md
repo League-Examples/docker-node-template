@@ -1,19 +1,19 @@
 ---
-id: "008"
+id: 008
 title: Build single-file example integration page
-status: todo
+status: done
 use-cases:
-  - SUC-001
-  - SUC-002
-  - SUC-003
-  - SUC-004
-  - SUC-005
+- SUC-001
+- SUC-002
+- SUC-003
+- SUC-004
+- SUC-005
 depends-on:
-  - "003"
-  - "004"
-  - "005"
-  - "006"
-  - "007"
+- '003'
+- '004'
+- '005'
+- '006'
+- '007'
 ---
 
 # Build single-file example integration page
