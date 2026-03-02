@@ -1,11 +1,11 @@
 ---
-id: "006"
+id: '006'
 title: Add GitHub repos API proxy endpoint
-status: todo
+status: done
 use-cases:
-  - SUC-002
+- SUC-002
 depends-on:
-  - "004"
+- '004'
 ---
 
 # Add GitHub repos API proxy endpoint

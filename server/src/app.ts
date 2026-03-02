@@ -7,6 +7,7 @@ import { counterRouter } from './routes/counter';
 import { integrationsRouter } from './routes/integrations';
 import { authRouter } from './routes/auth';
 import { pike13Router } from './routes/pike13';
+import { githubRouter } from './routes/github';
 import { errorHandler } from './middleware/errorHandler';
 
 const app = express();
@@ -49,6 +50,7 @@ app.use('/api', counterRouter);
 app.use('/api', integrationsRouter);
 app.use('/api', authRouter);
 app.use('/api', pike13Router);
+app.use('/api', githubRouter);
 
 app.use(errorHandler);
 
