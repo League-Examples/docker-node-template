@@ -9,6 +9,13 @@
  */
 import { useState, useEffect } from 'react'
 
+// Injected by Vite from APP_DOMAIN in .env (see vite.config.ts)
+declare const __APP_DOMAIN__: string
+
+const APP_DOMAIN = typeof __APP_DOMAIN__ !== 'undefined' ? __APP_DOMAIN__ : 'myapp.jtlapp.net'
+const DEV_ORIGIN = 'http://localhost:5173'
+const PROD_ORIGIN = `https://${APP_DOMAIN}`
+
 // ---- Types (all inline — no shared type files) ----
 
 interface IntegrationStatus {
@@ -38,6 +45,24 @@ interface Pike13Event {
   start_at?: string
   end_at?: string
   [key: string]: any
+}
+
+// ---- Callback URL helper ----
+
+function CallbackUrls({ path }: { path: string }) {
+  return (
+    <div style={styles.callbackBox}>
+      <strong style={{ fontSize: '0.8rem' }}>Callback URLs</strong>
+      <div style={styles.callbackRow}>
+        <span style={styles.callbackLabel}>Dev:</span>
+        <code style={styles.callbackUrl}>{DEV_ORIGIN}{path}</code>
+      </div>
+      <div style={styles.callbackRow}>
+        <span style={styles.callbackLabel}>Prod:</span>
+        <code style={styles.callbackUrl}>{PROD_ORIGIN}{path}</code>
+      </div>
+    </div>
+  )
 }
 
 // ---- Component ----
@@ -180,6 +205,7 @@ export default function ExampleIntegrations() {
                 Create an OAuth App
               </a>
             </p>
+            <CallbackUrls path="/api/auth/github/callback" />
           </div>
         ) : (
           <>
@@ -235,6 +261,7 @@ export default function ExampleIntegrations() {
                 Create credentials
               </a>
             </p>
+            <CallbackUrls path="/api/auth/google/callback" />
           </div>
         ) : (
           <>
@@ -431,5 +458,33 @@ const styles: Record<string, React.CSSProperties> = {
   td: {
     padding: '0.5rem',
     borderBottom: '1px solid #eee',
+  },
+  callbackBox: {
+    marginTop: '0.75rem',
+    padding: '0.75rem',
+    background: '#fff',
+    border: '1px solid #e0e0e0',
+    borderRadius: 6,
+    textAlign: 'left' as const,
+  },
+  callbackRow: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: '0.5rem',
+    marginTop: '0.35rem',
+  },
+  callbackLabel: {
+    fontSize: '0.75rem',
+    fontWeight: 600,
+    color: '#666',
+    minWidth: 35,
+  },
+  callbackUrl: {
+    fontSize: '0.75rem',
+    background: '#f0f0f0',
+    padding: '0.15em 0.4em',
+    borderRadius: 4,
+    wordBreak: 'break-all' as const,
+    color: '#333',
   },
 }
