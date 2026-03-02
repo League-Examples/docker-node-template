@@ -1,11 +1,11 @@
 ---
-id: "003"
+id: '003'
 title: Add integration status endpoint
-status: todo
+status: in-progress
 use-cases:
-  - SUC-005
+- SUC-005
 depends-on:
-  - "002"
+- '002'
 ---
 
 # Add integration status endpoint
@@ -36,6 +36,13 @@ reports which external integrations have credentials configured.
 
 ## Testing
 
-- **Existing tests to run**: `npm run build`
-- **New tests to write**: None
-- **Verification command**: `curl http://localhost:3000/api/integrations/status`
+- **Existing tests to run**: `npm run test:server` (smoke tests from ticket 010)
+- **New tests to write**: `tests/server/integrations.test.ts`
+  - With no OAuth env vars set: all three services report `configured: false`
+  - With `GITHUB_CLIENT_ID` + `GITHUB_CLIENT_SECRET` set: GitHub reports `true`
+  - With `GOOGLE_CLIENT_ID` + `GOOGLE_CLIENT_SECRET` set: Google reports `true`
+  - With `PIKE13_ACCESS_TOKEN` set: Pike 13 reports `true`
+  - Response never contains actual secret values (assert no env var values
+    appear in response body)
+  - Response shape matches `{ github: { configured: bool }, ... }`
+- **Verification command**: `npm run test:server`

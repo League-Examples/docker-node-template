@@ -48,6 +48,9 @@ Include these URLs in 501 error responses and code comments:
 
 ## Testing
 
-- **Existing tests to run**: `npm run build`
-- **New tests to write**: None (manual OAuth flow test)
-- **Verification command**: `npm run build`
+- **Existing tests to run**: `npm run test:server`
+- **New tests to write**: Add to `tests/server/auth.test.ts`
+  - `GET /api/auth/google` with no credentials → 501 with `{ error, docs }` shape
+  - 501 response body contains the Google setup docs URL
+  - (OAuth redirect and callback require real credentials — manual test only)
+- **Verification command**: `npm run test:server`

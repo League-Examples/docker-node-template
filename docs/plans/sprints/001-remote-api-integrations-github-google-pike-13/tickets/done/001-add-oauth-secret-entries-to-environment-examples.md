@@ -1,9 +1,9 @@
 ---
-id: "001"
+id: '001'
 title: Add OAuth secret entries to environment examples
-status: todo
+status: done
 use-cases:
-  - SUC-001
+- SUC-001
 depends-on: []
 ---
 

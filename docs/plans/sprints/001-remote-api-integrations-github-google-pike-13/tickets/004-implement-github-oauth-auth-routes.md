@@ -1,11 +1,11 @@
 ---
-id: "004"
+id: '004'
 title: Implement GitHub OAuth auth routes
-status: todo
+status: in-progress
 use-cases:
-  - SUC-002
+- SUC-002
 depends-on:
-  - "002"
+- '002'
 ---
 
 # Implement GitHub OAuth auth routes
@@ -54,6 +54,11 @@ Include these URLs in 501 error responses and code comments:
 
 ## Testing
 
-- **Existing tests to run**: `npm run build`
-- **New tests to write**: None (manual OAuth flow test)
-- **Verification command**: `npm run build`
+- **Existing tests to run**: `npm run test:server`
+- **New tests to write**: `tests/server/auth.test.ts`
+  - `GET /api/auth/github` with no credentials → 501 with `{ error, docs }` shape
+  - `GET /api/auth/me` when not logged in → 401
+  - `POST /api/auth/logout` when not logged in → handles gracefully (200 or 401)
+  - 501 response body contains the GitHub setup docs URL
+  - (OAuth redirect and callback require real credentials — manual test only)
+- **Verification command**: `npm run test:server`
