@@ -1,7 +1,7 @@
 ---
 id: '003'
 title: Add integration status endpoint
-status: in-progress
+status: done
 use-cases:
 - SUC-005
 depends-on:

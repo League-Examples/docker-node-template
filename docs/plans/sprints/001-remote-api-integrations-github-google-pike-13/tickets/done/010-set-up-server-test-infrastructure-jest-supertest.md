@@ -1,10 +1,10 @@
 ---
-id: "010"
+id: '010'
 title: Set up server test infrastructure (Jest + Supertest)
-status: todo
+status: done
 use-cases: []
 depends-on:
-  - "002"
+- '002'
 ---
 
 # Set up server test infrastructure (Jest + Supertest)

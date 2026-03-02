@@ -1,7 +1,7 @@
 ---
 id: '004'
 title: Implement GitHub OAuth auth routes
-status: in-progress
+status: done
 use-cases:
 - SUC-002
 depends-on:

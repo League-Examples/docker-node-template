@@ -1,11 +1,11 @@
 ---
-id: "007"
+id: '007'
 title: Add Pike 13 API proxy routes
-status: todo
+status: done
 use-cases:
-  - SUC-004
+- SUC-004
 depends-on:
-  - "002"
+- '002'
 ---
 
 # Add Pike 13 API proxy routes
