@@ -1,14 +1,14 @@
 ---
-id: "001"
+id: '001'
 title: Remote API Integrations (GitHub, Google, Pike 13)
-status: planning
+status: done
 branch: sprint/001-remote-api-integrations-github-google-pike-13
 use-cases:
-  - SUC-001
-  - SUC-002
-  - SUC-003
-  - SUC-004
-  - SUC-005
+- SUC-001
+- SUC-002
+- SUC-003
+- SUC-004
+- SUC-005
 ---
 
 # Sprint 001: Remote API Integrations (GitHub, Google, Pike 13)
