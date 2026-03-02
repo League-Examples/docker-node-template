@@ -74,18 +74,49 @@ are not configured.
 
 ## Pike 13
 
+**App registration:** <https://developer.pike13.com>
+(Register an application to obtain client credentials.)
+
+**Authentication docs:** <https://developer.pike13.com/docs/authentication>
+
 **API docs:** <https://developer.pike13.com/docs/get_started>
 
-**Authentication:** <https://developer.pike13.com/docs/authentication>
+Pike 13 implements a standard OAuth 2.0 authorization code flow:
 
-Pike 13 uses OAuth 2.0 bearer tokens. For this template, provide a
-pre-obtained access token. Pike 13 tokens do not expire.
+1. Direct users to the authorization endpoint to grant access
+2. Receive an authorization code at your callback URL
+3. Exchange the code for an access token at the token endpoint
+
+**Pike 13 access tokens do not expire**, so no refresh token logic is needed.
+However, tokens can be revoked, so handle 401 responses gracefully.
 
 | Setting | Value |
 |---------|-------|
-| Environment variable | `PIKE13_ACCESS_TOKEN` |
+| Environment variables | `PIKE13_CLIENT_ID`, `PIKE13_CLIENT_SECRET`, `PIKE13_ACCESS_TOKEN` |
+| Authorization endpoint | `https://pike13.com/oauth/authorize` (or `https://BUSINESS.pike13.com/oauth/authorize`) |
+| Token endpoint | `https://pike13.com/oauth/token` |
+| Callback URL (dev) | `http://localhost:5173/api/auth/pike13/callback` |
+| Callback URL (prod) | `https://<app>.jtlapp.net/api/auth/pike13/callback` |
 | API base URL (default) | `https://pike13.com/api/v2/desk` |
 | API base URL (override) | Set `PIKE13_API_BASE` for subdomain-specific businesses |
+
+**Authorization request parameters:**
+
+| Parameter | Value |
+|-----------|-------|
+| `client_id` | Your `PIKE13_CLIENT_ID` |
+| `response_type` | `code` |
+| `redirect_uri` | Your callback URL (must match registered value exactly) |
+
+**Token exchange parameters:**
+
+| Parameter | Value |
+|-----------|-------|
+| `grant_type` | `authorization_code` |
+| `code` | The authorization code from the callback |
+| `redirect_uri` | Same callback URL used in the authorization request |
+| `client_id` | Your `PIKE13_CLIENT_ID` |
+| `client_secret` | Your `PIKE13_CLIENT_SECRET` |
 
 **Routes:**
 

@@ -1,5 +1,6 @@
 import express from 'express';
 import session from 'express-session';
+import pgSimple from 'connect-pg-simple';
 import passport from 'passport';
 import pinoHttp from 'pino-http';
 import { healthRouter } from './routes/health';
@@ -22,8 +23,9 @@ app.use(pinoHttp({
   ...(process.env.NODE_ENV === 'test' ? { level: 'silent' } : {}),
 }));
 
-// Session middleware
-app.use(session({
+// Session middleware — PostgreSQL store for persistence across restarts.
+// Falls back to MemoryStore in test environment.
+const sessionConfig: session.SessionOptions = {
   secret: process.env.SESSION_SECRET || 'dev-secret-change-me',
   resave: false,
   saveUninitialized: false,
@@ -32,7 +34,17 @@ app.use(session({
     sameSite: 'lax',
     httpOnly: true,
   },
-}));
+};
+
+if (process.env.NODE_ENV !== 'test' && process.env.DATABASE_URL) {
+  const PgStore = pgSimple(session);
+  sessionConfig.store = new PgStore({
+    conString: process.env.DATABASE_URL,
+    // Table created by Prisma migration, not auto-created here.
+  });
+}
+
+app.use(session(sessionConfig));
 
 // Passport authentication
 passport.serializeUser((user: Express.User, done) => {
