@@ -12,3 +12,14 @@ model Counter {
   name  String @unique
   value Int    @default(0)
 }
+
+// Express session store (connect-pg-simple).
+// Must match the table structure that connect-pg-simple expects.
+model Session {
+  sid    String   @id @db.VarChar(255)
+  sess   Json
+  expire DateTime @db.Timestamptz(6)
+
+  @@index([expire])
+  @@map("session")
+}

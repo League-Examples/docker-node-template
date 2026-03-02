@@ -32,9 +32,15 @@ Application code never reads files from `/run/secrets/` directly. The
 | Secret | Used By | Description |
 |--------|---------|-------------|
 | `session_secret` | server | Express session signing key |
+| `github_client_id` | server | GitHub OAuth app client ID |
+| `github_client_secret` | server | GitHub OAuth app client secret |
+| `google_client_id` | server | Google OAuth client ID |
+| `google_client_secret` | server | Google OAuth client secret |
+| `pike13_access_token` | server | Pike 13 API access token (pre-obtained) |
 
-Additional secrets are added per-application as needed (OAuth tokens,
-third-party API keys, etc.).
+All OAuth secrets are optional. The app starts cleanly without them —
+unconfigured integrations return 501 with setup instructions. See
+[`docs/api-integrations.md`](api-integrations.md) for credential setup.
 
 ## Codespaces Key Setup
 
