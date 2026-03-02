@@ -99,8 +99,8 @@ done
 # ---------------------------------------------------------------------------
 # Encrypt with SOPS
 # ---------------------------------------------------------------------------
-# Write to a temp file, encrypt in-place, then move into position.
-TMPFILE=$(mktemp)
+# Write to a temp file inside secrets/ so SOPS path_regex matches.
+TMPFILE="secrets/.encrypt-tmp.env"
 echo "$SECRETS_CONTENT" > "$TMPFILE"
 
 # Source .env to get SOPS_AGE_KEY_FILE (or SOPS_AGE_KEY)
