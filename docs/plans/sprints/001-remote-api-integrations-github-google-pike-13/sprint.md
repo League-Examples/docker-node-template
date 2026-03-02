@@ -113,4 +113,14 @@ Before tickets can be created, all of the following must be true:
 
 ## Tickets
 
-(To be created after sprint approval.)
+| # | Title | Depends On |
+|---|-------|------------|
+| 001 | Add OAuth secret entries to environment examples | — |
+| 002 | Add session and Passport middleware to Express server | 001 |
+| 003 | Add integration status endpoint | 002 |
+| 004 | Implement GitHub OAuth auth routes | 002 |
+| 005 | Implement Google OAuth auth routes | 004 |
+| 006 | Add GitHub repos API proxy endpoint | 004 |
+| 007 | Add Pike 13 API proxy routes | 002 |
+| 008 | Build single-file example integration page | 003, 004, 005, 006, 007 |
+| 009 | Write API integrations documentation | 004, 005, 007 |
