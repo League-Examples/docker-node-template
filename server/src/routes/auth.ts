@@ -56,6 +56,59 @@ authRouter.get('/auth/github/callback',
   },
 );
 
+// --- Google OAuth Strategy ---
+// Register only if credentials are configured.
+// Docs: https://developers.google.com/identity/protocols/oauth2/web-server
+if (process.env.GOOGLE_CLIENT_ID && process.env.GOOGLE_CLIENT_SECRET) {
+  const GoogleStrategy = require('passport-google-oauth20').Strategy;
+  passport.use(new GoogleStrategy(
+    {
+      clientID: process.env.GOOGLE_CLIENT_ID,
+      clientSecret: process.env.GOOGLE_CLIENT_SECRET,
+      callbackURL: '/api/auth/google/callback',
+      scope: ['profile', 'email'],
+    },
+    (_accessToken: string, _refreshToken: string, profile: any, done: any) => {
+      const user = {
+        provider: 'google' as const,
+        id: profile.id,
+        displayName: profile.displayName || '',
+        email: profile.emails?.[0]?.value || '',
+        avatar: profile.photos?.[0]?.value || '',
+      };
+      done(null, user);
+    },
+  ));
+  if (process.env.NODE_ENV !== 'test') console.log('Google OAuth strategy registered');
+} else {
+  if (process.env.NODE_ENV !== 'test') console.log('Google OAuth not configured — set GOOGLE_CLIENT_ID and GOOGLE_CLIENT_SECRET');
+}
+
+// Google OAuth initiation
+// Setup: https://console.cloud.google.com/apis/credentials
+authRouter.get('/auth/google', (req: Request, res: Response, next) => {
+  if (!(passport as any)._strategy('google')) {
+    return res.status(501).json({
+      error: 'Google OAuth not configured',
+      docs: 'https://console.cloud.google.com/apis/credentials',
+    });
+  }
+  passport.authenticate('google', { scope: ['profile', 'email'] })(req, res, next);
+});
+
+// Google OAuth callback
+authRouter.get('/auth/google/callback',
+  (req: Request, res: Response, next) => {
+    if (!(passport as any)._strategy('google')) {
+      return res.status(501).json({ error: 'Google OAuth not configured' });
+    }
+    passport.authenticate('google', { failureRedirect: '/' })(req, res, next);
+  },
+  (_req: Request, res: Response) => {
+    res.redirect('/');
+  },
+);
+
 // --- Shared auth endpoints ---
 
 // Get current user

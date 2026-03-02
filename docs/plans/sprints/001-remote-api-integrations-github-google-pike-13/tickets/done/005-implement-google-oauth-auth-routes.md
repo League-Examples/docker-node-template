@@ -1,11 +1,11 @@
 ---
-id: "005"
+id: '005'
 title: Implement Google OAuth auth routes
-status: todo
+status: done
 use-cases:
-  - SUC-003
+- SUC-003
 depends-on:
-  - "004"
+- '004'
 ---
 
 # Implement Google OAuth auth routes
