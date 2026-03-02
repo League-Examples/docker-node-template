@@ -1,13 +1,13 @@
 ---
-id: "009"
+id: 009
 title: Write API integrations documentation
-status: todo
+status: done
 use-cases:
-  - SUC-001
+- SUC-001
 depends-on:
-  - "004"
-  - "005"
-  - "007"
+- '004'
+- '005'
+- '007'
 ---
 
 # Write API integrations documentation
