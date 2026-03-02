@@ -19,3 +19,12 @@ export async function incrementCounter() {
   });
   return { name: counter.name, value: counter.value };
 }
+
+export async function decrementCounter() {
+  const counter = await prisma.counter.upsert({
+    where: { name: COUNTER_NAME },
+    update: { value: { decrement: 1 } },
+    create: { name: COUNTER_NAME, value: -1 },
+  });
+  return { name: counter.name, value: counter.value };
+}
