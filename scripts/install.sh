@@ -290,7 +290,56 @@ if [ "$HAS_SOPS_AGE" = true ]; then
 fi
 
 # ---------------------------------------------------------------------------
-# 6. Generate .env
+# 6. CLASI Software Engineering Process
+# ---------------------------------------------------------------------------
+header "CLASI SE Process"
+
+CLASI_REPO="git+https://github.com/ericbusboom/claude-agent-skills.git"
+
+if command -v clasi &>/dev/null; then
+  success "clasi already installed"
+else
+  if ! command -v pipx &>/dev/null; then
+    warn "${BOLD}pipx${RESET} is not installed"
+    detail "CLASI requires pipx. Install it first:"
+    echo ""
+    bullet "macOS:   ${CYAN}brew install pipx && pipx ensurepath${RESET}"
+    bullet "Linux:   ${CYAN}python3 -m pip install --user pipx && pipx ensurepath${RESET}"
+    bullet "Windows: ${CYAN}pip install pipx && pipx ensurepath${RESET}"
+    echo ""
+    detail "Then re-run this script to install CLASI."
+  else
+    info "Installing CLASI via pipx..."
+    if pipx install "$CLASI_REPO" 2>/dev/null; then
+      success "CLASI installed"
+    else
+      # pipx install fails if already installed but not on PATH; try upgrade
+      if pipx upgrade claude-agent-skills 2>/dev/null; then
+        success "CLASI upgraded"
+      else
+        err "Failed to install CLASI"
+        detail "Try manually: pipx install $CLASI_REPO"
+      fi
+    fi
+  fi
+fi
+
+# Run clasi init if the MCP config doesn't reference clasi yet
+if command -v clasi &>/dev/null; then
+  if [ -f .mcp.json ] && grep -q "clasi" .mcp.json 2>/dev/null; then
+    success "CLASI already initialised"
+  else
+    info "Running clasi init..."
+    if clasi init 2>/dev/null; then
+      success "CLASI initialised"
+    else
+      warn "clasi init returned an error — you may need to run it manually"
+    fi
+  fi
+fi
+
+# ---------------------------------------------------------------------------
+# 7. Generate .env
 # ---------------------------------------------------------------------------
 header "Environment File"
 

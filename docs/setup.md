@@ -18,6 +18,10 @@ called out inline where the defaults differ.
   brew install sops age   # macOS
   ```
 - An age keypair — see [Secrets Management](secrets.md) for setup
+- **pipx** — required to install the CLASI SE process tooling
+  ```bash
+  brew install pipx && pipx ensurepath   # macOS
+  ```
 
 ---
 
