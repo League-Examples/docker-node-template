@@ -272,6 +272,9 @@ context names, SOPS key paths, database URL, and application secrets. See
 | `npm run secrets:dev:rm` | Removes all Docker Swarm secrets for the dev environment. Run this before `secrets:dev` if you need to update secret values (swarm secrets are immutable — you must remove and recreate them). |
 | `npm run secrets:prod` | Same as `secrets:dev` but decrypts `secrets/prod.env` and targets the production Docker context. Run this on initial deployment or whenever production secrets change. See [`docs/secrets.md`](docs/secrets.md). |
 | `npm run secrets:prod:rm` | Removes all production Docker Swarm secrets. Use before `secrets:prod` to rotate or update secret values. |
+| `npm run secrets:encrypt` | Encrypts the secrets portion of `.env` back into `secrets/dev.env` or `secrets/prod.env`. Auto-detects target from the `DEPLOYMENT` variable in `.env`. |
+| `npm run secrets:encrypt:dev` | Force-encrypts `.env` secrets into `secrets/dev.env` regardless of `DEPLOYMENT` value. |
+| `npm run secrets:encrypt:prod` | Force-encrypts `.env` secrets into `secrets/prod.env` regardless of `DEPLOYMENT` value. |
 
 ### Deployment
 
