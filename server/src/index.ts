@@ -9,7 +9,8 @@ if (fs.existsSync(envPath)) {
   dotenv.config({ path: envPath });
 }
 import express from 'express';
-import cors from 'cors';
+import session from 'express-session';
+import passport from 'passport';
 import pinoHttp from 'pino-http';
 import { healthRouter } from './routes/health';
 import { counterRouter } from './routes/counter';
@@ -18,10 +19,35 @@ import { errorHandler } from './middleware/errorHandler';
 const app = express();
 const port = parseInt(process.env.PORT || '3000', 10);
 
-app.use(cors());
+// Trust first proxy (Caddy in production, Vite in dev)
+app.set('trust proxy', 1);
+
 app.use(express.json());
 app.use(pinoHttp({ level: process.env.LOG_LEVEL || 'info' }));
 
+// Session middleware
+app.use(session({
+  secret: process.env.SESSION_SECRET || 'dev-secret-change-me',
+  resave: false,
+  saveUninitialized: false,
+  cookie: {
+    secure: process.env.NODE_ENV === 'production',
+    sameSite: 'lax',
+    httpOnly: true,
+  },
+}));
+
+// Passport authentication
+passport.serializeUser((user: Express.User, done) => {
+  done(null, user);
+});
+passport.deserializeUser((user: Express.User, done) => {
+  done(null, user);
+});
+app.use(passport.initialize());
+app.use(passport.session());
+
+// Routes
 app.use('/api', healthRouter);
 app.use('/api', counterRouter);
 
