@@ -11,7 +11,8 @@ integrationsRouter.get('/integrations/status', (_req, res) => {
       configured: !!(process.env.GOOGLE_CLIENT_ID && process.env.GOOGLE_CLIENT_SECRET),
     },
     pike13: {
-      configured: !!process.env.PIKE13_ACCESS_TOKEN,
+      configured: !!(process.env.PIKE13_ACCESS_TOKEN ||
+        (process.env.PIKE13_CLIENT_ID && process.env.PIKE13_CLIENT_SECRET)),
     },
   });
 });

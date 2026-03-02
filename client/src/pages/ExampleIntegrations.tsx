@@ -296,17 +296,45 @@ export default function ExampleIntegrations() {
           <div style={styles.notConfigured}>
             <p>Not configured</p>
             <p style={styles.hint}>
-              Set <code>PIKE13_ACCESS_TOKEN</code>.{' '}
-              <a href="https://developer.pike13.com/docs/get_started" target="_blank" rel="noreferrer">
-                Pike 13 API docs
+              Set <code>PIKE13_ACCESS_TOKEN</code> (and optionally{' '}
+              <code>PIKE13_CLIENT_ID</code> / <code>PIKE13_CLIENT_SECRET</code>).{' '}
+              <a href="https://developer.pike13.com/docs/authentication" target="_blank" rel="noreferrer">
+                Pike 13 OAuth docs
               </a>
             </p>
+            <div style={styles.callbackBox}>
+              <strong style={{ fontSize: '0.8rem' }}>OAuth Setup</strong>
+              <p style={{ fontSize: '0.8rem', color: '#666', margin: '0.35rem 0' }}>
+                Register your app at{' '}
+                <a href="https://developer.pike13.com" target="_blank" rel="noreferrer">
+                  developer.pike13.com
+                </a>.
+                Authorization endpoint:{' '}
+                <code style={styles.callbackUrl}>https://pike13.com/oauth/authorize</code>
+                {' '}(or <code style={styles.callbackUrl}>https://BUSINESS.pike13.com/oauth/authorize</code>).
+                Token endpoint:{' '}
+                <code style={styles.callbackUrl}>https://pike13.com/oauth/token</code>.
+                Tokens do not expire.
+              </p>
+              <strong style={{ fontSize: '0.8rem' }}>Callback URLs</strong>
+              <div style={styles.callbackRow}>
+                <span style={styles.callbackLabel}>Dev:</span>
+                <code style={styles.callbackUrl}>{DEV_ORIGIN}/api/auth/pike13/callback</code>
+              </div>
+              <div style={styles.callbackRow}>
+                <span style={styles.callbackLabel}>Prod:</span>
+                <code style={styles.callbackUrl}>{PROD_ORIGIN}/api/auth/pike13/callback</code>
+              </div>
+            </div>
           </div>
         ) : (
           <div>
-            <button style={styles.btn} onClick={fetchEvents} disabled={eventsLoading}>
-              {eventsLoading ? 'Loading...' : 'Show Events'}
-            </button>
+            <div style={styles.buttonRow}>
+              <a href="/api/auth/pike13" style={styles.btnLink}>Connect Pike 13</a>
+              <button style={styles.btn} onClick={fetchEvents} disabled={eventsLoading}>
+                {eventsLoading ? 'Loading...' : 'Show Events'}
+              </button>
+            </div>
             {eventsError && <p style={styles.error}>{eventsError}</p>}
             {events && (
               <table style={styles.table}>

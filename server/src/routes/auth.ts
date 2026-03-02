@@ -12,7 +12,8 @@ if (process.env.GITHUB_CLIENT_ID && process.env.GITHUB_CLIENT_SECRET) {
     {
       clientID: process.env.GITHUB_CLIENT_ID,
       clientSecret: process.env.GITHUB_CLIENT_SECRET,
-      callbackURL: '/api/auth/github/callback',
+      callbackURL: process.env.GITHUB_CALLBACK_URL || '/api/auth/github/callback',
+      proxy: true,
       scope: ['read:user', 'user:email'],
     },
     (_accessToken: string, _refreshToken: string, profile: any, done: any) => {
@@ -65,7 +66,8 @@ if (process.env.GOOGLE_CLIENT_ID && process.env.GOOGLE_CLIENT_SECRET) {
     {
       clientID: process.env.GOOGLE_CLIENT_ID,
       clientSecret: process.env.GOOGLE_CLIENT_SECRET,
-      callbackURL: '/api/auth/google/callback',
+      callbackURL: process.env.GOOGLE_CALLBACK_URL || '/api/auth/google/callback',
+      proxy: true,
       scope: ['profile', 'email'],
     },
     (_accessToken: string, _refreshToken: string, profile: any, done: any) => {
