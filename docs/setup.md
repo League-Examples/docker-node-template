@@ -25,21 +25,29 @@ called out inline where the defaults differ.
 
 ---
 
-## 1. Install Dependencies
+## 1. Run the Install Script
 
-Three separate `package.json` files exist — one at the root and one each for
-the server and client. All three must be installed:
+The install script handles all first-time setup in one step:
 
 ```bash
-npm install
-cd server && npm install
-cd ../client && npm install
+./scripts/install.sh
 ```
 
-The root package provides `concurrently`, which runs all three dev services
-in parallel. The server package includes `pg`, which `docker/wait-for-db.sh`
-needs to poll Postgres on startup. Missing either causes the dev server to
-fail immediately.
+It performs the following, in order:
+
+1. **npm dependencies** — installs packages for root, server, and client
+2. **Docker context detection** — finds your local Docker daemon (OrbStack,
+   Docker Desktop, or default)
+3. **SOPS + age** — locates or generates an age keypair, adds your public
+   key to `.sops.yaml`
+4. **CLASI SE process** — installs the CLASI tooling via `pipx` and runs
+   `clasi init` to configure the MCP server
+5. **`.env` generation** — creates `.env` from `.env.template`, fills in
+   detected values, and appends decrypted application secrets
+
+Re-running the script is safe — it detects existing state and skips steps
+that are already done. If `.env` already exists, it asks whether to
+overwrite or keep it.
 
 ---
 
@@ -49,9 +57,8 @@ The install script generates `.env` from `.env.template`. It contains Docker
 context configuration, SOPS/age key settings, and decrypted application
 secrets — all in one file sourced by every npm script.
 
-The install script auto-detects your Docker context (`orbstack`,
-`desktop-linux`, or `default`) and writes it to `.env`. To change it later,
-edit `.env` directly or delete it and re-run `./scripts/install.sh`.
+To change your Docker context later, edit `.env` directly or delete it and
+re-run `./scripts/install.sh`.
 
 > **Codespaces:** The only available Docker context is `default`.
 
@@ -78,7 +85,7 @@ docker ps
 
 ---
 
-## 4. Start Development
+## 3. Start Development
 
 There are two development modes.
 
@@ -126,7 +133,7 @@ npm run dev:docker:down
 
 ---
 
-## 5. Verify It's Working
+## 4. Verify It's Working
 
 ```bash
 curl http://localhost:3000/api/health
@@ -137,7 +144,7 @@ Opening http://localhost:5173 in a browser should show the React app.
 
 ---
 
-## 6. Run Tests
+## 5. Run Tests
 
 ```bash
 npm run test:db       # Database layer (Jest + Prisma)
@@ -148,7 +155,7 @@ npm run test:e2e      # End-to-end (Playwright, requires running containers)
 
 ---
 
-## 7. Common Tasks
+## 6. Common Tasks
 
 | Task | Command |
 |------|---------|

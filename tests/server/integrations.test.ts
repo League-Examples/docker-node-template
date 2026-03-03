@@ -17,12 +17,15 @@ describe('GET /api/integrations/status', () => {
     process.env = originalEnv;
   });
 
-  it('returns all three services with configured: false when no env vars set', async () => {
+  it('returns all services with configured: false when no env vars set', async () => {
     delete process.env.GITHUB_CLIENT_ID;
     delete process.env.GITHUB_CLIENT_SECRET;
     delete process.env.GOOGLE_CLIENT_ID;
     delete process.env.GOOGLE_CLIENT_SECRET;
     delete process.env.PIKE13_ACCESS_TOKEN;
+    delete process.env.GITHUB_TOKEN;
+    delete process.env.ANTHROPIC_API_KEY;
+    delete process.env.OPENAI_API_KEY;
 
     const res = await request(app).get('/api/integrations/status');
     expect(res.status).toBe(200);
@@ -30,6 +33,9 @@ describe('GET /api/integrations/status', () => {
       github: { configured: false },
       google: { configured: false },
       pike13: { configured: false },
+      githubToken: { configured: false },
+      anthropic: { configured: false },
+      openai: { configured: false },
     });
   });
 
@@ -76,16 +82,16 @@ describe('GET /api/integrations/status', () => {
     expect(body).not.toContain('pike-token-12345');
   });
 
-  it('response shape matches { github: { configured }, google: { configured }, pike13: { configured } }', async () => {
+  it('response shape includes all six services with configured boolean', async () => {
     const res = await request(app).get('/api/integrations/status');
     expect(res.status).toBe(200);
 
-    // Verify exact shape — only these keys, each with only 'configured'
     const keys = Object.keys(res.body);
-    expect(keys).toEqual(expect.arrayContaining(['github', 'google', 'pike13']));
-    expect(keys).toHaveLength(3);
+    const expectedServices = ['github', 'google', 'pike13', 'githubToken', 'anthropic', 'openai'];
+    expect(keys).toEqual(expect.arrayContaining(expectedServices));
+    expect(keys).toHaveLength(expectedServices.length);
 
-    for (const service of ['github', 'google', 'pike13']) {
+    for (const service of expectedServices) {
       expect(Object.keys(res.body[service])).toEqual(['configured']);
       expect(typeof res.body[service].configured).toBe('boolean');
     }

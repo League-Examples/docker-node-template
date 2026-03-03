@@ -8,6 +8,7 @@
  * No other files depend on this component.
  */
 import { useState, useEffect } from 'react'
+import { Link } from 'react-router-dom'
 
 // Injected by Vite from APP_DOMAIN in .env (see vite.config.ts)
 declare const __APP_DOMAIN__: string
@@ -169,7 +170,10 @@ export default function ExampleIntegrations() {
   // ---- Render ----
   return (
     <div style={styles.container}>
-      <h1 style={styles.title}>Integration Demo</h1>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+        <h1 style={styles.title}>Integration Demo</h1>
+        <Link to="/admin" style={styles.btnLink}>Admin</Link>
+      </div>
       <p style={styles.subtitle}>
         This page demonstrates the template&rsquo;s API integrations.
         Delete <code>client/src/pages/ExampleIntegrations.tsx</code> and
