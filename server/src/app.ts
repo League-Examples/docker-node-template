@@ -2,14 +2,18 @@ import express from 'express';
 import session from 'express-session';
 import pgSimple from 'connect-pg-simple';
 import passport from 'passport';
+import pino from 'pino';
 import pinoHttp from 'pino-http';
+import { Writable } from 'stream';
 import { healthRouter } from './routes/health';
 import { counterRouter } from './routes/counter';
 import { integrationsRouter } from './routes/integrations';
 import { authRouter } from './routes/auth';
 import { pike13Router } from './routes/pike13';
 import { githubRouter } from './routes/github';
+import { adminRouter } from './routes/admin';
 import { errorHandler } from './middleware/errorHandler';
+import { logBuffer } from './services/logBuffer';
 
 const app = express();
 
@@ -17,11 +21,24 @@ const app = express();
 app.set('trust proxy', 1);
 
 app.use(express.json());
-app.use(pinoHttp({
-  level: process.env.LOG_LEVEL || 'info',
-  // Suppress request logs during tests
-  ...(process.env.NODE_ENV === 'test' ? { level: 'silent' } : {}),
-}));
+
+// Pino logger: writes to stdout and in-memory ring buffer for the admin log viewer.
+const logLevel = process.env.NODE_ENV === 'test' ? 'silent' : (process.env.LOG_LEVEL || 'info');
+const bufferStream = new Writable({
+  write(chunk, _encoding, callback) {
+    logBuffer.ingest(chunk.toString());
+    callback();
+  },
+});
+const logger = pino(
+  { level: logLevel },
+  pino.multistream([
+    { stream: process.stdout },
+    { stream: bufferStream },
+  ]),
+);
+
+app.use(pinoHttp({ logger }));
 
 // Session middleware — PostgreSQL store for persistence across restarts.
 // Falls back to MemoryStore in test environment.
@@ -63,6 +80,7 @@ app.use('/api', integrationsRouter);
 app.use('/api', authRouter);
 app.use('/api', pike13Router);
 app.use('/api', githubRouter);
+app.use('/api', adminRouter);
 
 app.use(errorHandler);
 

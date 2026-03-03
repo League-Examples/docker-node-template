@@ -13,6 +13,13 @@ model Counter {
   value Int    @default(0)
 }
 
+// Runtime configuration store for admin-managed credentials.
+model Config {
+  key       String   @id
+  value     String
+  updatedAt DateTime @updatedAt
+}
+
 // Express session store (connect-pg-simple).
 // Must match the table structure that connect-pg-simple expects.
 model Session {
