@@ -1,7 +1,7 @@
 ---
-id: "002"
-title: Admin Dashboard — Database Viewer and Configuration
-status: planning
+id: '002'
+title: "Admin Dashboard \u2014 Database Viewer and Configuration"
+status: done
 branch: sprint/002-admin-dashboard-database-viewer-and-configuration
 use-cases: []
 ---
