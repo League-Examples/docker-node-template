@@ -109,4 +109,7 @@ Before tickets can be created, all of the following must be true:
 
 ## Tickets
 
-(To be created after sprint approval.)
+1. **001** — Server ESM migration and tsx replacement
+2. **002** — Prisma 7 schema, config, and client upgrade (depends on 001)
+3. **003** — Docker and script updates for Prisma 7 and ESM (depends on 001, 002)
+4. **004** — Test infrastructure ESM compatibility (depends on 001, 002)
