@@ -3,11 +3,17 @@
   "compilerOptions": {
     "rootDir": "../..",
     "noEmit": true,
+    "module": "commonjs",
+    "moduleResolution": "node",
     "typeRoots": ["../../server/node_modules/@types"],
     "types": ["jest", "supertest", "node"]
   },
   "include": [
     "../../server/src/**/*",
     "./**/*"
+  ],
+  "exclude": [
+    "../../server/src/index.ts",
+    "../../server/src/generated/**/*"
   ]
 }

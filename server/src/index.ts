@@ -13,11 +13,12 @@ if (fs.existsSync(envPath)) {
 }
 
 import app from './app';
+import { initPrisma } from './services/prisma';
 import { initConfigCache } from './services/config';
 
 const port = parseInt(process.env.PORT || '3000', 10);
 
-initConfigCache().then(() => {
+initPrisma().then(() => initConfigCache()).then(() => {
   app.listen(port, '0.0.0.0', () => {
     console.log(`Server listening on http://localhost:${port}`);
   });

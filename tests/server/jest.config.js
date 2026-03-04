@@ -16,6 +16,7 @@ module.exports = {
   transform: {
     '^.+\\.ts$': ['ts-jest', {
       tsconfig: path.resolve(__dirname, 'tsconfig.json'),
+      diagnostics: false,
     }],
   },
 };

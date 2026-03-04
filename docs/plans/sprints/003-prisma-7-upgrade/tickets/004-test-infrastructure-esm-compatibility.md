@@ -1,12 +1,12 @@
 ---
-id: "004"
-title: "Test infrastructure ESM compatibility"
-status: todo
+id: '004'
+title: Test infrastructure ESM compatibility
+status: done
 use-cases:
-  - SUC-003
+- SUC-003
 depends-on:
-  - "001"
-  - "002"
+- '001'
+- '002'
 ---
 
 # Test infrastructure ESM compatibility
@@ -35,9 +35,9 @@ the server's tsconfig, which has changed from CommonJS to ESM.
 
 ## Acceptance Criteria
 
-- [ ] `npm run test:server` passes with zero failures
-- [ ] No new warnings related to ESM or module resolution
-- [ ] Test tsconfig correctly handles ESM server tsconfig inheritance
+- [x] `npm run test:server` passes with zero failures (31/31 tests pass)
+- [x] No new warnings related to ESM or module resolution
+- [x] Test tsconfig correctly handles ESM server tsconfig inheritance
 
 ## Testing
 
