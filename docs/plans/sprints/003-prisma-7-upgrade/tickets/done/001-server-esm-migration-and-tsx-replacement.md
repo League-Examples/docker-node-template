@@ -1,10 +1,10 @@
 ---
-id: "001"
-title: "Server ESM migration and tsx replacement"
-status: todo
+id: '001'
+title: Server ESM migration and tsx replacement
+status: done
 use-cases:
-  - SUC-001
-  - SUC-003
+- SUC-001
+- SUC-003
 depends-on: []
 ---
 
@@ -37,11 +37,11 @@ which generates ESM-only client code.
 
 ## Acceptance Criteria
 
-- [ ] `server/package.json` has `"type": "module"`
-- [ ] `server/tsconfig.json` uses `"module": "ESNext"` and `"moduleResolution": "bundler"`
-- [ ] `ts-node-dev` replaced with `tsx` in server dependencies and scripts
-- [ ] No `require()` calls remain in `server/src/`
-- [ ] Server compiles with `tsc` without errors
+- [x] `server/package.json` has `"type": "module"`
+- [x] `server/tsconfig.json` uses `"module": "ESNext"` and `"moduleResolution": "bundler"`
+- [x] `ts-node-dev` replaced with `tsx` in server dependencies and scripts
+- [x] No `require()` calls remain in `server/src/`
+- [x] Server compiles with `tsc` without errors
 
 ## Testing
 
