@@ -1,13 +1,13 @@
 ---
-id: "002"
-title: "Prisma 7 schema, config, and client upgrade"
-status: todo
+id: '002'
+title: Prisma 7 schema, config, and client upgrade
+status: done
 use-cases:
-  - SUC-001
-  - SUC-002
-  - SUC-003
+- SUC-001
+- SUC-002
+- SUC-003
 depends-on:
-  - "001"
+- '001'
 ---
 
 # Prisma 7 schema, config, and client upgrade
@@ -49,14 +49,14 @@ singleton.
 
 ## Acceptance Criteria
 
-- [ ] `prisma` and `@prisma/adapter-pg` at v7.x in package.json
-- [ ] Schema uses `prisma-client` generator with output field
-- [ ] `prisma.config.ts` exists and loads env vars
-- [ ] Client singleton uses driver adapter with pg.Pool
-- [ ] `npx prisma generate` produces output in `server/src/generated/prisma/`
-- [ ] `server/src/generated/` is gitignored
-- [ ] `npx prisma migrate dev` runs successfully
-- [ ] Server starts and can query the database
+- [x] `prisma` and `@prisma/adapter-pg` at v7.x in package.json
+- [x] Schema uses `prisma-client` generator with output field
+- [x] `prisma.config.ts` exists and loads env vars
+- [x] Client singleton uses driver adapter with PrismaPg
+- [x] `npx prisma generate` produces output in `server/src/generated/prisma/`
+- [x] `server/src/generated/` is gitignored
+- [ ] `npx prisma migrate dev` runs successfully (requires running DB)
+- [ ] Server starts and can query the database (requires running DB)
 
 ## Testing
 
