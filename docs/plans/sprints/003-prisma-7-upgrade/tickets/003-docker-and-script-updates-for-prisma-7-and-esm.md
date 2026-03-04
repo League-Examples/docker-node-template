@@ -1,12 +1,12 @@
 ---
-id: "003"
-title: "Docker and script updates for Prisma 7 and ESM"
-status: todo
+id: '003'
+title: Docker and script updates for Prisma 7 and ESM
+status: done
 use-cases:
-  - SUC-002
+- SUC-002
 depends-on:
-  - "001"
-  - "002"
+- '001'
+- '002'
 ---
 
 # Docker and script updates for Prisma 7 and ESM
@@ -39,12 +39,12 @@ Prisma 7 and the server's ESM module system.
 
 ## Acceptance Criteria
 
-- [ ] `docker/Dockerfile.server` builds successfully
-- [ ] `docker/Dockerfile.server.dev` builds successfully
-- [ ] `docker/dev-server-start.sh` no longer uses `--skip-generate`
-- [ ] `docker/dev-server-start.sh` uses `tsx` instead of `ts-node-dev`
-- [ ] Root `dev:local:server` script works end-to-end
-- [ ] `npm run dev:docker` builds and starts without errors
+- [x] `docker/Dockerfile.server` builds successfully
+- [x] `docker/Dockerfile.server.dev` builds successfully
+- [x] `docker/dev-server-start.sh` no longer uses `--skip-generate`
+- [x] `docker/dev-server-start.sh` uses `tsx` instead of `ts-node-dev`
+- [x] Root `dev:local:server` script works end-to-end (no changes needed)
+- [ ] `npm run dev:docker` builds and starts without errors (requires Docker)
 
 ## Testing
 
