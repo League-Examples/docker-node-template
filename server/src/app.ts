@@ -1,3 +1,5 @@
+import path from 'path';
+import { fileURLToPath } from 'url';
 import express from 'express';
 import session from 'express-session';
 import pgSimple from 'connect-pg-simple';
@@ -87,7 +89,8 @@ app.use(errorHandler);
 // In production, serve the built React app from /app/public.
 // All non-API routes fall through to index.html for SPA routing.
 if (process.env.NODE_ENV === 'production') {
-  const path = require('path');
+  const __filename = fileURLToPath(import.meta.url);
+  const __dirname = path.dirname(__filename);
   const publicDir = path.resolve(__dirname, '../public');
   app.use(express.static(publicDir));
   app.get('*', (_req: express.Request, res: express.Response) => {
