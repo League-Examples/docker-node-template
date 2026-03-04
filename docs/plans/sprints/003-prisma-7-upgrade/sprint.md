@@ -1,12 +1,12 @@
 ---
-id: "003"
-title: "Prisma 7 Upgrade"
-status: planning
+id: '003'
+title: Prisma 7 Upgrade
+status: active
 branch: sprint/003-prisma-7-upgrade
 use-cases:
-  - SUC-001
-  - SUC-002
-  - SUC-003
+- SUC-001
+- SUC-002
+- SUC-003
 ---
 
 # Sprint 003: Prisma 7 Upgrade
