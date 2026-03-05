@@ -1,7 +1,7 @@
 ---
 id: '003'
 title: Prisma 7 Upgrade
-status: active
+status: done
 branch: sprint/003-prisma-7-upgrade
 use-cases:
 - SUC-001

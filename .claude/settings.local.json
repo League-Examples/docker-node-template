@@ -2,8 +2,7 @@
   "permissions": {
     "allow": [
       "mcp__clasi__*",
-      "Bash(chmod +x /Volumes/Proj/proj/league-projects/infrastructure/docker-node-template/scripts/install.sh)",
-      "Bash(bash -n /Volumes/Proj/proj/league-projects/infrastructure/docker-node-template/scripts/install.sh)"
+      "Bash(*)"
     ]
   }
 }
