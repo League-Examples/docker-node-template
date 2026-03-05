@@ -24,7 +24,7 @@ adminDbRouter.get('/db/tables', async (_req, res, next) => {
     `;
 
     const result = await Promise.all(
-      tables.map(async (t) => {
+      tables.map(async (t: TableInfo) => {
         const countResult = await prisma.$queryRawUnsafe<[{ count: bigint }]>(
           `SELECT count(*) FROM "${t.table_name}"`
         );
@@ -81,7 +81,7 @@ adminDbRouter.get('/db/tables/:name', async (req, res, next) => {
     );
 
     res.json({
-      columns: columns.map((c) => ({
+      columns: columns.map((c: ColumnInfo) => ({
         name: c.column_name,
         type: c.data_type,
         nullable: c.is_nullable === 'YES',

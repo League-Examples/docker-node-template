@@ -18,7 +18,7 @@ adminSessionsRouter.get('/sessions', async (_req, res, next) => {
       ORDER BY expire DESC
     `;
 
-    const result = sessions.map((s) => {
+    const result = sessions.map((s: SessionRow) => {
       const sess = s.sess as Record<string, unknown>;
 
       // Extract OAuth user info from passport session data

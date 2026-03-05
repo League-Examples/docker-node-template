@@ -1,5 +1,7 @@
 import { Router, Request, Response } from 'express';
 import passport from 'passport';
+import pkg_github2 from 'passport-github2';
+import pkg_google from 'passport-google-oauth20';
 
 export const authRouter = Router();
 
@@ -7,7 +9,7 @@ export const authRouter = Router();
 // Register only if credentials are configured.
 // Docs: https://docs.github.com/en/apps/oauth-apps/building-oauth-apps/creating-an-oauth-app
 if (process.env.GITHUB_CLIENT_ID && process.env.GITHUB_CLIENT_SECRET) {
-  const GitHubStrategy = require('passport-github2').Strategy;
+  const GitHubStrategy = pkg_github2.Strategy;
   passport.use(new GitHubStrategy(
     {
       clientID: process.env.GITHUB_CLIENT_ID,
@@ -61,7 +63,7 @@ authRouter.get('/auth/github/callback',
 // Register only if credentials are configured.
 // Docs: https://developers.google.com/identity/protocols/oauth2/web-server
 if (process.env.GOOGLE_CLIENT_ID && process.env.GOOGLE_CLIENT_SECRET) {
-  const GoogleStrategy = require('passport-google-oauth20').Strategy;
+  const GoogleStrategy = pkg_google.Strategy;
   passport.use(new GoogleStrategy(
     {
       clientID: process.env.GOOGLE_CLIENT_ID,
