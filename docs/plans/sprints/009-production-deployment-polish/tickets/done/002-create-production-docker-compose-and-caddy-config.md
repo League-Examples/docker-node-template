@@ -1,7 +1,7 @@
 ---
 id: '002'
 title: Create production Docker Compose and Caddy config
-status: todo
+status: done
 use-cases:
 - SUC-001
 depends-on:

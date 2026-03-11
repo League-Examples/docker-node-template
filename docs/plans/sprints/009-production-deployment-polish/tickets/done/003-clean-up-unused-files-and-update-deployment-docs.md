@@ -1,7 +1,7 @@
 ---
 id: '003'
 title: Clean up unused files and update deployment docs
-status: todo
+status: done
 use-cases:
 - SUC-004
 depends-on:

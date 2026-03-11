@@ -1,7 +1,7 @@
 ---
 id: '009'
 title: Production Deployment & Polish
-status: planning
+status: approved
 branch: sprint/009-production-deployment-polish
 use-cases:
 - SUC-001

@@ -1,5 +1,9 @@
-# Development database only.
-# Used by `npm run dev` to provide PostgreSQL for native server/client dev.
+# Docker development environment
+# Usage: docker compose up --build
+#
+# For local Docker (same machine), uncomment the volume mounts below
+# to enable hot-reload. For remote Docker contexts (SSH), leave them
+# commented out — the code is baked into the image at build time.
 services:
   db:
     image: postgres:16-alpine
@@ -16,6 +20,38 @@ services:
       interval: 5s
       timeout: 3s
       retries: 5
+
+  server:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.server.dev
+    environment:
+      DATABASE_URL: postgres://app:devpassword@db:5432/app
+      NODE_ENV: development
+      PORT: "3000"
+    ports:
+      - "3000:3000"
+    # Uncomment for local Docker with hot-reload:
+    # volumes:
+    #   - ./server/src:/app/src
+    #   - ./server/prisma:/app/prisma
+    depends_on:
+      db:
+        condition: service_healthy
+
+  client:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.client.dev
+    environment:
+      VITE_API_URL: http://server:3000
+    ports:
+      - "5173:5173"
+    # Uncomment for local Docker with hot-reload:
+    # volumes:
+    #   - ./client/src:/app/src
+    depends_on:
+      - server
 
 volumes:
   pgdata:
