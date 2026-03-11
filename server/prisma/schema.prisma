@@ -7,12 +7,6 @@ datasource db {
   provider = "postgresql"
 }
 
-model Counter {
-  id    Int    @id @default(autoincrement())
-  name  String @unique
-  value Int    @default(0)
-}
-
 // Runtime configuration store for admin-managed credentials.
 model Config {
   key       String   @id
@@ -35,8 +29,30 @@ model User {
   providerId  String?
   createdAt   DateTime  @default(now())
   updatedAt   DateTime  @updatedAt
+  messages    Message[]
 
   @@unique([provider, providerId])
+}
+
+model Channel {
+  id          Int       @id @default(autoincrement())
+  name        String    @unique
+  description String?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+  messages    Message[]
+}
+
+model Message {
+  id        Int      @id @default(autoincrement())
+  content   String
+  channelId Int
+  authorId  Int
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  channel   Channel  @relation(fields: [channelId], references: [id], onDelete: Cascade)
+  author    User     @relation(fields: [authorId], references: [id])
 }
 
 model RoleAssignmentPattern {

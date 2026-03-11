@@ -7,12 +7,14 @@ import pino from 'pino';
 import pinoHttp from 'pino-http';
 import { Writable } from 'stream';
 import { healthRouter } from './routes/health';
-import { counterRouter } from './routes/counter';
 import { integrationsRouter } from './routes/integrations';
 import { authRouter } from './routes/auth';
 import { pike13Router } from './routes/pike13';
 import { githubRouter } from './routes/github';
 import { adminRouter } from './routes/admin';
+import { channelsRouter } from './routes/channels';
+import { messagesRouter } from './routes/messages';
+import { searchRouter } from './routes/search';
 import { errorHandler } from './middleware/errorHandler';
 import { attachServices } from './middleware/services';
 import { ServiceRegistry } from './services/service.registry';
@@ -88,12 +90,14 @@ app.use(attachServices(registry));
 
 // Routes
 app.use('/api', healthRouter);
-app.use('/api', counterRouter);
 app.use('/api', integrationsRouter);
 app.use('/api', authRouter);
 app.use('/api', pike13Router);
 app.use('/api', githubRouter);
 app.use('/api', adminRouter);
+app.use('/api', channelsRouter);
+app.use('/api', messagesRouter);
+app.use('/api', searchRouter);
 
 app.use(errorHandler);
 

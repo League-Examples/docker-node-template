@@ -1,7 +1,7 @@
 ---
 id: '005'
 title: Build chat UI pages
-status: todo
+status: done
 use-cases:
 - SUC-002
 - SUC-003
@@ -45,20 +45,20 @@ input. The Channels page provides admin-only channel management.
 
 ## Acceptance Criteria
 
-- [ ] Chat page renders channel list sidebar and message feed area
-- [ ] Selecting a channel loads and displays its messages
-- [ ] Default channel is `#general` (or first available)
-- [ ] Messages display author name, avatar placeholder, and timestamp
-- [ ] Message input visible at bottom; Enter or Send button posts message
-- [ ] Input clears after successful send
-- [ ] Empty messages are not sent
-- [ ] Polling fetches new messages every ~3 seconds without duplicates
-- [ ] Auto-scroll to bottom on new messages when already at bottom
-- [ ] Channels admin page lists all channels with details
-- [ ] Admin can create a new channel via form
-- [ ] Duplicate channel name shows error message
-- [ ] Admin can delete a channel with confirmation dialog
-- [ ] Channels page restricted to admin users
+- [x] Chat page renders channel list sidebar and message feed area
+- [x] Selecting a channel loads and displays its messages
+- [x] Default channel is `#general` (or first available)
+- [x] Messages display author name, avatar placeholder, and timestamp
+- [x] Message input visible at bottom; Enter or Send button posts message
+- [x] Input clears after successful send
+- [x] Empty messages are not sent
+- [x] Polling fetches new messages every ~3 seconds without duplicates
+- [x] Auto-scroll to bottom on new messages when already at bottom
+- [x] Channels admin page lists all channels with details
+- [x] Admin can create a new channel via form
+- [x] Duplicate channel name shows error message
+- [x] Admin can delete a channel with confirmation dialog
+- [x] Channels page restricted to admin users
 
 ## Testing
 

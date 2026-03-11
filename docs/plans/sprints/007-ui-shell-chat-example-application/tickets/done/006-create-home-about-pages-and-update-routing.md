@@ -1,7 +1,7 @@
 ---
 id: '006'
 title: Create Home, About pages and update routing
-status: todo
+status: done
 use-cases:
 - SUC-001
 - SUC-007
@@ -51,16 +51,16 @@ the AppLayout component, configure sidebar navigation, and remove the old
 
 ## Acceptance Criteria
 
-- [ ] `Home.tsx` renders a landing/dashboard page
-- [ ] `About.tsx` displays application name and version
-- [ ] `App.tsx` wraps routes in `AppLayout` with nested routing
-- [ ] All routes are correctly configured and navigable
-- [ ] Sidebar navigation matches: Home, Chat, Admin (admin-only with
+- [x] `Home.tsx` renders a landing/dashboard page
+- [x] `About.tsx` displays application name and version
+- [x] `App.tsx` wraps routes in `AppLayout` with nested routing
+- [x] All routes are correctly configured and navigable
+- [x] Sidebar navigation matches: Home, Chat, Admin (admin-only with
       sub-items), MCP Setup, About
-- [ ] `ExampleIntegrations.tsx` is deleted and its route removed
-- [ ] Default user display shows "Eric Busboom" / "student" when no
+- [x] `ExampleIntegrations.tsx` is deleted and its route removed
+- [x] Default user display shows "Eric Busboom" / "student" when no
       session exists
-- [ ] `npm run dev` starts and displays the full AppLayout shell
+- [x] `npm run dev` starts and displays the full AppLayout shell
 
 ## Testing
 

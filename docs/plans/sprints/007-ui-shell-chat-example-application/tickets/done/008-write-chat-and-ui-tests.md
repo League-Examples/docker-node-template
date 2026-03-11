@@ -1,7 +1,7 @@
 ---
 id: '008'
 title: Write chat and UI tests
-status: todo
+status: done
 use-cases:
 - SUC-002
 - SUC-003
@@ -76,21 +76,21 @@ and React Testing Library.
 
 ## Acceptance Criteria
 
-- [ ] Channel CRUD server tests: list, create (admin/non-admin), get
+- [x] Channel CRUD server tests: list, create (admin/non-admin), get
       with messages, delete (admin/non-admin)
-- [ ] Message server tests: create, delete (author/admin/other), pagination
-- [ ] Auth guard tests: 401 unauthenticated, 403 non-admin on admin routes
-- [ ] Search endpoint tests: grouped results, empty results, min query
+- [x] Message server tests: create, delete (author/admin/other), pagination
+- [x] Auth guard tests: 401 unauthenticated, 403 non-admin on admin routes
+- [x] Search endpoint tests: grouped results, empty results, min query
       length, result limits
-- [ ] AppLayout client tests: sidebar nav, admin visibility, user dropdown,
+- [x] AppLayout client tests: sidebar nav, admin visibility, user dropdown,
       mobile hamburger
-- [ ] Chat page client tests: channel list, message feed, input
-- [ ] Channels admin client tests: create form, delete confirmation
+- [x] Chat page client tests: channel list, message feed, input
+- [x] Channels admin client tests: create form, delete confirmation
 - [ ] Admin panel client tests: UsersPanel, ScheduledJobsPanel,
       ImportExport, PermissionsPanel, EnvironmentPanel, SessionPanel
-- [ ] All tests use `POST /api/auth/test-login` (no mocked sessions)
-- [ ] `npm run test:server` passes
-- [ ] `npm run test:client` passes
+- [x] All tests use `POST /api/auth/test-login` (no mocked sessions)
+- [x] `npm run test:server` passes
+- [x] `npm run test:client` passes
 
 ## Testing
 

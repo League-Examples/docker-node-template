@@ -1,7 +1,7 @@
 ---
 id: '007'
 title: Remove Counter demo
-status: todo
+status: done
 use-cases:
 - SUC-002
 depends-on: []
@@ -39,17 +39,17 @@ data.
 
 ## Acceptance Criteria
 
-- [ ] `Counter` model removed from Prisma schema
-- [ ] Prisma migration drops the `Counter` table
-- [ ] CounterService file deleted
-- [ ] Counter routes file deleted
-- [ ] Counter routes unmounted from `app.ts`
-- [ ] CounterService removed from ServiceRegistry
-- [ ] All counter-related client code removed
-- [ ] `npx prisma migrate dev` completes without errors
-- [ ] No references to "counter" remain in source code (excluding
+- [x] `Counter` model removed from Prisma schema
+- [x] Prisma migration drops the `Counter` table
+- [x] CounterService file deleted
+- [x] Counter routes file deleted
+- [x] Counter routes unmounted from `app.ts`
+- [x] CounterService removed from ServiceRegistry
+- [x] All counter-related client code removed
+- [x] `npx prisma migrate dev` completes without errors
+- [x] No references to "counter" remain in source code (excluding
       git history and migration files)
-- [ ] Existing tests pass: `npm run test:server`
+- [x] Existing tests pass: `npm run test:server`
 
 ## Testing
 
