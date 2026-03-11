@@ -50,6 +50,18 @@ model RoleAssignmentPattern {
   @@unique([matchType, pattern])
 }
 
+model ScheduledJob {
+  id        Int       @id @default(autoincrement())
+  name      String    @unique
+  frequency String    // 'daily', 'weekly', 'hourly'
+  enabled   Boolean   @default(true)
+  lastRun   DateTime?
+  nextRun   DateTime?
+  lastError String?
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+}
+
 // Express session store (connect-pg-simple).
 // Must match the table structure that connect-pg-simple expects.
 model Session {
