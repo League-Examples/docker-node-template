@@ -8,6 +8,7 @@ const NAV_ITEMS = [
   { to: '/admin/logs', label: 'Logs' },
   { to: '/admin/sessions', label: 'Sessions' },
   { to: '/admin/permissions', label: 'Permissions' },
+  { to: '/admin/scheduler', label: 'Scheduled Jobs' },
 ];
 
 export default function AdminLayout() {
