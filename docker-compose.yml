@@ -1,57 +1,69 @@
-# Docker development environment
-# Usage: docker compose up --build
-#
-# For local Docker (same machine), uncomment the volume mounts below
-# to enable hot-reload. For remote Docker contexts (SSH), leave them
-# commented out — the code is baked into the image at build time.
+# Production Docker Swarm stack
+# Usage: TAG=v1 docker stack deploy -c docker-compose.yml collegenav
 services:
   db:
     image: postgres:16-alpine
     environment:
       POSTGRES_DB: app
       POSTGRES_USER: app
-      POSTGRES_PASSWORD: devpassword
+      POSTGRES_PASSWORD_FILE: /run/secrets/db_password
     volumes:
       - pgdata:/var/lib/postgresql/data
-    ports:
-      - "${DB_PORT:-5433}:5432"
+    deploy:
+      placement:
+        constraints: [node.role == manager]
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U app"]
-      interval: 5s
-      timeout: 3s
+      interval: 10s
+      timeout: 5s
       retries: 5
 
   server:
-    build:
-      context: .
-      dockerfile: docker/Dockerfile.server.dev
+    image: ${REGISTRY:-registry.local}/collegenav-server:${TAG:-latest}
+    secrets:
+      - database_url
+      - session_secret
+      - admin_password
+      - mcp_default_token
+      - github_client_id
+      - github_client_secret
+      - google_client_id
+      - google_client_secret
+    entrypoint: ["/app/entrypoint.sh"]
+    command: ["node", "dist/index.js"]
     environment:
-      DATABASE_URL: postgres://app:devpassword@db:5432/app
-      NODE_ENV: development
+      NODE_ENV: production
       PORT: "3000"
-    ports:
-      - "3000:3000"
-    # Uncomment for local Docker with hot-reload:
-    # volumes:
-    #   - ./server/src:/app/src
-    #   - ./server/prisma:/app/prisma
+      APP_DOMAIN: ${APP_DOMAIN:-collegenavigator.jtlapp.net}
+    deploy:
+      labels:
+        caddy: ${APP_DOMAIN:-collegenavigator.jtlapp.net}
+        caddy.reverse_proxy: "{{upstreams 3000}}"
+      replicas: 1
+      update_config:
+        parallelism: 1
+        delay: 10s
+        order: start-first
     depends_on:
-      db:
-        condition: service_healthy
+      - db
 
-  client:
-    build:
-      context: .
-      dockerfile: docker/Dockerfile.client.dev
-    environment:
-      VITE_API_URL: http://server:3000
-    ports:
-      - "5173:5173"
-    # Uncomment for local Docker with hot-reload:
-    # volumes:
-    #   - ./client/src:/app/src
-    depends_on:
-      - server
+secrets:
+  database_url:
+    external: true
+  session_secret:
+    external: true
+  admin_password:
+    external: true
+  mcp_default_token:
+    external: true
+  github_client_id:
+    external: true
+  github_client_secret:
+    external: true
+  google_client_id:
+    external: true
+  google_client_secret:
+    external: true
 
 volumes:
   pgdata:
