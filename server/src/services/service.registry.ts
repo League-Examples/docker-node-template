@@ -7,12 +7,15 @@ import { prisma as defaultPrisma } from './prisma';
 import { initConfigCache, getConfig, getAllConfig, setConfig, exportConfig } from './config';
 import { getCounter, incrementCounter, decrementCounter } from './counter';
 import { logBuffer } from './logBuffer';
+import { UserService } from './user.service';
 
 export class ServiceRegistry {
   readonly source: ServiceSource;
+  readonly users: UserService;
 
   private constructor(source: ServiceSource = 'UI') {
     this.source = source;
+    this.users = new UserService(defaultPrisma);
   }
 
   static create(source?: ServiceSource): ServiceRegistry {
@@ -45,6 +48,7 @@ export class ServiceRegistry {
    */
   async clearAll(): Promise<void> {
     const p = this.prisma;
+    await p.user.deleteMany();
     await p.counter.deleteMany();
   }
 }
