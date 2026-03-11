@@ -12,6 +12,8 @@ import { PermissionsService } from './permissions.service';
 import { SchedulerService } from './scheduler.service';
 import { BackupService } from './backup.service';
 import { SessionService } from './session.service';
+import { ChannelService } from './channel.service';
+import { MessageService } from './message.service';
 
 export class ServiceRegistry {
   readonly source: ServiceSource;
@@ -20,6 +22,8 @@ export class ServiceRegistry {
   readonly scheduler: SchedulerService;
   readonly backups: BackupService;
   readonly sessions: SessionService;
+  readonly channels: ChannelService;
+  readonly messages: MessageService;
 
   private constructor(source: ServiceSource = 'UI') {
     this.source = source;
@@ -28,6 +32,8 @@ export class ServiceRegistry {
     this.scheduler = new SchedulerService(defaultPrisma);
     this.backups = new BackupService(defaultPrisma);
     this.sessions = new SessionService(defaultPrisma);
+    this.channels = new ChannelService(defaultPrisma);
+    this.messages = new MessageService(defaultPrisma);
   }
 
   static create(source?: ServiceSource): ServiceRegistry {
@@ -60,6 +66,8 @@ export class ServiceRegistry {
    */
   async clearAll(): Promise<void> {
     const p = this.prisma;
+    await p.message.deleteMany();
+    await p.channel.deleteMany();
     await p.scheduledJob.deleteMany();
     await p.roleAssignmentPattern.deleteMany();
     await p.user.deleteMany();
