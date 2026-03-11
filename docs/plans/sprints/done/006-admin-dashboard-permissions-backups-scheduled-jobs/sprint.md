@@ -1,7 +1,7 @@
 ---
 id: '006'
-title: Admin Dashboard — Permissions, Backups, Scheduled Jobs
-status: planning
+title: "Admin Dashboard \u2014 Permissions, Backups, Scheduled Jobs"
+status: done
 branch: sprint/006-admin-dashboard-permissions-backups-scheduled-jobs
 use-cases:
 - SUC-001
