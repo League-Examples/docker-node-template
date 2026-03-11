@@ -6,6 +6,7 @@ import { adminDbRouter } from './db';
 import { adminConfigRouter } from './config';
 import { adminLogsRouter } from './logs';
 import { adminSessionsRouter } from './sessions';
+import { adminUsersRouter } from './users';
 
 export const adminRouter = Router();
 
@@ -21,3 +22,4 @@ adminRouter.use('/admin', adminDbRouter);
 adminRouter.use('/admin', adminConfigRouter);
 adminRouter.use('/admin', adminLogsRouter);
 adminRouter.use('/admin', adminSessionsRouter);
+adminRouter.use('/admin', adminUsersRouter);
