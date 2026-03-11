@@ -1,7 +1,10 @@
 import { BrowserRouter, Routes, Route } from 'react-router-dom';
 import { AuthProvider } from './context/AuthContext';
 import AppLayout from './components/AppLayout';
-import ExampleIntegrations from './pages/ExampleIntegrations';
+import Home from './pages/Home';
+import Chat from './pages/Chat';
+import About from './pages/About';
+import Channels from './pages/Channels';
 import AdminLogin from './pages/admin/AdminLogin';
 import AdminLayout from './pages/admin/AdminLayout';
 import EnvironmentInfo from './pages/admin/EnvironmentInfo';
@@ -20,7 +23,9 @@ function App() {
         <Routes>
           {/* Authenticated routes wrapped in AppLayout (sidebar + topbar) */}
           <Route element={<AppLayout />}>
-            <Route path="/" element={<ExampleIntegrations />} />
+            <Route path="/" element={<Home />} />
+            <Route path="/chat" element={<Chat />} />
+            <Route path="/about" element={<About />} />
           </Route>
 
           {/* Admin login (standalone, no layout) */}
@@ -36,6 +41,7 @@ function App() {
             <Route path="/admin/permissions" element={<PermissionsPanel />} />
             <Route path="/admin/scheduler" element={<ScheduledJobsPanel />} />
             <Route path="/admin/import-export" element={<ImportExport />} />
+            <Route path="/admin/channels" element={<Channels />} />
           </Route>
         </Routes>
       </AuthProvider>

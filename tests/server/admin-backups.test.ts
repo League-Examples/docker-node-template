@@ -32,7 +32,7 @@ describe('Admin Backups API', () => {
     expect(typeof res.body.tables).toBe('object');
     // Check expected table keys
     expect(res.body.tables).toHaveProperty('User');
-    expect(res.body.tables).toHaveProperty('Counter');
+    expect(res.body.tables).toHaveProperty('Channel');
     expect(res.body.tables.User).toHaveProperty('count');
     expect(res.body.tables.User).toHaveProperty('records');
   });

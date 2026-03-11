@@ -5,7 +5,6 @@ import { prisma as defaultPrisma } from './prisma';
 
 // Import existing service functions
 import { initConfigCache, getConfig, getAllConfig, setConfig, exportConfig } from './config';
-import { getCounter, incrementCounter, decrementCounter } from './counter';
 import { logBuffer } from './logBuffer';
 import { UserService } from './user.service';
 import { PermissionsService } from './permissions.service';
@@ -45,11 +44,6 @@ export class ServiceRegistry {
     return { initCache: initConfigCache, get: getConfig, getAll: getAllConfig, set: setConfig, export: exportConfig };
   }
 
-  // --- Counter ---
-  get counter() {
-    return { get: getCounter, increment: incrementCounter, decrement: decrementCounter };
-  }
-
   // --- Logs ---
   get logs() {
     return logBuffer;
@@ -71,6 +65,5 @@ export class ServiceRegistry {
     await p.scheduledJob.deleteMany();
     await p.roleAssignmentPattern.deleteMany();
     await p.user.deleteMany();
-    await p.counter.deleteMany();
   }
 }

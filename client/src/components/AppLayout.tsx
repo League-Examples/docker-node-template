@@ -27,6 +27,7 @@ const ADMIN_NAV: NavItem[] = [
   { to: '/admin/permissions', label: 'Permissions' },
   { to: '/admin/import-export', label: 'Import/Export' },
   { to: '/admin/scheduler', label: 'Scheduled Jobs' },
+  { to: '/admin/channels', label: 'Channels' },
 ];
 
 const BOTTOM_NAV: NavItem[] = [
