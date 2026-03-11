@@ -1,7 +1,7 @@
 ---
 id: '001'
 title: Create production Dockerfile
-status: todo
+status: done
 use-cases:
 - SUC-002
 - SUC-003

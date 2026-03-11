@@ -1,7 +1,7 @@
 ---
 id: '004'
 title: Run full test suite and production smoke tests
-status: todo
+status: done
 use-cases:
 - SUC-002
 - SUC-004
