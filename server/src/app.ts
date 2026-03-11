@@ -14,6 +14,8 @@ import { pike13Router } from './routes/pike13';
 import { githubRouter } from './routes/github';
 import { adminRouter } from './routes/admin';
 import { errorHandler } from './middleware/errorHandler';
+import { attachServices } from './middleware/services';
+import { ServiceRegistry } from './services/service.registry';
 import { logBuffer } from './services/logBuffer';
 
 const app = express();
@@ -74,6 +76,10 @@ passport.deserializeUser((user: Express.User, done) => {
 app.use(passport.initialize());
 app.use(passport.session());
 
+// Service registry — provides req.services to all route handlers
+const registry = ServiceRegistry.create('API');
+app.use(attachServices(registry));
+
 // Routes
 app.use('/api', healthRouter);
 app.use('/api', counterRouter);
@@ -95,4 +101,5 @@ if (process.env.NODE_ENV === 'production') {
   });
 }
 
+export { registry };
 export default app;

@@ -19,13 +19,19 @@ Application code never reads files from `/run/secrets/` directly. The
 
 | File | Committed | Purpose |
 |------|-----------|---------|
-| `.sops.yaml` | Yes | Lists authorized age public keys |
-| `secrets/dev.env` | Yes | Encrypted development secrets |
-| `secrets/prod.env` | Yes | Encrypted production secrets |
-| `secrets/dev.env.example` | Yes | Plaintext template (shows required vars) |
-| `secrets/prod.env.example` | Yes | Plaintext template (shows required vars) |
+| `config/sops.yaml` | Yes | Lists authorized age public keys |
+| `config/dev/public.env` | Yes | Non-secret dev env vars (plaintext) |
+| `config/dev/secrets.env` | Yes | Encrypted development secrets |
+| `config/dev/secrets.env.example` | Yes | Plaintext template (shows required vars) |
+| `config/prod/public.env` | Yes | Non-secret prod env vars (plaintext) |
+| `config/prod/secrets.env` | Yes | Encrypted production secrets |
+| `config/prod/secrets.env.example` | Yes | Plaintext template (shows required vars) |
+| `config/local/` | No (gitignored) | Developer-specific overrides |
 | `.env` | No (gitignored) | Decrypted local secrets |
 | `*.agekey` | No (gitignored) | Private keys |
+
+> **Legacy:** The `secrets/` directory still exists for reference but is
+> superseded by `config/`. It will be removed in a future sprint.
 
 ## Required Secrets
 
@@ -112,14 +118,14 @@ npm run secrets:add-key
 ```
 
 It will prompt for the new age public key, append it to `.sops.yaml`, and
-run `sops updatekeys` on every encrypted file in `secrets/`.
+run `sops updatekeys` on every encrypted file in `config/`.
 
-Commit and push the updated `.sops.yaml` and re-encrypted files.
+Commit and push the updated `config/sops.yaml` and re-encrypted files.
 
 ### 4. Decrypt for local development
 
 ```bash
-sops -d secrets/dev.env > .env
+sops -d config/dev/secrets.env >> .env
 ```
 
 ## Editing Secrets
@@ -127,15 +133,17 @@ sops -d secrets/dev.env > .env
 SOPS decrypts to an editor buffer and re-encrypts on save:
 
 ```bash
-sops secrets/dev.env
-sops secrets/prod.env
+sops config/dev/secrets.env
+sops config/prod/secrets.env
 ```
 
 ## Adding a New Secret
 
-1. Add the key to `secrets/dev.env.example` and `secrets/prod.env.example`
-2. Edit the encrypted files: `sops secrets/dev.env` and `sops secrets/prod.env`
-3. Re-decrypt locally: `sops -d secrets/dev.env > .env`
+1. Add the key to `config/dev/secrets.env.example` and
+   `config/prod/secrets.env.example`
+2. Edit the encrypted files: `sops config/dev/secrets.env` and
+   `sops config/prod/secrets.env`
+3. Re-decrypt locally: `sops -d config/dev/secrets.env >> .env`
 4. If the secret is used in production, add it to the `secrets:` block in
    `docker-compose.prod.yml`:
    ```yaml
@@ -165,7 +173,7 @@ npm run secrets:prod
 ```
 
 These scripts use `scripts/load-secrets.sh` which:
-- Decrypts `secrets/prod.env` via SOPS
+- Decrypts `config/prod/secrets.env` via SOPS
 - Creates each `KEY=value` as a lowercase Docker Swarm secret
 - Uses the production Docker context from `.env`
 

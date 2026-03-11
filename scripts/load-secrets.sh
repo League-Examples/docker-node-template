@@ -9,7 +9,7 @@ if [ -z "$ENV" ]; then
   exit 1
 fi
 
-SECRETS_FILE="secrets/${ENV}.env"
+SECRETS_FILE="config/${ENV}/secrets.env"
 CONTEXT_VAR="PROD_DOCKER_CONTEXT"
 [ "$ENV" = "dev" ] && CONTEXT_VAR="DEV_DOCKER_CONTEXT"
 CONTEXT="${!CONTEXT_VAR}"

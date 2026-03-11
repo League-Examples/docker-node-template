@@ -1,10 +1,11 @@
 import { Router } from 'express';
-import { prisma } from '../../services/prisma';
-import { getConfig } from '../../services/config';
 
 export const adminEnvRouter = Router();
 
-adminEnvRouter.get('/env', async (_req, res) => {
+adminEnvRouter.get('/env', async (req, res) => {
+  const prisma = req.services.prisma;
+  const config = req.services.config;
+
   let dbStatus = 'disconnected';
   try {
     await prisma.$queryRaw`SELECT 1`;
@@ -25,22 +26,22 @@ adminEnvRouter.get('/env', async (_req, res) => {
     database: dbStatus,
     integrations: {
       github: {
-        configured: !!(getConfig('GITHUB_CLIENT_ID') && getConfig('GITHUB_CLIENT_SECRET')),
+        configured: !!(config.get('GITHUB_CLIENT_ID') && config.get('GITHUB_CLIENT_SECRET')),
       },
       google: {
-        configured: !!(getConfig('GOOGLE_CLIENT_ID') && getConfig('GOOGLE_CLIENT_SECRET')),
+        configured: !!(config.get('GOOGLE_CLIENT_ID') && config.get('GOOGLE_CLIENT_SECRET')),
       },
       pike13: {
-        configured: !!(getConfig('PIKE13_CLIENT_ID') && getConfig('PIKE13_CLIENT_SECRET')),
+        configured: !!(config.get('PIKE13_CLIENT_ID') && config.get('PIKE13_CLIENT_SECRET')),
       },
       githubToken: {
-        configured: !!getConfig('GITHUB_TOKEN'),
+        configured: !!config.get('GITHUB_TOKEN'),
       },
       anthropic: {
-        configured: !!getConfig('ANTHROPIC_API_KEY'),
+        configured: !!config.get('ANTHROPIC_API_KEY'),
       },
       openai: {
-        configured: !!getConfig('OPENAI_API_KEY'),
+        configured: !!config.get('OPENAI_API_KEY'),
       },
     },
   });

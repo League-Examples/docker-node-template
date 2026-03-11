@@ -2,7 +2,7 @@
 set -euo pipefail
 #
 # encrypt-secrets.sh — Encrypt the secrets portion of .env back into
-# secrets/dev.env or secrets/prod.env.
+# config/dev/secrets.env or config/prod/secrets.env.
 #
 # Reads .env, extracts everything below the "Application secrets" marker,
 # and encrypts it with SOPS into the file matching the DEPLOYMENT variable.
@@ -62,8 +62,8 @@ if [ -z "$TARGET" ]; then
 fi
 
 case "$TARGET" in
-  dev)  TARGET_FILE="secrets/dev.env" ;;
-  prod) TARGET_FILE="secrets/prod.env" ;;
+  dev)  TARGET_FILE="config/dev/secrets.env" ;;
+  prod) TARGET_FILE="config/prod/secrets.env" ;;
   *)
     err "DEPLOYMENT must be 'dev' or 'prod', got: ${BOLD}$TARGET${RESET}"
     exit 1
@@ -99,8 +99,8 @@ done
 # ---------------------------------------------------------------------------
 # Encrypt with SOPS
 # ---------------------------------------------------------------------------
-# Write to a temp file inside secrets/ so SOPS path_regex matches.
-TMPFILE="secrets/.encrypt-tmp.env"
+# Write to a temp file inside config/ so SOPS path_regex matches.
+TMPFILE="config/.encrypt-tmp.env"
 echo "$SECRETS_CONTENT" > "$TMPFILE"
 
 # Source .env to get SOPS_AGE_KEY_FILE (or SOPS_AGE_KEY)
