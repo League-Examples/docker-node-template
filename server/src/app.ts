@@ -17,6 +17,7 @@ import { errorHandler } from './middleware/errorHandler';
 import { attachServices } from './middleware/services';
 import { ServiceRegistry } from './services/service.registry';
 import { logBuffer } from './services/logBuffer';
+import { prisma } from './services/prisma';
 
 const app = express();
 
@@ -67,11 +68,16 @@ if (process.env.NODE_ENV !== 'test' && process.env.DATABASE_URL) {
 app.use(session(sessionConfig));
 
 // Passport authentication
-passport.serializeUser((user: Express.User, done) => {
-  done(null, user);
+passport.serializeUser((user: any, done) => {
+  done(null, user.id);
 });
-passport.deserializeUser((user: Express.User, done) => {
-  done(null, user);
+passport.deserializeUser(async (id: number, done) => {
+  try {
+    const user = await prisma.user.findUnique({ where: { id } });
+    done(null, user);
+  } catch (err) {
+    done(err);
+  }
 });
 app.use(passport.initialize());
 app.use(passport.session());
