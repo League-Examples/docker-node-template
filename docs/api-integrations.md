@@ -142,13 +142,13 @@ However, tokens can be revoked, so handle 401 responses gracefully.
 Credentials flow through the secrets pipeline documented in
 [secrets.md](secrets.md):
 
-1. Add values to `secrets/dev.env` (encrypted with SOPS + age)
+1. Add values to `config/dev/secrets.env` (encrypted with SOPS + age)
 2. Run `./scripts/install.sh` to decrypt into `.env`
 3. The server reads `.env` via `dotenv` at startup
 4. In production: secrets are Docker Swarm secrets loaded by
    `docker/entrypoint.sh`
 
-See `secrets/dev.env.example` for the full list of available variables.
+See `config/dev/secrets.env.example` for the full list of available variables.
 
 ---
 

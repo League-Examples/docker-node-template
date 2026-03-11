@@ -15,7 +15,7 @@ Internet → Caddy (*.jtlapp.net) → server:3000 → Express (API + static file
 ## Prerequisites
 
 - Docker context `swarm1` (or your prod context) configured and reachable
-- SOPS access to decrypt `secrets/prod.env`
+- SOPS access to decrypt `config/prod/secrets.env`
 - Swarm initialized on the target host (`docker swarm init`)
 
 ## First-Time Setup
@@ -28,8 +28,8 @@ Secrets must exist in the swarm before the stack can deploy:
 npm run secrets:prod
 ```
 
-This decrypts `secrets/prod.env` via SOPS and creates each key as a Docker
-Swarm secret on the production context. See [Secrets Management](secrets.md)
+This decrypts `config/prod/secrets.env` via SOPS and creates each key as a
+Docker Swarm secret on the production context. See [Secrets Management](secrets.md)
 for details.
 
 ### 2. Deploy
@@ -86,7 +86,7 @@ DOCKER_CONTEXT=$PROD_DOCKER_CONTEXT TAG=v1 docker stack deploy -c docker-compose
 
 | Script | What It Does |
 |--------|-------------|
-| `npm run secrets:prod` | Create swarm secrets from `secrets/prod.env` |
+| `npm run secrets:prod` | Create swarm secrets from `config/prod/secrets.env` |
 | `npm run secrets:prod:rm` | Remove existing swarm secrets (needed before updating) |
 | `npm run build:docker` | Build prod image on the dev Docker context |
 | `npm run deploy` | Build on prod context + deploy stack |

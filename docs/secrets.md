@@ -43,6 +43,10 @@ Application code never reads files from `/run/secrets/` directly. The
 | `google_client_id` | server | Google OAuth client ID |
 | `google_client_secret` | server | Google OAuth client secret |
 | `pike13_access_token` | server | Pike 13 API access token (pre-obtained) |
+| `mcp_default_token` | server | Bearer token for MCP server authentication |
+| `anthropic_api_key` | server | Claude API key for AI features |
+| `openai_api_key` | server | OpenAI API key (optional, for future use) |
+| `admin_password` | server | Admin dashboard login password |
 
 All OAuth secrets are optional. The app starts cleanly without them —
 unconfigured integrations return 501 with setup instructions. See
