@@ -16,12 +16,20 @@ import app from './app';
 import { initPrisma } from './services/prisma';
 import { initConfigCache } from './services/config';
 import { ServiceRegistry } from './services/service.registry';
+import { prisma } from './services/prisma';
 
 const port = parseInt(process.env.PORT || '3000', 10);
 
 const registry = ServiceRegistry.create();
 
 initPrisma().then(() => initConfigCache()).then(async () => {
+  // Seed default #general channel (idempotent)
+  await prisma.channel.upsert({
+    where: { name: '#general' },
+    update: {},
+    create: { name: '#general', description: 'General discussion' },
+  });
+
   await registry.scheduler.seedDefaults();
   registry.scheduler.registerHandler('daily-backup', async () => {
     await registry.backups.createBackup();
