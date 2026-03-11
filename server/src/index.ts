@@ -24,10 +24,10 @@ const registry = ServiceRegistry.create();
 initPrisma().then(() => initConfigCache()).then(async () => {
   await registry.scheduler.seedDefaults();
   registry.scheduler.registerHandler('daily-backup', async () => {
-    /* wired up in ticket 005 */
+    await registry.backups.createBackup();
   });
   registry.scheduler.registerHandler('weekly-backup', async () => {
-    /* wired up in ticket 005 */
+    await registry.backups.createBackup();
   });
   registry.scheduler.startTicking();
 

@@ -10,18 +10,21 @@ import { logBuffer } from './logBuffer';
 import { UserService } from './user.service';
 import { PermissionsService } from './permissions.service';
 import { SchedulerService } from './scheduler.service';
+import { BackupService } from './backup.service';
 
 export class ServiceRegistry {
   readonly source: ServiceSource;
   readonly users: UserService;
   readonly permissions: PermissionsService;
   readonly scheduler: SchedulerService;
+  readonly backups: BackupService;
 
   private constructor(source: ServiceSource = 'UI') {
     this.source = source;
     this.users = new UserService(defaultPrisma);
     this.permissions = new PermissionsService(defaultPrisma);
     this.scheduler = new SchedulerService(defaultPrisma);
+    this.backups = new BackupService(defaultPrisma);
   }
 
   static create(source?: ServiceSource): ServiceRegistry {
