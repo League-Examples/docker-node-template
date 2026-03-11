@@ -1,7 +1,7 @@
 ---
 id: '005'
 title: Write MCP endpoint tests
-status: todo
+status: done
 use-cases:
 - SUC-001
 - SUC-002

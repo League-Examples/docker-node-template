@@ -1,7 +1,7 @@
 ---
 id: '003'
 title: Build MCP Setup page
-status: todo
+status: done
 use-cases:
 - SUC-004
 depends-on:
