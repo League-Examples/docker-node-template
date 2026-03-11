@@ -1,29 +1,28 @@
 import { Router } from 'express';
-import { getCounter, incrementCounter, decrementCounter } from '../services/counter';
 
 export const counterRouter = Router();
 
-counterRouter.get('/counter', async (_req, res, next) => {
+counterRouter.get('/counter', async (req, res, next) => {
   try {
-    const counter = await getCounter();
+    const counter = await req.services.counter.get();
     res.json(counter);
   } catch (err) {
     next(err);
   }
 });
 
-counterRouter.post('/counter/increment', async (_req, res, next) => {
+counterRouter.post('/counter/increment', async (req, res, next) => {
   try {
-    const counter = await incrementCounter();
+    const counter = await req.services.counter.increment();
     res.json(counter);
   } catch (err) {
     next(err);
   }
 });
 
-counterRouter.post('/counter/decrement', async (_req, res, next) => {
+counterRouter.post('/counter/decrement', async (req, res, next) => {
   try {
-    const counter = await decrementCounter();
+    const counter = await req.services.counter.decrement();
     res.json(counter);
   } catch (err) {
     next(err);
