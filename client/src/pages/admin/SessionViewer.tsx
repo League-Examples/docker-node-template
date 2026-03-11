@@ -3,9 +3,10 @@ import { useEffect, useState } from 'react';
 interface SessionInfo {
   sid: string;
   expire: string;
-  isAdmin: boolean;
   hasUser: boolean;
-  provider: string | null;
+  userEmail: string | null;
+  userName: string | null;
+  userRole: string | null;
 }
 
 export default function SessionViewer() {
@@ -35,6 +36,16 @@ export default function SessionViewer() {
     return d.toLocaleString();
   };
 
+  const badgeStyle = (bg: string, color: string): React.CSSProperties => ({
+    fontSize: 11,
+    padding: '1px 6px',
+    borderRadius: 3,
+    background: bg,
+    color,
+    fontWeight: 600,
+    marginRight: 4,
+  });
+
   return (
     <div>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
@@ -53,8 +64,8 @@ export default function SessionViewer() {
             <thead>
               <tr>
                 <th style={{ textAlign: 'left', padding: '6px 10px', borderBottom: '2px solid #ddd' }}>Session ID</th>
-                <th style={{ textAlign: 'left', padding: '6px 10px', borderBottom: '2px solid #ddd' }}>Admin</th>
                 <th style={{ textAlign: 'left', padding: '6px 10px', borderBottom: '2px solid #ddd' }}>User</th>
+                <th style={{ textAlign: 'left', padding: '6px 10px', borderBottom: '2px solid #ddd' }}>Role</th>
                 <th style={{ textAlign: 'left', padding: '6px 10px', borderBottom: '2px solid #ddd' }}>Expires</th>
               </tr>
             </thead>
@@ -69,39 +80,24 @@ export default function SessionViewer() {
                 >
                   <td style={{ padding: '6px 10px', fontFamily: 'monospace' }}>{s.sid}...</td>
                   <td style={{ padding: '6px 10px' }}>
-                    {s.isAdmin && (
-                      <span style={{
-                        fontSize: 11,
-                        padding: '1px 6px',
-                        borderRadius: 3,
-                        background: '#e8f0fe',
-                        color: '#1a73e8',
-                        fontWeight: 600,
-                      }}>
-                        admin
-                      </span>
-                    )}
-                  </td>
-                  <td style={{ padding: '6px 10px' }}>
-                    {s.hasUser ? (
+                    {s.hasUser && s.userEmail ? (
                       <span>
-                        {s.provider && (
-                          <span style={{
-                            fontSize: 11,
-                            padding: '1px 6px',
-                            borderRadius: 3,
-                            background: '#e6f4ea',
-                            color: '#1e7e34',
-                            fontWeight: 600,
-                            marginRight: 4,
-                          }}>
-                            {s.provider}
-                          </span>
+                        <span style={{ fontWeight: 500 }}>{s.userName || s.userEmail}</span>
+                        {s.userName && (
+                          <span style={{ color: '#666', marginLeft: 6, fontSize: 12 }}>{s.userEmail}</span>
                         )}
-                        Authenticated
                       </span>
                     ) : (
                       <span style={{ color: '#999' }}>Anonymous</span>
+                    )}
+                  </td>
+                  <td style={{ padding: '6px 10px' }}>
+                    {s.userRole === 'ADMIN' ? (
+                      <span style={badgeStyle('#e8f0fe', '#1a73e8')}>admin</span>
+                    ) : s.userRole === 'USER' ? (
+                      <span style={badgeStyle('#e6f4ea', '#1e7e34')}>user</span>
+                    ) : (
+                      <span style={{ color: '#999' }}>-</span>
                     )}
                   </td>
                   <td style={{ padding: '6px 10px', color: isExpiringSoon(s.expire) ? '#e65100' : '#333' }}>
