@@ -126,15 +126,16 @@ authRouter.post('/auth/test-login', async (req: Request, res: Response) => {
   }
   try {
     const { email, displayName, role, provider, providerId } = req.body;
+    const resolvedEmail = email || 'test@example.com';
     const user = await prisma.user.upsert({
-      where: { email: email || 'test@example.com' },
+      where: { email: resolvedEmail },
       update: { displayName, role: role || 'USER' },
       create: {
-        email: email || 'test@example.com',
+        email: resolvedEmail,
         displayName: displayName || 'Test User',
         role: role || 'USER',
         provider: provider || 'test',
-        providerId: providerId || 'test-id',
+        providerId: providerId || `test-${resolvedEmail}`,
       },
     });
     req.login(user, (err) => {
