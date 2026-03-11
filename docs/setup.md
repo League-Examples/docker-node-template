@@ -101,14 +101,14 @@ npm run dev
 
 | Label      | What it does |
 |------------|--------------|
-| `[db]`     | Starts `postgres:16-alpine` in Docker |
+| `[db]`     | Starts `postgres:16-alpine` via `docker-compose.dev.yml` |
 | `[server]` | Waits for Postgres, runs Prisma migrations, starts Express with hot-reload |
 | `[client]` | Waits for the API health check, then starts Vite |
 
 | Service  | URL | Hot-reload |
 |----------|-----|------------|
 | Frontend | http://localhost:5173 | Yes (Vite HMR) |
-| Backend  | http://localhost:3000/api | Yes (ts-node-dev) |
+| Backend  | http://localhost:3000/api | Yes (tsx watch) |
 | Database | localhost:5433 (or 5432 in Codespaces) | N/A |
 
 ### Docker Development
