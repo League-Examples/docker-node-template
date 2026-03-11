@@ -2,6 +2,7 @@ import { Router, Request, Response } from 'express';
 import passport from 'passport';
 import pkg_github2 from 'passport-github2';
 import pkg_google from 'passport-google-oauth20';
+import { prisma } from '../services/prisma';
 
 export const authRouter = Router();
 
@@ -18,16 +19,18 @@ if (process.env.GITHUB_CLIENT_ID && process.env.GITHUB_CLIENT_SECRET) {
       proxy: true,
       scope: ['read:user', 'user:email'],
     },
-    (_accessToken: string, _refreshToken: string, profile: any, done: any) => {
-      const user = {
-        provider: 'github' as const,
-        id: profile.id,
-        displayName: profile.displayName || profile.username,
-        email: profile.emails?.[0]?.value || '',
-        avatar: profile.photos?.[0]?.value || '',
-        accessToken: _accessToken,
-      };
-      done(null, user);
+    async (_accessToken: string, _refreshToken: string, profile: any, done: any) => {
+      try {
+        const email = profile.emails?.[0]?.value || '';
+        const user = await prisma.user.upsert({
+          where: { provider_providerId: { provider: 'github', providerId: String(profile.id) } },
+          update: { email, displayName: profile.displayName || profile.username, avatarUrl: profile.photos?.[0]?.value },
+          create: { provider: 'github', providerId: String(profile.id), email, displayName: profile.displayName || profile.username, avatarUrl: profile.photos?.[0]?.value },
+        });
+        done(null, user);
+      } catch (err) {
+        done(err);
+      }
     },
   ));
   if (process.env.NODE_ENV !== 'test') console.log('GitHub OAuth strategy registered');
@@ -72,15 +75,18 @@ if (process.env.GOOGLE_CLIENT_ID && process.env.GOOGLE_CLIENT_SECRET) {
       proxy: true,
       scope: ['profile', 'email'],
     },
-    (_accessToken: string, _refreshToken: string, profile: any, done: any) => {
-      const user = {
-        provider: 'google' as const,
-        id: profile.id,
-        displayName: profile.displayName || '',
-        email: profile.emails?.[0]?.value || '',
-        avatar: profile.photos?.[0]?.value || '',
-      };
-      done(null, user);
+    async (_accessToken: string, _refreshToken: string, profile: any, done: any) => {
+      try {
+        const email = profile.emails?.[0]?.value || '';
+        const user = await prisma.user.upsert({
+          where: { provider_providerId: { provider: 'google', providerId: String(profile.id) } },
+          update: { email, displayName: profile.displayName || '', avatarUrl: profile.photos?.[0]?.value },
+          create: { provider: 'google', providerId: String(profile.id), email, displayName: profile.displayName || '', avatarUrl: profile.photos?.[0]?.value },
+        });
+        done(null, user);
+      } catch (err) {
+        done(err);
+      }
     },
   ));
   if (process.env.NODE_ENV !== 'test') console.log('Google OAuth strategy registered');
@@ -112,6 +118,34 @@ authRouter.get('/auth/google/callback',
     res.redirect('/');
   },
 );
+
+// --- Test login (non-production only) ---
+authRouter.post('/auth/test-login', async (req: Request, res: Response) => {
+  if (process.env.NODE_ENV === 'production') {
+    return res.status(404).json({ error: 'Not found' });
+  }
+  try {
+    const { email, displayName, role, provider, providerId } = req.body;
+    const resolvedEmail = email || 'test@example.com';
+    const user = await prisma.user.upsert({
+      where: { email: resolvedEmail },
+      update: { displayName, role: role || 'USER' },
+      create: {
+        email: resolvedEmail,
+        displayName: displayName || 'Test User',
+        role: role || 'USER',
+        provider: provider || 'test',
+        providerId: providerId || `test-${resolvedEmail}`,
+      },
+    });
+    req.login(user, (err) => {
+      if (err) return res.status(500).json({ error: 'Login failed' });
+      res.json(user);
+    });
+  } catch (err) {
+    res.status(500).json({ error: 'Test login failed' });
+  }
+});
 
 // --- Shared auth endpoints ---
 

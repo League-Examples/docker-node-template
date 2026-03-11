@@ -3,10 +3,8 @@
   "compilerOptions": {
     "rootDir": "../..",
     "noEmit": true,
-    "module": "commonjs",
-    "moduleResolution": "node",
     "typeRoots": ["../../server/node_modules/@types"],
-    "types": ["jest", "supertest", "node"]
+    "types": ["supertest", "node"]
   },
   "include": [
     "../../server/src/**/*",

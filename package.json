@@ -1,6 +1,6 @@
 {
   "name": "docker-nodeapp",
-  "version": "0.20260304.1",
+  "version": "0.20260311.1",
   "private": true,
   "scripts": {
     "dev": "npm run dev:local",
@@ -24,11 +24,14 @@
     "deploy": "set -a && . ./.env && set +a && DOCKER_CONTEXT=$PROD_DOCKER_CONTEXT docker compose -f docker-compose.prod.yml build server && DOCKER_CONTEXT=$PROD_DOCKER_CONTEXT docker stack deploy -c docker-compose.prod.yml myapp",
     "test": "echo 'Run individual test suites: test:db, test:server, test:client, test:e2e'",
     "test:db": "cd server && npx jest --config ../tests/db/jest.config.js",
-    "test:server": "cd server && npx jest --config ../tests/server/jest.config.js",
+    "test:server": "cd server && npx vitest run",
     "test:client": "cd client && npx vitest run",
     "test:e2e": "npx playwright test"
   },
   "devDependencies": {
     "concurrently": "^9.1.2"
+  },
+  "dependencies": {
+    "@prisma/client": "^7.4.2"
   }
 }

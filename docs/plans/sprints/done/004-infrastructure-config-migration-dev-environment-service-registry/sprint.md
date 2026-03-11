@@ -1,7 +1,7 @@
 ---
 id: '004'
 title: 'Infrastructure: Config Migration, Dev Environment, Service Registry'
-status: planning
+status: done
 branch: sprint/004-infrastructure-config-migration-dev-environment-service-registry
 use-cases:
 - SUC-001
