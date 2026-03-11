@@ -1,7 +1,7 @@
 ---
 id: '008'
 title: Application MCP Server & Documentation
-status: planning
+status: approved
 branch: sprint/008-application-mcp-server-documentation
 use-cases:
 - SUC-001

@@ -1,7 +1,7 @@
 ---
 id: '004'
 title: Update all project documentation
-status: todo
+status: done
 use-cases:
 - SUC-005
 depends-on: []

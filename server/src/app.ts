@@ -15,6 +15,8 @@ import { adminRouter } from './routes/admin';
 import { channelsRouter } from './routes/channels';
 import { messagesRouter } from './routes/messages';
 import { searchRouter } from './routes/search';
+import { mcpTokenAuth } from './middleware/mcpAuth';
+import { createMcpHandler } from './mcp/handler';
 import { errorHandler } from './middleware/errorHandler';
 import { attachServices } from './middleware/services';
 import { ServiceRegistry } from './services/service.registry';
@@ -98,6 +100,9 @@ app.use('/api', adminRouter);
 app.use('/api', channelsRouter);
 app.use('/api', messagesRouter);
 app.use('/api', searchRouter);
+
+// MCP endpoint — token-based auth, separate from session auth
+app.post('/api/mcp', mcpTokenAuth, createMcpHandler());
 
 app.use(errorHandler);
 

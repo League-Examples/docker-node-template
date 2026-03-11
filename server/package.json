@@ -13,6 +13,7 @@
     "prisma:studio": "prisma studio"
   },
   "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.27.1",
     "@prisma/adapter-pg": "^7.4.2",
     "@prisma/client": "^7.4.2",
     "connect-pg-simple": "^10.0.0",
@@ -24,7 +25,8 @@
     "passport-google-oauth20": "^2.0.0",
     "pg": "^8.18.0",
     "pino": "^9.6.0",
-    "pino-http": "^10.4.0"
+    "pino-http": "^10.4.0",
+    "zod": "^4.3.6"
   },
   "devDependencies": {
     "@types/connect-pg-simple": "^7.0.3",
