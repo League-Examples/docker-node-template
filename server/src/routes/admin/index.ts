@@ -7,6 +7,7 @@ import { adminConfigRouter } from './config';
 import { adminLogsRouter } from './logs';
 import { adminSessionsRouter } from './sessions';
 import { adminUsersRouter } from './users';
+import { adminPermissionsRouter } from './permissions';
 
 export const adminRouter = Router();
 
@@ -23,3 +24,4 @@ adminRouter.use('/admin', adminConfigRouter);
 adminRouter.use('/admin', adminLogsRouter);
 adminRouter.use('/admin', adminSessionsRouter);
 adminRouter.use('/admin', adminUsersRouter);
+adminRouter.use('/admin', adminPermissionsRouter);
