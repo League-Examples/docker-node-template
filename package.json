@@ -29,6 +29,9 @@
     "test:e2e": "npx playwright test"
   },
   "devDependencies": {
+    "@testing-library/jest-dom": "^6.9.1",
+    "@testing-library/react": "^16.3.2",
+    "@testing-library/user-event": "^14.6.1",
     "concurrently": "^9.1.2"
   },
   "dependencies": {
