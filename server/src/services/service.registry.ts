@@ -8,14 +8,17 @@ import { initConfigCache, getConfig, getAllConfig, setConfig, exportConfig } fro
 import { getCounter, incrementCounter, decrementCounter } from './counter';
 import { logBuffer } from './logBuffer';
 import { UserService } from './user.service';
+import { PermissionsService } from './permissions.service';
 
 export class ServiceRegistry {
   readonly source: ServiceSource;
   readonly users: UserService;
+  readonly permissions: PermissionsService;
 
   private constructor(source: ServiceSource = 'UI') {
     this.source = source;
     this.users = new UserService(defaultPrisma);
+    this.permissions = new PermissionsService(defaultPrisma);
   }
 
   static create(source?: ServiceSource): ServiceRegistry {
@@ -48,6 +51,7 @@ export class ServiceRegistry {
    */
   async clearAll(): Promise<void> {
     const p = this.prisma;
+    await p.roleAssignmentPattern.deleteMany();
     await p.user.deleteMany();
     await p.counter.deleteMany();
   }

@@ -3,6 +3,25 @@ import passport from 'passport';
 import pkg_github2 from 'passport-github2';
 import pkg_google from 'passport-google-oauth20';
 import { prisma } from '../services/prisma';
+import { PermissionsService } from '../services/permissions.service';
+
+const permissionsService = new PermissionsService(prisma);
+
+/**
+ * After a user is upserted via OAuth, check RoleAssignmentPatterns
+ * and update the user's role if a match is found.
+ */
+async function applyRolePatterns(user: any): Promise<any> {
+  if (!user.email) return user;
+  const matchedRole = await permissionsService.matchEmail(user.email);
+  if (matchedRole && matchedRole !== user.role) {
+    return prisma.user.update({
+      where: { id: user.id },
+      data: { role: matchedRole },
+    });
+  }
+  return user;
+}
 
 export const authRouter = Router();
 
@@ -22,11 +41,12 @@ if (process.env.GITHUB_CLIENT_ID && process.env.GITHUB_CLIENT_SECRET) {
     async (_accessToken: string, _refreshToken: string, profile: any, done: any) => {
       try {
         const email = profile.emails?.[0]?.value || '';
-        const user = await prisma.user.upsert({
+        let user = await prisma.user.upsert({
           where: { provider_providerId: { provider: 'github', providerId: String(profile.id) } },
           update: { email, displayName: profile.displayName || profile.username, avatarUrl: profile.photos?.[0]?.value },
           create: { provider: 'github', providerId: String(profile.id), email, displayName: profile.displayName || profile.username, avatarUrl: profile.photos?.[0]?.value },
         });
+        user = await applyRolePatterns(user);
         done(null, user);
       } catch (err) {
         done(err);
@@ -78,11 +98,12 @@ if (process.env.GOOGLE_CLIENT_ID && process.env.GOOGLE_CLIENT_SECRET) {
     async (_accessToken: string, _refreshToken: string, profile: any, done: any) => {
       try {
         const email = profile.emails?.[0]?.value || '';
-        const user = await prisma.user.upsert({
+        let user = await prisma.user.upsert({
           where: { provider_providerId: { provider: 'google', providerId: String(profile.id) } },
           update: { email, displayName: profile.displayName || '', avatarUrl: profile.photos?.[0]?.value },
           create: { provider: 'google', providerId: String(profile.id), email, displayName: profile.displayName || '', avatarUrl: profile.photos?.[0]?.value },
         });
+        user = await applyRolePatterns(user);
         done(null, user);
       } catch (err) {
         done(err);

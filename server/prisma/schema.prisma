@@ -39,6 +39,17 @@ model User {
   @@unique([provider, providerId])
 }
 
+model RoleAssignmentPattern {
+  id        Int      @id @default(autoincrement())
+  matchType String   // 'exact' or 'regex'
+  pattern   String   // email address or regex pattern
+  role      UserRole @default(USER)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([matchType, pattern])
+}
+
 // Express session store (connect-pg-simple).
 // Must match the table structure that connect-pg-simple expects.
 model Session {
