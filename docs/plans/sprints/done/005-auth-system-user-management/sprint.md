@@ -1,7 +1,7 @@
 ---
 id: '005'
 title: Auth System & User Management
-status: planning
+status: done
 branch: sprint/005-auth-system-user-management
 use-cases:
 - SUC-001
