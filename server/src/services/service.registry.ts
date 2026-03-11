@@ -8,14 +8,26 @@ import { initConfigCache, getConfig, getAllConfig, setConfig, exportConfig } fro
 import { getCounter, incrementCounter, decrementCounter } from './counter';
 import { logBuffer } from './logBuffer';
 import { UserService } from './user.service';
+import { PermissionsService } from './permissions.service';
+import { SchedulerService } from './scheduler.service';
+import { BackupService } from './backup.service';
+import { SessionService } from './session.service';
 
 export class ServiceRegistry {
   readonly source: ServiceSource;
   readonly users: UserService;
+  readonly permissions: PermissionsService;
+  readonly scheduler: SchedulerService;
+  readonly backups: BackupService;
+  readonly sessions: SessionService;
 
   private constructor(source: ServiceSource = 'UI') {
     this.source = source;
     this.users = new UserService(defaultPrisma);
+    this.permissions = new PermissionsService(defaultPrisma);
+    this.scheduler = new SchedulerService(defaultPrisma);
+    this.backups = new BackupService(defaultPrisma);
+    this.sessions = new SessionService(defaultPrisma);
   }
 
   static create(source?: ServiceSource): ServiceRegistry {
@@ -48,6 +60,8 @@ export class ServiceRegistry {
    */
   async clearAll(): Promise<void> {
     const p = this.prisma;
+    await p.scheduledJob.deleteMany();
+    await p.roleAssignmentPattern.deleteMany();
     await p.user.deleteMany();
     await p.counter.deleteMany();
   }

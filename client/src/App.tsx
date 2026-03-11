@@ -7,6 +7,9 @@ import DatabaseViewer from './pages/admin/DatabaseViewer';
 import ConfigPanel from './pages/admin/ConfigPanel';
 import LogViewer from './pages/admin/LogViewer';
 import SessionViewer from './pages/admin/SessionViewer';
+import PermissionsPanel from './pages/admin/PermissionsPanel';
+import ScheduledJobsPanel from './pages/admin/ScheduledJobsPanel';
+import ImportExport from './pages/admin/ImportExport';
 
 function App() {
   return (
@@ -20,6 +23,9 @@ function App() {
           <Route path="/admin/config" element={<ConfigPanel />} />
           <Route path="/admin/logs" element={<LogViewer />} />
           <Route path="/admin/sessions" element={<SessionViewer />} />
+          <Route path="/admin/permissions" element={<PermissionsPanel />} />
+          <Route path="/admin/scheduler" element={<ScheduledJobsPanel />} />
+          <Route path="/admin/import-export" element={<ImportExport />} />
         </Route>
       </Routes>
     </BrowserRouter>

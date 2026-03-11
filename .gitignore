@@ -40,3 +40,6 @@ blob-report/
 pids/
 *.pid
 *.seed
+
+# Backup data
+data/
