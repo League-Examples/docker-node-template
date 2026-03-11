@@ -1,7 +1,7 @@
 ---
 id: '001'
 title: Create MCP server infrastructure
-status: todo
+status: done
 use-cases:
 - SUC-001
 depends-on: []
