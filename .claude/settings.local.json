@@ -2,7 +2,8 @@
   "permissions": {
     "allow": [
       "mcp__clasi__*",
-      "Bash(*)"
+      "Bash(*)",
+      "WebFetch(*)"
     ]
   }
 }
