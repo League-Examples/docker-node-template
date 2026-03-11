@@ -62,6 +62,13 @@ and React Testing Library.
    - **Channels admin tests**:
      - Channel creation form works
      - Channel deletion with confirmation
+   - **Admin panel tests** (from Sprint 006 — client tests deferred here):
+     - `UsersPanel`: renders user list, create/edit/delete flows work
+     - `ScheduledJobsPanel`: renders job list, toggle enable/disable works
+     - `ImportExport`: renders backup list, create/download works
+     - `PermissionsPanel`: renders pattern list, create/edit/delete flows
+     - `EnvironmentPanel`: displays integration config status
+     - `SessionPanel`: displays linked user info, refresh button works
 
 3. All server tests use `request.agent(app)` with
    `POST /api/auth/test-login` for session auth. Never mock session
@@ -79,6 +86,8 @@ and React Testing Library.
       mobile hamburger
 - [ ] Chat page client tests: channel list, message feed, input
 - [ ] Channels admin client tests: create form, delete confirmation
+- [ ] Admin panel client tests: UsersPanel, ScheduledJobsPanel,
+      ImportExport, PermissionsPanel, EnvironmentPanel, SessionPanel
 - [ ] All tests use `POST /api/auth/test-login` (no mocked sessions)
 - [ ] `npm run test:server` passes
 - [ ] `npm run test:client` passes

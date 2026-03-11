@@ -65,7 +65,8 @@ the final sprint (section 13).
   `app`, password `devpassword`, database `app`, health check via
   `pg_isready`, `pgdata` volume)
 - [ ] Keep `docker/Dockerfile.server.dev` for development hot-reload
-- [ ] Keep `docker/Dockerfile.client.dev` for Vite HMR in Docker dev mode
+- [ ] `Dockerfile.client.dev` — not needed (Vite runs natively in dev;
+  removed in final sprint along with `Dockerfile.client`)
 - [ ] Update `server/src/app.ts` to serve static files from the built
   client directory when `NODE_ENV=production` (SPA fallback) — this is
   needed even in dev for the pattern to be established
@@ -109,7 +110,7 @@ layer is documented for both humans and agents.
   - `MessageService` — message CRUD (example app)
   - `LogBufferService` — wraps current `logBuffer.ts`
   - `UserService` — user CRUD + role management (new)
-  - `SessionService` — session queries (new)
+  - `SessionService` — session queries with linked user info (new, S006)
   - `BackupService` — database export/backup (new)
   - `SchedulerService` — scheduled job execution (new)
 - [ ] Update all route handlers to receive `ServiceRegistry` and delegate
@@ -657,7 +658,8 @@ production via Docker Swarm.
 
 ### Tasks
 
-- [ ] Create `docker-compose.yml` — Production Swarm stack:
+- [ ] Repurpose root `docker-compose.yml` as the Production Swarm stack
+  (dev database uses `docker-compose.dev.yml` from section 2):
   - Single `server` service (serves API + built client assets)
   - PostgreSQL service (self-hosted, not managed)
   - Swarm secrets mounted for all sensitive config

@@ -92,8 +92,12 @@ Build out the remaining admin panels and supporting backend infrastructure:
 - `ImportExport.tsx` React component
 - `ScheduledJobsPanel.tsx` React component
 - Seed default scheduled jobs (`daily-backup`, `weekly-backup`)
+- `SessionService` — session queries with linked user info, registered
+  in ServiceRegistry
 - Enhance `EnvironmentPanel` with integration config status
-- Enhance `SessionPanel` with linked user info
+- Enhance `SessionPanel` with linked user info (via SessionService)
+- Verify existing Configuration panel and Log Viewer panels
+- Verify OAuth integrations still work after Sprint 005 auth changes
 - Admin API tests for all new endpoints
 - Local dev verification only
 
