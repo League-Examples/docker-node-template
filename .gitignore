@@ -11,6 +11,9 @@ dist/
 .env.*.local
 *.agekey
 
+# Config (local overrides are gitignored; secrets.env is SOPS-encrypted and committed)
+config/local/
+
 # Prisma
 .prisma/
 server/src/generated/

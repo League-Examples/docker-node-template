@@ -266,7 +266,7 @@ if [ "$HAS_SOPS_AGE" = true ]; then
     if [ -z "$AGE_PUBLIC_KEY" ]; then
       warn "Could not derive public key from age secret key"
       detail "You may need to manually add your public key to .sops.yaml"
-    elif grep -qF "$AGE_PUBLIC_KEY" .sops.yaml 2>/dev/null; then
+    elif grep -qF "$AGE_PUBLIC_KEY" .sops.yaml 2>/dev/null || grep -qF "$AGE_PUBLIC_KEY" config/sops.yaml 2>/dev/null; then
       success "Public key already in .sops.yaml"
     else
       info "Adding your public key to .sops.yaml..."
@@ -278,8 +278,8 @@ if [ "$HAS_SOPS_AGE" = true ]; then
         success "Added: ${DIM}$AGE_PUBLIC_KEY${RESET}"
         echo ""
         warn "A maintainer must commit this .sops.yaml change and re-encrypt:"
-        detail "  sops updatekeys secrets/dev.env"
-        detail "  sops updatekeys secrets/prod.env"
+        detail "  sops updatekeys config/dev/secrets.env"
+        detail "  sops updatekeys config/prod/secrets.env"
       else
         warn "Could not find age key list in .sops.yaml"
         detail "Manually add this public key to the 'age:' field:"
@@ -387,23 +387,23 @@ fi
 
 # Append decrypted application secrets
 if [ "$HAS_SOPS_AGE" = true ] && [ -n "$AGE_KEY" ]; then
-  info "Decrypting secrets/dev.env..."
+  info "Decrypting config/dev/secrets.env..."
 
   # Pass the key inline so sops doesn't rely on auto-detection of key files
-  if SOPS_AGE_KEY="$AGE_KEY" sops -d secrets/dev.env >> .env 2>/dev/null; then
+  if SOPS_AGE_KEY="$AGE_KEY" sops -d config/dev/secrets.env >> .env 2>/dev/null; then
     success "Appended decrypted secrets to .env"
   else
     echo ""
-    err "Failed to decrypt secrets/dev.env"
+    err "Failed to decrypt config/dev/secrets.env"
     detail "Your age key may not be authorised for this project yet."
     detail "Ask a maintainer to add your public key to .sops.yaml and run:"
-    detail "  sops updatekeys secrets/dev.env"
+    detail "  sops updatekeys config/dev/secrets.env"
     echo ""
-    detail "In the meantime, add secrets manually (see secrets/dev.env.example)."
+    detail "In the meantime, add secrets manually (see config/dev/secrets.env.example)."
   fi
 else
   warn "Skipped secrets decryption (no SOPS/age or no key)"
-  detail "Add secrets manually to .env — see secrets/dev.env.example"
+  detail "Add secrets manually to .env — see config/dev/secrets.env.example"
 fi
 
 success "Created .env"
