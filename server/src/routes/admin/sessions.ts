@@ -1,5 +1,4 @@
 import { Router } from 'express';
-import { prisma } from '../../services/prisma';
 
 export const adminSessionsRouter = Router();
 
@@ -9,9 +8,9 @@ interface SessionRow {
   expire: Date;
 }
 
-adminSessionsRouter.get('/sessions', async (_req, res, next) => {
+adminSessionsRouter.get('/sessions', async (req, res, next) => {
   try {
-    const sessions = await prisma.$queryRaw<SessionRow[]>`
+    const sessions = await req.services.prisma.$queryRaw<SessionRow[]>`
       SELECT sid, sess, expire
       FROM session
       WHERE expire > NOW()

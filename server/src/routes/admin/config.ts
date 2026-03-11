@@ -1,10 +1,9 @@
 import { Router } from 'express';
-import { getAllConfig, setConfig, exportConfig } from '../../services/config';
 
 export const adminConfigRouter = Router();
 
-adminConfigRouter.get('/config', (_req, res) => {
-  res.json(getAllConfig());
+adminConfigRouter.get('/config', (req, res) => {
+  res.json(req.services.config.getAll());
 });
 
 adminConfigRouter.put('/config', async (req, res, next) => {
@@ -14,7 +13,7 @@ adminConfigRouter.put('/config', async (req, res, next) => {
       return res.status(400).json({ error: 'key and value are required strings' });
     }
 
-    const result = await setConfig(key, value);
+    const result = await req.services.config.set(key, value);
     res.json({ success: true, ...result });
   } catch (err) {
     if (err instanceof Error && err.message.startsWith('Unknown config key')) {
@@ -24,8 +23,8 @@ adminConfigRouter.put('/config', async (req, res, next) => {
   }
 });
 
-adminConfigRouter.get('/config/export', (_req, res) => {
-  const content = exportConfig();
+adminConfigRouter.get('/config/export', (req, res) => {
+  const content = req.services.config.export();
   res.setHeader('Content-Type', 'text/plain');
   res.setHeader('Content-Disposition', 'attachment; filename=config-export.env');
   res.send(content);

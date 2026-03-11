@@ -1,15 +1,15 @@
 import { Router } from 'express';
-import { logBuffer } from '../../services/logBuffer';
 
 export const adminLogsRouter = Router();
 
-adminLogsRouter.get('/logs', (_req, res) => {
-  const levelParam = _req.query.level as string | undefined;
+adminLogsRouter.get('/logs', (req, res) => {
+  const levelParam = req.query.level as string | undefined;
   const minLevel = levelParam ? parseInt(levelParam, 10) : undefined;
 
-  const entries = logBuffer.getEntries(
+  const logs = req.services.logs;
+  const entries = logs.getEntries(
     minLevel && !isNaN(minLevel) ? minLevel : undefined,
   );
 
-  res.json({ entries, total: logBuffer.size });
+  res.json({ entries, total: logs.size });
 });

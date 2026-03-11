@@ -11,7 +11,7 @@ const LEVEL_VALUES: Record<string, number> = {
   trace: 10, debug: 20, info: 30, warn: 40, error: 50, fatal: 60,
 };
 
-class LogRingBuffer {
+export class LogRingBuffer {
   private buffer: LogEntry[];
   private maxSize: number;
 
