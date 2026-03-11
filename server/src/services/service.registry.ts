@@ -11,6 +11,7 @@ import { UserService } from './user.service';
 import { PermissionsService } from './permissions.service';
 import { SchedulerService } from './scheduler.service';
 import { BackupService } from './backup.service';
+import { SessionService } from './session.service';
 
 export class ServiceRegistry {
   readonly source: ServiceSource;
@@ -18,6 +19,7 @@ export class ServiceRegistry {
   readonly permissions: PermissionsService;
   readonly scheduler: SchedulerService;
   readonly backups: BackupService;
+  readonly sessions: SessionService;
 
   private constructor(source: ServiceSource = 'UI') {
     this.source = source;
@@ -25,6 +27,7 @@ export class ServiceRegistry {
     this.permissions = new PermissionsService(defaultPrisma);
     this.scheduler = new SchedulerService(defaultPrisma);
     this.backups = new BackupService(defaultPrisma);
+    this.sessions = new SessionService(defaultPrisma);
   }
 
   static create(source?: ServiceSource): ServiceRegistry {
