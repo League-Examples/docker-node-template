@@ -14,16 +14,7 @@ set -euo pipefail
 #   ./digital-ocean/test-server.sh 2   → tests hello.apps2.jointheleague.org
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-
-# Load config
-if [[ -f "$SCRIPT_DIR/config.env" ]]; then
-  set -a
-  source "$SCRIPT_DIR/config.env"
-  set +a
-fi
-
-: "${DROPLET_NAME_PREFIX:=docker}"
-: "${R53_DOMAIN_BASE:=jointheleague.org}"
+source "$SCRIPT_DIR/lib.sh"
 
 NUMBER="${1:-}"
 
@@ -41,28 +32,11 @@ if ! [[ "$NUMBER" =~ ^[0-9]+$ ]]; then
   exit 1
 fi
 
-# --- Token check ---
-if [[ -z "${DO_LEAGUE_STUDENT_TOKEN:-}" ]]; then
-  echo "ERROR: DO_LEAGUE_STUDENT_TOKEN is not set."
-  echo "       See config.env for setup instructions."
-  exit 1
-fi
-
-DOCTL="doctl --access-token $DO_LEAGUE_STUDENT_TOKEN"
-DROPLET_NAME="${DROPLET_NAME_PREFIX}${NUMBER}"
-TEST_DOMAIN="hello.apps${NUMBER}.${R53_DOMAIN_BASE}"
-
-# Look up the droplet IP
-DROPLET_IP=$($DOCTL compute droplet list --format Name,PublicIPv4 --no-header \
-  | awk -v name="$DROPLET_NAME" '$1 == name { print $2 }')
-
-if [[ -z "$DROPLET_IP" ]]; then
-  echo "ERROR: Droplet '$DROPLET_NAME' not found."
-  exit 1
-fi
+require_do_token
+lookup_droplet_ip "$NUMBER"
 
 SSH_TARGET="root@$DROPLET_IP"
-SSH_OPTS="-o StrictHostKeyChecking=accept-new -o ConnectTimeout=10"
+TEST_DOMAIN="hello.apps${NUMBER}.${R53_DOMAIN_BASE}"
 
 echo "==> Testing $DROPLET_NAME ($DROPLET_IP)"
 echo "    Domain: $TEST_DOMAIN"
@@ -129,8 +103,8 @@ else
   echo ""
   echo "Troubleshooting:"
   echo "  - Check DNS: dig +short $TEST_DOMAIN"
-  echo "  - Check Caddy logs: ssh $SSH_TARGET docker logs caddy"
-  echo "  - Check container: ssh $SSH_TARGET docker logs caddy-test-hello"
+  echo "  - Check Caddy logs: ssh $SSH_OPTS $SSH_TARGET docker logs caddy"
+  echo "  - Check container: ssh $SSH_OPTS $SSH_TARGET docker logs caddy-test-hello"
 fi
 
 rm -f /tmp/caddy-test-response
@@ -144,5 +118,5 @@ if [[ "${REPLY:-Y}" =~ ^[Yy]?$ ]]; then
   echo "  Done."
 else
   echo "  Leaving caddy-test-hello running on $DROPLET_NAME."
-  echo "  Remove later: ssh $SSH_TARGET docker rm -f caddy-test-hello"
+  echo "  Remove later: ssh $SSH_OPTS $SSH_TARGET docker rm -f caddy-test-hello"
 fi

@@ -12,20 +12,11 @@ set -euo pipefail
 #
 # Examples:
 #   ./digital-ocean/dns-route53.sh 2   → *.apps2.jointheleague.org → docker2's IP
-#   ./digital-ocean/dns-route53.sh 3   → *.apps3.jointheleague.org → docker3's IP
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-
-# Load config
-if [[ -f "$SCRIPT_DIR/config.env" ]]; then
-  set -a
-  source "$SCRIPT_DIR/config.env"
-  set +a
-fi
+source "$SCRIPT_DIR/lib.sh"
 
 : "${R53_HOSTED_ZONE_ID:?Set R53_HOSTED_ZONE_ID in config.env (Route 53 hosted zone for jointheleague.org)}"
-: "${R53_DOMAIN_BASE:=jointheleague.org}"
-: "${DROPLET_NAME_PREFIX:=docker}"
 
 NUMBER="${1:-}"
 
@@ -43,25 +34,8 @@ if ! [[ "$NUMBER" =~ ^[0-9]+$ ]]; then
   exit 1
 fi
 
-# --- Token check ---
-if [[ -z "${DO_LEAGUE_STUDENT_TOKEN:-}" ]]; then
-  echo "ERROR: DO_LEAGUE_STUDENT_TOKEN is not set (needed to look up droplet IP)."
-  echo "       See config.env for setup instructions."
-  exit 1
-fi
-
-DOCTL="doctl --access-token $DO_LEAGUE_STUDENT_TOKEN"
-DROPLET_NAME="${DROPLET_NAME_PREFIX}${NUMBER}"
-
-# Look up the droplet IP
-DROPLET_IP=$($DOCTL compute droplet list --format Name,PublicIPv4 --no-header \
-  | awk -v name="$DROPLET_NAME" '$1 == name { print $2 }')
-
-if [[ -z "$DROPLET_IP" ]]; then
-  echo "ERROR: Droplet '$DROPLET_NAME' not found."
-  echo "       Check: doctl compute droplet list --access-token \$DO_LEAGUE_STUDENT_TOKEN"
-  exit 1
-fi
+require_do_token
+lookup_droplet_ip "$NUMBER"
 
 WILDCARD_DOMAIN="*.apps${NUMBER}.${R53_DOMAIN_BASE}"
 

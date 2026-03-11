@@ -8,29 +8,13 @@ set -euo pipefail
 #   2. Copies the Caddy docker-compose stack and starts it
 #   3. Verifies Caddy is running with test services (whoami, hello)
 #
-# Caddy uses caddy-docker-proxy: it reads Docker labels from containers
-# on the "caddy" network and auto-configures reverse proxy + TLS.
-# No Caddyfile needed — apps just add labels to their services.
-#
 # Usage:
 #   ./digital-ocean/setup-server.sh <number>       e.g. ./digital-ocean/setup-server.sh 2
-#
-# Prerequisites:
-#   - Droplet exists (created by create-droplet.sh)
-#   - DO_LEAGUE_STUDENT_TOKEN set in environment
-#   - Domain DNS already points to the droplet IP (for TLS)
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-
-# Load config
-if [[ -f "$SCRIPT_DIR/config.env" ]]; then
-  set -a
-  source "$SCRIPT_DIR/config.env"
-  set +a
-fi
+source "$SCRIPT_DIR/lib.sh"
 
 : "${CADDY_ACME_EMAIL:?Set CADDY_ACME_EMAIL in config.env}"
-: "${DROPLET_NAME_PREFIX:=docker}"
 
 NUMBER="${1:-}"
 
@@ -47,28 +31,10 @@ if ! [[ "$NUMBER" =~ ^[0-9]+$ ]]; then
   exit 1
 fi
 
-# --- Token check ---
-if [[ -z "${DO_LEAGUE_STUDENT_TOKEN:-}" ]]; then
-  echo "ERROR: DO_LEAGUE_STUDENT_TOKEN is not set (needed to look up droplet IP)."
-  echo "       See config.env for setup instructions."
-  exit 1
-fi
-
-DOCTL="doctl --access-token $DO_LEAGUE_STUDENT_TOKEN"
-DROPLET_NAME="${DROPLET_NAME_PREFIX}${NUMBER}"
-
-# Look up the droplet IP
-DROPLET_IP=$($DOCTL compute droplet list --format Name,PublicIPv4 --no-header \
-  | awk -v name="$DROPLET_NAME" '$1 == name { print $2 }')
-
-if [[ -z "$DROPLET_IP" ]]; then
-  echo "ERROR: Droplet '$DROPLET_NAME' not found."
-  echo "       Check: doctl compute droplet list --access-token \$DO_LEAGUE_STUDENT_TOKEN"
-  exit 1
-fi
+require_do_token
+lookup_droplet_ip "$NUMBER"
 
 SSH_TARGET="root@$DROPLET_IP"
-SSH_OPTS="-o StrictHostKeyChecking=accept-new -o ConnectTimeout=10"
 
 echo "==> Connecting to $DROPLET_NAME ($SSH_TARGET)"
 
@@ -98,7 +64,7 @@ echo "==> Copying Caddy compose stack"
 scp $SSH_OPTS "$SCRIPT_DIR/caddy-compose.yml" "$SSH_TARGET:/opt/caddy-compose.yml"
 
 # Step 3: Start the Caddy stack with the correct apps domain
-APPS_DOMAIN="apps${NUMBER}.${R53_DOMAIN_BASE:-jointheleague.org}"
+APPS_DOMAIN="apps${NUMBER}.${R53_DOMAIN_BASE}"
 echo "==> Starting Caddy stack (APPS_DOMAIN=$APPS_DOMAIN)"
 ssh $SSH_OPTS "$SSH_TARGET" bash -s -- "$APPS_DOMAIN" <<'REMOTE_CADDY'
 set -euo pipefail
@@ -121,7 +87,7 @@ echo "To deploy an app, its docker-compose services need:"
 echo "  1. Join the 'caddy' network (networks: caddy: external: true)"
 echo "  2. Add Caddy labels:"
 echo "       labels:"
-echo "         caddy: myapp.apps${NUMBER}.jointheleague.org"
+echo "         caddy: myapp.apps${NUMBER}.${R53_DOMAIN_BASE}"
 echo '         caddy.reverse_proxy: "{{upstreams 3000}}"'
 echo ""
 echo "Docker context setup:"

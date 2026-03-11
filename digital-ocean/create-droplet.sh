@@ -12,40 +12,11 @@ set -euo pipefail
 #   - SSH key registered with DigitalOcean
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+source "$SCRIPT_DIR/lib.sh"
 
-# Load config (environment variables override config file values)
-if [[ -f "$SCRIPT_DIR/config.env" ]]; then
-  set -a
-  # shellcheck source=config.env
-  source "$SCRIPT_DIR/config.env"
-  set +a
-fi
+NUMBER="${1:-}"
 
-# --- Token check ---
-if [[ -z "${DO_LEAGUE_STUDENT_TOKEN:-}" ]]; then
-  echo "ERROR: DO_LEAGUE_STUDENT_TOKEN is not set."
-  echo ""
-  echo "This token authenticates to The League org → Students team on DigitalOcean."
-  echo ""
-  echo "To fix this:"
-  echo "  1. Log in to DigitalOcean and switch to The League org → Students team"
-  echo "  2. Go to API → Tokens → Generate New Token (read + write scope)"
-  echo "  3. Add to your shell profile (e.g. ~/.zshenv):"
-  echo ""
-  echo "       export DO_LEAGUE_STUDENT_TOKEN=\"dop_v1_...\""
-  echo ""
-  echo "  4. Reload your shell: source ~/.zshenv"
-  exit 1
-fi
-
-# All doctl commands use the Students team token
-DOCTL="doctl --access-token $DO_LEAGUE_STUDENT_TOKEN"
-
-# Droplet name from prefix + number argument
-: "${DROPLET_NAME_PREFIX:=docker}"
-DROPLET_NUMBER="${1:-}"
-
-if [[ -z "$DROPLET_NUMBER" ]]; then
+if [[ -z "$NUMBER" ]]; then
   echo "Usage: $0 <number>"
   echo ""
   echo "  Creates a droplet named ${DROPLET_NAME_PREFIX}<number>"
@@ -53,12 +24,15 @@ if [[ -z "$DROPLET_NUMBER" ]]; then
   exit 1
 fi
 
-if ! [[ "$DROPLET_NUMBER" =~ ^[0-9]+$ ]]; then
-  echo "ERROR: Argument must be a number, got '$DROPLET_NUMBER'"
+if ! [[ "$NUMBER" =~ ^[0-9]+$ ]]; then
+  echo "ERROR: Argument must be a number, got '$NUMBER'"
   exit 1
 fi
 
-DROPLET_NAME="${DROPLET_NAME_PREFIX}${DROPLET_NUMBER}"
+require_do_token
+
+DROPLET_NAME="${DROPLET_NAME_PREFIX}${NUMBER}"
+DOCTL="doctl --access-token $DO_LEAGUE_STUDENT_TOKEN"
 
 : "${DO_REGION:=sfo3}"
 : "${DO_SIZE:=s-2vcpu-4gb}"
@@ -119,9 +93,12 @@ echo ""
 echo "==> Droplet '$DROPLET_NAME' is ready at $DROPLET_IP"
 echo ""
 echo "Next steps:"
-echo "  1. Point your domain DNS to $DROPLET_IP"
-echo "  2. Create a Docker context:"
+echo "  1. Set up DNS:"
+echo "       ./digital-ocean/dns-route53.sh $NUMBER"
+echo "  2. Set up Caddy and Docker networking:"
+echo "       ./digital-ocean/setup-server.sh $NUMBER"
+echo "  3. Create a Docker context:"
 echo "       docker context create $DROPLET_NAME --docker 'host=ssh://root@$DROPLET_IP'"
-echo "  3. Set up Caddy and Docker networking:"
-echo "       ./digital-ocean/setup-server.sh $DROPLET_IP"
+echo "  4. Test the setup:"
+echo "       ./digital-ocean/test-server.sh $NUMBER"
 echo ""
