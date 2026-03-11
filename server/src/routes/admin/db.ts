@@ -1,5 +1,4 @@
 import { Router } from 'express';
-import { prisma } from '../../services/prisma';
 
 export const adminDbRouter = Router();
 
@@ -13,8 +12,9 @@ interface ColumnInfo {
   is_nullable: string;
 }
 
-adminDbRouter.get('/db/tables', async (_req, res, next) => {
+adminDbRouter.get('/db/tables', async (req, res, next) => {
   try {
+    const prisma = req.services.prisma;
     const tables = await prisma.$queryRaw<TableInfo[]>`
       SELECT table_name
       FROM information_schema.tables
@@ -25,9 +25,9 @@ adminDbRouter.get('/db/tables', async (_req, res, next) => {
 
     const result = await Promise.all(
       tables.map(async (t: TableInfo) => {
-        const countResult = await prisma.$queryRawUnsafe<[{ count: bigint }]>(
+        const countResult = await prisma.$queryRawUnsafe(
           `SELECT count(*) FROM "${t.table_name}"`
-        );
+        ) as [{ count: bigint }];
         return {
           name: t.table_name,
           rowCount: Number(countResult[0].count),
@@ -43,6 +43,7 @@ adminDbRouter.get('/db/tables', async (_req, res, next) => {
 
 adminDbRouter.get('/db/tables/:name', async (req, res, next) => {
   try {
+    const prisma = req.services.prisma;
     const { name } = req.params;
     const page = Math.max(1, parseInt(req.query.page as string) || 1);
     const limit = Math.min(200, Math.max(1, parseInt(req.query.limit as string) || 50));
@@ -70,9 +71,9 @@ adminDbRouter.get('/db/tables/:name', async (req, res, next) => {
     `;
 
     // Get total row count
-    const countResult = await prisma.$queryRawUnsafe<[{ count: bigint }]>(
+    const countResult = await prisma.$queryRawUnsafe(
       `SELECT count(*) FROM "${name}"`
-    );
+    ) as [{ count: bigint }];
     const total = Number(countResult[0].count);
 
     // Get rows
