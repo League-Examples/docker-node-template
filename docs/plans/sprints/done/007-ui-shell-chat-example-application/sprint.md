@@ -1,7 +1,7 @@
 ---
 id: '007'
 title: UI Shell & Chat Example Application
-status: planning
+status: done
 branch: sprint/007-ui-shell-chat-example-application
 use-cases:
 - SUC-001
