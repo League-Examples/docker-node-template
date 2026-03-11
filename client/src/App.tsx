@@ -4,6 +4,7 @@ import AppLayout from './components/AppLayout';
 import Home from './pages/Home';
 import Chat from './pages/Chat';
 import About from './pages/About';
+import McpSetup from './pages/McpSetup';
 import Channels from './pages/Channels';
 import AdminLogin from './pages/admin/AdminLogin';
 import AdminLayout from './pages/admin/AdminLayout';
@@ -26,6 +27,7 @@ function App() {
             <Route path="/" element={<Home />} />
             <Route path="/chat" element={<Chat />} />
             <Route path="/about" element={<About />} />
+            <Route path="/mcp-setup" element={<McpSetup />} />
           </Route>
 
           {/* Admin login (standalone, no layout) */}

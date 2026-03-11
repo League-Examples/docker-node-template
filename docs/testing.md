@@ -224,6 +224,24 @@ await page.goto('/dashboard');
 
 ---
 
+## 6.5 MCP Server Testing
+
+The MCP server (`POST /api/mcp`) can be tested via Supertest like any
+other API endpoint. Set the `MCP_DEFAULT_TOKEN` environment variable
+and send requests with the `Authorization: Bearer <token>` header:
+
+```typescript
+const res = await request(app)
+  .post('/api/mcp')
+  .set('Authorization', `Bearer ${process.env.MCP_DEFAULT_TOKEN}`)
+  .send({ /* MCP request body */ });
+```
+
+MCP tools use the same `ServiceRegistry` as the web UI, so service-level
+logic is testable independently of the MCP transport layer.
+
+---
+
 ## 7. Test Database
 
 ### 7.1 Configuration
