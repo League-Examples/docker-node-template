@@ -1,9 +1,10 @@
 ---
-id: "003"
-title: "Add stub pages and 404 route for dead-end links"
-status: todo
+id: '003'
+title: Add stub pages and 404 route for dead-end links
+status: done
 use-cases: []
-depends-on: ["001"]
+depends-on:
+- '001'
 ---
 
 # Add stub pages and 404 route for dead-end links

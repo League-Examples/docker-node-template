@@ -1,7 +1,7 @@
 ---
-id: "001"
-title: "Fix auth flow — login page, remove placeholder, dev auto-login"
-status: todo
+id: '001'
+title: "Fix auth flow \u2014 login page, remove placeholder, dev auto-login"
+status: done
 use-cases: []
 depends-on: []
 ---

@@ -1,7 +1,7 @@
 ---
-id: "004"
-title: "Fix page title, search bar, and add seed data"
-status: todo
+id: '004'
+title: Fix page title, search bar, and add seed data
+status: done
 use-cases: []
 depends-on: []
 ---

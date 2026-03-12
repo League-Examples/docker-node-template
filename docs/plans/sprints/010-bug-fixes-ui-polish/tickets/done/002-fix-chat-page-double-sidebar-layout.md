@@ -1,9 +1,10 @@
 ---
-id: "002"
-title: "Fix Chat page double-sidebar layout"
-status: todo
+id: '002'
+title: Fix Chat page double-sidebar layout
+status: done
 use-cases: []
-depends-on: ["001"]
+depends-on:
+- '001'
 ---
 
 # Fix Chat page double-sidebar layout
