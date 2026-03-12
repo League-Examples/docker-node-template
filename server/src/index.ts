@@ -25,9 +25,9 @@ const registry = ServiceRegistry.create();
 initPrisma().then(() => initConfigCache()).then(async () => {
   // Seed default #general channel (idempotent)
   await prisma.channel.upsert({
-    where: { name: '#general' },
+    where: { name: 'general' },
     update: {},
-    create: { name: '#general', description: 'General discussion' },
+    create: { name: 'general', description: 'General discussion' },
   });
 
   await registry.scheduler.seedDefaults();
