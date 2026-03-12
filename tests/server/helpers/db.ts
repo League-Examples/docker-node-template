@@ -31,8 +31,8 @@ export async function cleanupTestDb(pool: Pool) {
     await pool.query(`DELETE FROM "RoleAssignmentPattern" WHERE pattern LIKE '%@example.com' OR pattern LIKE '%@test.com'`).catch(() => {});
     // Now delete the users themselves
     await pool.query(`DELETE FROM "User" WHERE ${testEmailPattern}`);
-    // Clean up test channels (created with "test-" prefix)
-    await pool.query(`DELETE FROM "Channel" WHERE slug LIKE 'test-%'`).catch(() => {});
+    // Clean up test channels — they all contain a 10+ digit timestamp in their names
+    await pool.query(`DELETE FROM "Channel" WHERE name ~ '[0-9]{10,}'`).catch(() => {});
   } catch {
     // Tables may not exist yet
   }

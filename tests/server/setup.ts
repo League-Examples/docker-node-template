@@ -6,11 +6,4 @@ process.env.DATABASE_URL = process.env.DATABASE_URL || 'postgresql://app:devpass
 import { initPrisma } from '../../server/src/services/prisma';
 await initPrisma();
 
-// Global cleanup — remove all test users after all suites finish
-import { afterAll } from 'vitest';
-import { getTestPool, cleanupTestDb } from './helpers/db';
-
-afterAll(async () => {
-  const pool = getTestPool();
-  await cleanupTestDb(pool);
-});
+// Database cleanup is handled by global-setup.ts (runs once before/after all files).
