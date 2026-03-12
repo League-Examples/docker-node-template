@@ -3,7 +3,8 @@
     "allow": [
       "mcp__clasi__*",
       "Bash(*)",
-      "WebFetch(*)"
+      "WebFetch(*)",
+      "mcp__*"
     ]
   }
 }

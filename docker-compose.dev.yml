@@ -39,19 +39,6 @@ services:
       db:
         condition: service_healthy
 
-  client:
-    build:
-      context: .
-      dockerfile: docker/Dockerfile.client.dev
-    environment:
-      VITE_API_URL: http://server:3000
-    ports:
-      - "5173:5173"
-    # Uncomment for local Docker with hot-reload:
-    # volumes:
-    #   - ./client/src:/app/src
-    depends_on:
-      - server
 
 volumes:
   pgdata:
