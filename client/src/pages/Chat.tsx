@@ -177,9 +177,12 @@ export default function Chat() {
   // ---- Render ----
   return (
     <div style={styles.container}>
-      {/* Sidebar */}
-      <aside style={styles.sidebar}>
-        <h3 style={styles.sidebarTitle}>Channels</h3>
+      {/* Channel list panel */}
+      <div style={styles.channelPanel}>
+        <h3 style={styles.channelPanelTitle}>Channels</h3>
+        {channels.length === 0 && !error && (
+          <p style={styles.channelEmpty}>No channels yet</p>
+        )}
         {channels.map((ch) => (
           <button
             key={ch.id}
@@ -193,10 +196,10 @@ export default function Chat() {
             <span style={styles.channelCount}>{ch.messageCount}</span>
           </button>
         ))}
-      </aside>
+      </div>
 
       {/* Main chat area */}
-      <main style={styles.main}>
+      <div style={styles.chatArea}>
         {/* Header */}
         <div style={styles.chatHeader}>
           <h2 style={styles.chatHeaderTitle}>
@@ -277,7 +280,7 @@ export default function Chat() {
             {sending ? '...' : 'Send'}
           </button>
         </div>
-      </main>
+      </div>
     </div>
   );
 }
@@ -287,44 +290,54 @@ export default function Chat() {
 const styles: Record<string, React.CSSProperties> = {
   container: {
     display: 'flex',
-    height: 'calc(100vh - 64px)',
+    height: 'calc(100vh - 52px - 48px)',
     fontFamily: 'system-ui, -apple-system, sans-serif',
+    border: '1px solid #e0e0e0',
+    borderRadius: 8,
     overflow: 'hidden',
+    margin: '-24px',
   },
-  sidebar: {
-    width: 240,
-    minWidth: 240,
-    background: '#1e1e2e',
-    color: '#cdd6f4',
-    padding: '1rem 0',
+  channelPanel: {
+    width: 200,
+    minWidth: 200,
+    background: '#f8fafc',
+    borderRight: '1px solid #e0e0e0',
+    padding: '0.75rem 0',
     display: 'flex',
     flexDirection: 'column',
     overflowY: 'auto',
   },
-  sidebarTitle: {
-    fontSize: '0.75rem',
+  channelPanelTitle: {
+    fontSize: '0.7rem',
     textTransform: 'uppercase',
     letterSpacing: '0.05em',
-    color: '#a6adc8',
-    padding: '0 1rem',
+    color: '#94a3b8',
+    padding: '0 0.75rem',
     marginBottom: '0.5rem',
+    marginTop: 0,
+    fontWeight: 600,
+  },
+  channelEmpty: {
+    fontSize: '0.85rem',
+    color: '#94a3b8',
+    padding: '0 0.75rem',
   },
   channelBtn: {
     display: 'flex',
     alignItems: 'center',
     justifyContent: 'space-between',
     width: '100%',
-    padding: '0.5rem 1rem',
+    padding: '0.4rem 0.75rem',
     border: 'none',
     background: 'transparent',
-    color: '#cdd6f4',
+    color: '#475569',
     cursor: 'pointer',
     textAlign: 'left',
-    fontSize: '0.9rem',
+    fontSize: '0.85rem',
   },
   channelBtnActive: {
-    background: '#313244',
-    color: '#ffffff',
+    background: '#e0e7ff',
+    color: '#4f46e5',
     fontWeight: 600,
   },
   channelName: {
@@ -333,12 +346,12 @@ const styles: Record<string, React.CSSProperties> = {
     whiteSpace: 'nowrap',
   },
   channelCount: {
-    fontSize: '0.75rem',
-    color: '#a6adc8',
+    fontSize: '0.7rem',
+    color: '#94a3b8',
     marginLeft: '0.5rem',
     flexShrink: 0,
   },
-  main: {
+  chatArea: {
     flex: 1,
     display: 'flex',
     flexDirection: 'column',
