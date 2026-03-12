@@ -1,8 +1,10 @@
 import { useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 
 export default function Login() {
   const { login } = useAuth();
+  const navigate = useNavigate();
   const [error, setError] = useState<string | null>(null);
   const [loggingIn, setLoggingIn] = useState(false);
 
@@ -25,6 +27,7 @@ export default function Login() {
       }
       const user = await res.json();
       login(user);
+      navigate('/', { replace: true });
     } catch (err: any) {
       setError(err.message || 'Login failed');
     } finally {
