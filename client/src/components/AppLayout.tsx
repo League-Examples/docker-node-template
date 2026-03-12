@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect } from 'react';
-import { NavLink, Outlet, useNavigate } from 'react-router-dom';
+import { NavLink, Navigate, Outlet, useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { hasAdminAccess, roleShortLabel, roleBadgeStyle } from '../lib/roles';
 
@@ -130,16 +130,6 @@ const styles = {
     lineHeight: 1,
   } as const,
 
-  searchInput: {
-    flex: 1,
-    maxWidth: 400,
-    padding: '6px 12px',
-    border: '1px solid #d1d5db',
-    borderRadius: 6,
-    fontSize: 14,
-    outline: 'none',
-  } as const,
-
   userArea: {
     position: 'relative' as const,
     marginLeft: 'auto',
@@ -223,7 +213,7 @@ function useIsMobile() {
 /* ------------------------------------------------------------------ */
 
 export default function AppLayout() {
-  const { user, logout } = useAuth();
+  const { user, loading, logout } = useAuth();
   const navigate = useNavigate();
   const isMobile = useIsMobile();
 
@@ -242,8 +232,20 @@ export default function AppLayout() {
     return () => document.removeEventListener('mousedown', handleClick);
   }, []);
 
-  const displayName = user?.displayName ?? 'Guest';
-  const role = user?.role;
+  // Redirect to login if not authenticated
+  if (loading) {
+    return (
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', minHeight: '100vh' }}>
+        <p>Loading...</p>
+      </div>
+    );
+  }
+  if (!user) {
+    return <Navigate to="/login" replace />;
+  }
+
+  const displayName = user.displayName ?? 'User';
+  const role = user.role;
   const badge = roleBadgeStyle(role);
   const isAdmin = hasAdminAccess(role);
 
@@ -254,7 +256,7 @@ export default function AppLayout() {
   async function handleLogout() {
     setDropdownOpen(false);
     await logout();
-    navigate('/');
+    navigate('/login');
   }
 
   /* ---------- Sidebar ---------- */
@@ -338,11 +340,7 @@ export default function AppLayout() {
         </button>
       )}
 
-      <input
-        type="text"
-        placeholder="Search..."
-        style={styles.searchInput}
-      />
+      <div style={{ flex: 1 }} />
 
       {/* User area with dropdown */}
       <div
