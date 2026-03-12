@@ -56,6 +56,8 @@ export default function Chat() {
   const [input, setInput] = useState('');
   const [sending, setSending] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [showNewChannel, setShowNewChannel] = useState(false);
+  const [newChannelName, setNewChannelName] = useState('');
 
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const feedRef = useRef<HTMLDivElement>(null);
@@ -172,6 +174,29 @@ export default function Chat() {
     }
   }
 
+  async function handleCreateChannel() {
+    const name = newChannelName.trim().toLowerCase().replace(/[^a-z0-9-]/g, '-');
+    if (!name) return;
+    try {
+      const res = await fetch('/api/channels', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name }),
+      });
+      if (!res.ok) {
+        const body = await res.json().catch(() => ({}));
+        throw new Error(body.error || `HTTP ${res.status}`);
+      }
+      const created: Channel = await res.json();
+      setChannels((prev) => [...prev, { ...created, messageCount: 0 }]);
+      setSelectedChannelId(created.id);
+      setNewChannelName('');
+      setShowNewChannel(false);
+    } catch (err: any) {
+      setError(err.message || 'Failed to create channel');
+    }
+  }
+
   const selectedChannel = channels.find((c) => c.id === selectedChannelId);
 
   // ---- Render ----
@@ -196,6 +221,34 @@ export default function Chat() {
             <span style={styles.channelCount}>{ch.messageCount}</span>
           </button>
         ))}
+
+        {/* New channel */}
+        <div style={{ padding: '0.5rem 0.75rem', marginTop: '0.25rem' }}>
+          {showNewChannel ? (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '0.35rem' }}>
+              <input
+                type="text"
+                placeholder="channel-name"
+                value={newChannelName}
+                onChange={(e) => setNewChannelName(e.target.value)}
+                onKeyDown={(e) => { if (e.key === 'Enter') handleCreateChannel(); if (e.key === 'Escape') setShowNewChannel(false); }}
+                style={{ padding: '0.35rem 0.5rem', fontSize: '0.8rem', border: '1px solid #d1d5db', borderRadius: 4, fontFamily: 'inherit' }}
+                autoFocus
+              />
+              <div style={{ display: 'flex', gap: '0.35rem' }}>
+                <button onClick={handleCreateChannel} style={{ flex: 1, padding: '0.3rem', fontSize: '0.75rem', background: '#4f46e5', color: '#fff', border: 'none', borderRadius: 4, cursor: 'pointer' }}>Create</button>
+                <button onClick={() => setShowNewChannel(false)} style={{ flex: 1, padding: '0.3rem', fontSize: '0.75rem', background: '#e2e8f0', color: '#333', border: 'none', borderRadius: 4, cursor: 'pointer' }}>Cancel</button>
+              </div>
+            </div>
+          ) : (
+            <button
+              onClick={() => setShowNewChannel(true)}
+              style={{ width: '100%', padding: '0.35rem', fontSize: '0.8rem', background: 'transparent', color: '#64748b', border: '1px dashed #cbd5e1', borderRadius: 4, cursor: 'pointer' }}
+            >
+              + New Channel
+            </button>
+          )}
+        </div>
       </div>
 
       {/* Main chat area */}
