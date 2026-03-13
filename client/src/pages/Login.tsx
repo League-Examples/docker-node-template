@@ -52,6 +52,9 @@ export default function Login() {
           <a href="/api/auth/google" style={styles.oauthBtn}>
             Sign in with Google
           </a>
+          <a href="/api/auth/pike13" style={styles.oauthBtn}>
+            Sign in with Pike 13
+          </a>
         </div>
 
         <div style={styles.divider}>

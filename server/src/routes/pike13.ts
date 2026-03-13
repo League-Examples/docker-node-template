@@ -1,4 +1,5 @@
 import { Router, Request, Response } from 'express';
+import { findOrCreateOAuthUser } from './auth';
 
 export const pike13Router = Router();
 
@@ -60,9 +61,10 @@ async function acquireToken(): Promise<string | undefined> {
   }
 }
 
-// Returns a usable token. Tries env var first, then cached token,
-// then automatically acquires one via client_credentials.
-async function getToken(): Promise<string | undefined> {
+// Returns the server-side token for server-to-server API calls.
+// This is NOT the user's token — it's from PIKE13_ACCESS_TOKEN env var
+// or acquired via client_credentials grant.
+async function getServerToken(): Promise<string | undefined> {
   if (process.env.PIKE13_ACCESS_TOKEN) return process.env.PIKE13_ACCESS_TOKEN;
   if (cachedToken) return cachedToken;
 
@@ -75,6 +77,15 @@ async function getToken(): Promise<string | undefined> {
     });
   }
   return tokenPromise;
+}
+
+// Returns the best available token for a request.
+// Prefers the logged-in user's Pike 13 token (from their OAuth session),
+// falls back to the server token for server-to-server calls.
+async function getTokenForRequest(req: Request): Promise<string | undefined> {
+  const userToken = (req.session as any)?.pike13Token;
+  if (userToken) return userToken;
+  return getServerToken();
 }
 
 // --- Pike 13 OAuth flow (authorization code, fallback) ---
@@ -98,7 +109,7 @@ pike13Router.get('/auth/pike13', (_req: Request, res: Response) => {
   res.redirect(`${getAuthBaseUrl()}/oauth/authorize?${params}`);
 });
 
-// GET /api/auth/pike13/callback — exchange code for token, cache server-side
+// GET /api/auth/pike13/callback — exchange code for token, fetch profile, create session
 pike13Router.get('/auth/pike13/callback', async (req: Request, res: Response) => {
   const { code } = req.query;
   if (!code || typeof code !== 'string') {
@@ -109,7 +120,7 @@ pike13Router.get('/auth/pike13/callback', async (req: Request, res: Response) =>
   }
 
   try {
-    const response = await fetch(`${getAuthBaseUrl()}/oauth/token`, {
+    const tokenResponse = await fetch(`${getAuthBaseUrl()}/oauth/token`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/x-www-form-urlencoded', Accept: 'application/json' },
       body: new URLSearchParams({
@@ -121,15 +132,40 @@ pike13Router.get('/auth/pike13/callback', async (req: Request, res: Response) =>
       }),
     });
 
-    if (!response.ok) {
-      const detail = await response.text();
-      console.error('Pike 13 token exchange failed:', response.status, detail);
+    if (!tokenResponse.ok) {
+      const detail = await tokenResponse.text();
+      console.error('Pike 13 token exchange failed:', tokenResponse.status, detail);
       return res.redirect('/?pike13_error=token_exchange_failed');
     }
 
-    const data: any = await response.json();
-    cachedToken = data.access_token;
+    const tokenData: any = await tokenResponse.json();
+    const accessToken = tokenData.access_token;
+    // Cache as server token AND store in user's session
+    cachedToken = accessToken;
+    (req.session as any).pike13Token = accessToken;
     if (process.env.NODE_ENV !== 'test') console.log('Pike 13 OAuth token obtained via authorization code');
+
+    // Fetch the current user's profile from Pike 13
+    const profileResponse = await fetch(`${getBaseUrl()}/account`, {
+      headers: { Authorization: `Bearer ${accessToken}`, Accept: 'application/json' },
+    });
+
+    if (profileResponse.ok) {
+      const profileData: any = await profileResponse.json();
+      // Pike 13 account response shape: { people: [{ id, first_name, last_name, email, ... }] }
+      const person = profileData?.people?.[0] || profileData?.account || profileData;
+      const pike13Id = String(person.id || tokenData.resource_owner_id || '');
+      const email = person.email || '';
+      const displayName = [person.first_name, person.last_name].filter(Boolean).join(' ') || email;
+
+      if (pike13Id && email) {
+        const user = await findOrCreateOAuthUser('pike13', pike13Id, email, displayName, null);
+        await new Promise<void>((resolve, reject) => {
+          req.login(user, (err) => (err ? reject(err) : resolve()));
+        });
+      }
+    }
+
     res.redirect('/');
   } catch (err: any) {
     console.error('Pike 13 token exchange error:', err.message);
@@ -139,8 +175,8 @@ pike13Router.get('/auth/pike13/callback', async (req: Request, res: Response) =>
 
 // GET /api/pike13/events — this week's event occurrences
 // Docs: https://developer.pike13.com/docs/event-occurrences
-pike13Router.get('/pike13/events', async (_req: Request, res: Response) => {
-  const token = await getToken();
+pike13Router.get('/pike13/events', async (req: Request, res: Response) => {
+  const token = await getTokenForRequest(req);
   if (!token) {
     return res.status(501).json({
       error: 'Pike 13 not configured',
@@ -191,8 +227,8 @@ pike13Router.get('/pike13/events', async (_req: Request, res: Response) => {
 
 // GET /api/pike13/people — first page of people
 // Docs: https://developer.pike13.com/docs/people
-pike13Router.get('/pike13/people', async (_req: Request, res: Response) => {
-  const token = await getToken();
+pike13Router.get('/pike13/people', async (req: Request, res: Response) => {
+  const token = await getTokenForRequest(req);
   if (!token) {
     return res.status(501).json({
       error: 'Pike 13 not configured',

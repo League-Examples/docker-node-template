@@ -27,7 +27,7 @@ async function applyRolePatterns(user: any): Promise<any> {
  * Find or create a user via OAuth, linking accounts by email.
  * Also ensures a UserProvider record exists for the provider.
  */
-async function findOrCreateOAuthUser(
+export async function findOrCreateOAuthUser(
   provider: string,
   providerId: string,
   email: string,
