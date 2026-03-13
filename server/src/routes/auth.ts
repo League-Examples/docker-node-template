@@ -23,6 +23,60 @@ async function applyRolePatterns(user: any): Promise<any> {
   return user;
 }
 
+/**
+ * Find or create a user via OAuth, linking accounts by email.
+ * Also ensures a UserProvider record exists for the provider.
+ */
+async function findOrCreateOAuthUser(
+  provider: string,
+  providerId: string,
+  email: string,
+  displayName: string,
+  avatarUrl: string | null,
+): Promise<any> {
+  // 1. Check if this exact provider+id is already linked
+  const existingProvider = await prisma.userProvider.findUnique({
+    where: { provider_providerId: { provider, providerId } },
+    include: { user: true },
+  });
+  if (existingProvider) {
+    // Update profile info
+    const user = await prisma.user.update({
+      where: { id: existingProvider.userId },
+      data: { email, displayName, avatarUrl },
+    });
+    return applyRolePatterns(user);
+  }
+
+  // 2. Check if a user with this email already exists (account linking)
+  let user = email ? await prisma.user.findUnique({ where: { email } }) : null;
+
+  if (user) {
+    // Link this new provider to the existing user
+    // Update provider/providerId on user if not set
+    if (!user.provider) {
+      await prisma.user.update({
+        where: { id: user.id },
+        data: { provider, providerId, displayName, avatarUrl },
+      });
+    }
+  } else {
+    // 3. Create a new user
+    user = await prisma.user.create({
+      data: { provider, providerId, email, displayName, avatarUrl },
+    });
+  }
+
+  // Ensure UserProvider record exists
+  await prisma.userProvider.upsert({
+    where: { provider_providerId: { provider, providerId } },
+    update: { userId: user.id },
+    create: { userId: user.id, provider, providerId },
+  });
+
+  return applyRolePatterns(user);
+}
+
 export const authRouter = Router();
 
 // --- GitHub OAuth Strategy ---
@@ -41,12 +95,13 @@ if (process.env.GITHUB_CLIENT_ID && process.env.GITHUB_CLIENT_SECRET) {
     async (_accessToken: string, _refreshToken: string, profile: any, done: any) => {
       try {
         const email = profile.emails?.[0]?.value || '';
-        let user = await prisma.user.upsert({
-          where: { provider_providerId: { provider: 'github', providerId: String(profile.id) } },
-          update: { email, displayName: profile.displayName || profile.username, avatarUrl: profile.photos?.[0]?.value },
-          create: { provider: 'github', providerId: String(profile.id), email, displayName: profile.displayName || profile.username, avatarUrl: profile.photos?.[0]?.value },
-        });
-        user = await applyRolePatterns(user);
+        const user = await findOrCreateOAuthUser(
+          'github',
+          String(profile.id),
+          email,
+          profile.displayName || profile.username,
+          profile.photos?.[0]?.value || null,
+        );
         done(null, user);
       } catch (err) {
         done(err);
@@ -98,12 +153,13 @@ if (process.env.GOOGLE_CLIENT_ID && process.env.GOOGLE_CLIENT_SECRET) {
     async (_accessToken: string, _refreshToken: string, profile: any, done: any) => {
       try {
         const email = profile.emails?.[0]?.value || '';
-        let user = await prisma.user.upsert({
-          where: { provider_providerId: { provider: 'google', providerId: String(profile.id) } },
-          update: { email, displayName: profile.displayName || '', avatarUrl: profile.photos?.[0]?.value },
-          create: { provider: 'google', providerId: String(profile.id), email, displayName: profile.displayName || '', avatarUrl: profile.photos?.[0]?.value },
-        });
-        user = await applyRolePatterns(user);
+        const user = await findOrCreateOAuthUser(
+          'google',
+          String(profile.id),
+          email,
+          profile.displayName || '',
+          profile.photos?.[0]?.value || null,
+        );
         done(null, user);
       } catch (err) {
         done(err);

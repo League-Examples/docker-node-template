@@ -4,6 +4,7 @@ interface Backup {
   filename: string;
   size: number;
   created: string;
+  s3?: boolean;
 }
 
 function formatSize(bytes: number): string {
@@ -60,7 +61,8 @@ export default function ImportExport() {
         return;
       }
       const result = await res.json();
-      setStatus(`Backup created: ${result.filename}`);
+      const s3Note = result.s3 ? ' (uploaded to S3)' : result.s3 === false ? ' (S3 upload failed)' : '';
+      setStatus(`Backup created: ${result.filename}${s3Note}`);
       await loadBackups();
     } catch {
       setError('Network error creating backup');
@@ -189,6 +191,7 @@ export default function ImportExport() {
                 <th style={{ padding: '8px 8px 8px 0' }}>Filename</th>
                 <th style={{ padding: 8 }}>Created</th>
                 <th style={{ padding: 8 }}>Size</th>
+                <th style={{ padding: 8 }}>S3</th>
                 <th style={{ padding: '8px 0 8px 8px', textAlign: 'right' }}>Actions</th>
               </tr>
             </thead>
@@ -203,6 +206,13 @@ export default function ImportExport() {
                   </td>
                   <td style={{ padding: 8, color: '#666', fontSize: 13 }}>
                     {formatSize(backup.size)}
+                  </td>
+                  <td style={{ padding: 8, fontSize: 13 }}>
+                    {backup.s3 ? (
+                      <span style={{ color: '#137333' }} title="Stored in S3">yes</span>
+                    ) : (
+                      <span style={{ color: '#999' }}>local</span>
+                    )}
                   </td>
                   <td style={{ padding: '8px 0 8px 8px', textAlign: 'right' }}>
                     <button

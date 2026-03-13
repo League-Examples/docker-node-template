@@ -1,39 +1,37 @@
 import { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
 
-const APP_NAME = 'College Application Navigator';
+const FALLBACK_NAME = 'Chat App';
 const FALLBACK_VERSION = '0.1.0';
 
 export default function About() {
+  const [appName, setAppName] = useState<string>(FALLBACK_NAME);
   const [version, setVersion] = useState<string>(FALLBACK_VERSION);
 
   useEffect(() => {
     fetch('/api/health')
       .then((res) => (res.ok ? res.json() : null))
       .then((data) => {
-        if (data?.version) {
-          setVersion(data.version);
-        }
+        if (data?.version) setVersion(data.version);
+        if (data?.appName) setAppName(data.appName);
       })
       .catch(() => {
-        // Keep fallback version
+        // Keep fallback values
       });
   }, []);
 
   return (
     <div style={styles.container}>
       <header style={styles.header}>
-        <h1 style={styles.title}>{APP_NAME}</h1>
+        <h1 style={styles.title}>{appName}</h1>
         <p style={styles.version}>Version {version}</p>
       </header>
 
       <section style={styles.card}>
         <h2 style={styles.sectionTitle}>About</h2>
         <p style={styles.text}>
-          The College Application Navigator is a personalized guide that walks
-          students through the entire college application journey — from course
-          selection in 8th grade through enrollment in 12th grade. It adapts to
-          each student's profile, goals, and timeline.
+          A real-time chat application built with the docker-node-template
+          stack. Create channels, send messages, and collaborate with your team.
         </p>
       </section>
 
@@ -41,20 +39,19 @@ export default function About() {
         <h2 style={styles.sectionTitle}>Features</h2>
         <ul style={styles.list}>
           <li style={styles.listItem}>
-            <strong>AI-Powered Advising</strong> — Chat with an AI advisor that
-            understands your academic profile and goals.
+            <strong>Channels</strong> — Create and join channels to organize
+            conversations by topic.
           </li>
           <li style={styles.listItem}>
-            <strong>4-Year Academic Plan</strong> — Generate a personalized
-            course plan based on your interests and target colleges.
+            <strong>Real-time Chat</strong> — Send and receive messages in
+            real time with channel-based discussions.
           </li>
           <li style={styles.listItem}>
-            <strong>Interest Questionnaire</strong> — Discover your academic
-            strengths and career interests through a guided questionnaire.
+            <strong>OAuth Login</strong> — Sign in with GitHub or Google.
           </li>
           <li style={styles.listItem}>
-            <strong>Student Profile</strong> — Track your courses, GPA, test
-            scores, and extracurricular activities in one place.
+            <strong>Admin Panel</strong> — Manage users, channels, scheduled
+            jobs, and system configuration.
           </li>
         </ul>
       </section>
@@ -62,8 +59,8 @@ export default function About() {
       <section style={styles.card}>
         <h2 style={styles.sectionTitle}>Technology</h2>
         <p style={styles.text}>
-          Built with React, Express, TypeScript, and PostgreSQL. AI features
-          are powered by the Claude API from Anthropic.
+          Built with React, Express, TypeScript, and PostgreSQL. Deployed
+          via Docker Swarm with SOPS-encrypted secrets.
         </p>
       </section>
 

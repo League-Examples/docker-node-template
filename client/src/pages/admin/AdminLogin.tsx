@@ -1,11 +1,21 @@
-import { useState, FormEvent } from 'react';
+import { useState, useEffect, FormEvent } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { useAuth } from '../../context/AuthContext';
+import { hasAdminAccess } from '../../lib/roles';
 
 export default function AdminLogin() {
+  const { user } = useAuth();
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
   const navigate = useNavigate();
+
+  // ADMIN-role users bypass the password form entirely
+  useEffect(() => {
+    if (user && hasAdminAccess(user.role)) {
+      navigate('/admin/users', { replace: true });
+    }
+  }, [user, navigate]);
 
   async function handleSubmit(e: FormEvent) {
     e.preventDefault();
@@ -20,7 +30,7 @@ export default function AdminLogin() {
       });
 
       if (res.ok) {
-        navigate('/admin/env');
+        navigate('/admin/users');
       } else {
         const data = await res.json();
         setError(data.error || 'Invalid password');

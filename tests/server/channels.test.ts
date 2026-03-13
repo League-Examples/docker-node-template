@@ -55,11 +55,12 @@ describe('Channel CRUD — /api/channels', () => {
     expect(res.body).toHaveProperty('id');
   });
 
-  it('POST /api/channels returns 403 for non-admin user', async () => {
+  it('POST /api/channels allows non-admin user to create channel', async () => {
     const res = await userAgent
       .post('/api/channels')
-      .send({ name: `no-access-${suffix}` });
-    expect(res.status).toBe(403);
+      .send({ name: `user-created-${suffix}` });
+    expect(res.status).toBe(201);
+    expect(res.body).toHaveProperty('id');
   });
 
   it('POST /api/channels returns 401 unauthenticated', async () => {

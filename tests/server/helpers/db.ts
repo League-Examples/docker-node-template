@@ -19,9 +19,22 @@ export function getTestPool(): Pool {
 
 export async function cleanupTestDb(pool: Pool) {
   try {
-    await pool.query(`DELETE FROM "User" WHERE email LIKE '%example.com'`);
+    // Delete related records first (FK constraints), then test users.
+    // Test users always use @example.com or @test.com emails.
+    const testEmailPattern = `email LIKE '%@example.com' OR email LIKE '%@test.com'`;
+
+    // Messages reference authorId
+    await pool.query(`DELETE FROM "Message" WHERE "authorId" IN (SELECT id FROM "User" WHERE ${testEmailPattern})`).catch(() => {});
+    // UserProvider references userId
+    await pool.query(`DELETE FROM "UserProvider" WHERE "userId" IN (SELECT id FROM "User" WHERE ${testEmailPattern})`).catch(() => {});
+    // RoleAssignmentPattern may reference test patterns
+    await pool.query(`DELETE FROM "RoleAssignmentPattern" WHERE pattern LIKE '%@example.com' OR pattern LIKE '%@test.com'`).catch(() => {});
+    // Now delete the users themselves
+    await pool.query(`DELETE FROM "User" WHERE ${testEmailPattern}`);
+    // Clean up test channels — they all contain a 10+ digit timestamp in their names
+    await pool.query(`DELETE FROM "Channel" WHERE name ~ '[0-9]{10,}'`).catch(() => {});
   } catch {
-    // Table may not exist yet
+    // Tables may not exist yet
   }
 }
 

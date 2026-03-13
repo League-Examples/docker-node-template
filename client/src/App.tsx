@@ -1,10 +1,12 @@
 import { BrowserRouter, Routes, Route } from 'react-router-dom';
 import { AuthProvider } from './context/AuthContext';
 import AppLayout from './components/AppLayout';
+import Login from './pages/Login';
 import Home from './pages/Home';
 import Chat from './pages/Chat';
 import About from './pages/About';
 import McpSetup from './pages/McpSetup';
+import NotFound from './pages/NotFound';
 import Channels from './pages/Channels';
 import AdminLogin from './pages/admin/AdminLogin';
 import AdminLayout from './pages/admin/AdminLayout';
@@ -16,18 +18,23 @@ import SessionViewer from './pages/admin/SessionViewer';
 import PermissionsPanel from './pages/admin/PermissionsPanel';
 import ScheduledJobsPanel from './pages/admin/ScheduledJobsPanel';
 import ImportExport from './pages/admin/ImportExport';
+import UsersPanel from './pages/admin/UsersPanel';
 
 function App() {
   return (
     <BrowserRouter>
       <AuthProvider>
         <Routes>
+          {/* Login (standalone, no layout) */}
+          <Route path="/login" element={<Login />} />
+
           {/* Authenticated routes wrapped in AppLayout (sidebar + topbar) */}
           <Route element={<AppLayout />}>
             <Route path="/" element={<Home />} />
             <Route path="/chat" element={<Chat />} />
             <Route path="/about" element={<About />} />
             <Route path="/mcp-setup" element={<McpSetup />} />
+            <Route path="*" element={<NotFound />} />
           </Route>
 
           {/* Admin login (standalone, no layout) */}
@@ -35,6 +42,7 @@ function App() {
 
           {/* Admin pages use their own AdminLayout (auth-gated) */}
           <Route element={<AdminLayout />}>
+            <Route path="/admin/users" element={<UsersPanel />} />
             <Route path="/admin/env" element={<EnvironmentInfo />} />
             <Route path="/admin/db" element={<DatabaseViewer />} />
             <Route path="/admin/config" element={<ConfigPanel />} />

@@ -9,7 +9,7 @@ beforeEach(() => {
   vi.restoreAllMocks();
   globalThis.fetch = vi.fn().mockResolvedValue({
     ok: true,
-    json: () => Promise.resolve({ status: 'ok', version: '1.2.3' }),
+    json: () => Promise.resolve({ status: 'ok', version: '1.2.3', appName: 'League Chat' }),
   });
 });
 
@@ -26,11 +26,11 @@ function renderAbout() {
 // ---- Tests ----
 
 describe('About', () => {
-  it('renders application name "College Application Navigator"', () => {
+  it('renders app name from health endpoint', async () => {
     renderAbout();
-    expect(
-      screen.getByRole('heading', { name: 'College Application Navigator' }),
-    ).toBeInTheDocument();
+    await waitFor(() => {
+      expect(screen.getByRole('heading', { name: 'League Chat' })).toBeInTheDocument();
+    });
   });
 
   it('renders version information from the health endpoint', async () => {
@@ -40,13 +40,13 @@ describe('About', () => {
     });
   });
 
-  it('renders fallback version when fetch fails', async () => {
+  it('renders fallback name and version when fetch fails', async () => {
     (globalThis.fetch as ReturnType<typeof vi.fn>).mockRejectedValue(
       new Error('Network error'),
     );
 
     renderAbout();
-    // Fallback version is 0.1.0
+    expect(screen.getByRole('heading', { name: 'Chat App' })).toBeInTheDocument();
     expect(screen.getByText('Version 0.1.0')).toBeInTheDocument();
   });
 });

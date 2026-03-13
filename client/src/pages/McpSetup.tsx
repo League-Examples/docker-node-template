@@ -46,7 +46,7 @@ export default function McpSetup() {
         </p>
         <pre style={styles.codeBlock}>{`{
   "mcpServers": {
-    "college-app-navigator": {
+    "chat-app": {
       "url": "http://localhost:3000/api/mcp",
       "headers": {
         "Authorization": "Bearer YOUR_MCP_TOKEN"

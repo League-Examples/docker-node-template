@@ -13,7 +13,7 @@ export default function Home() {
     );
   }
 
-  const displayName = user?.displayName ?? 'Student';
+  const displayName = user?.displayName ?? 'User';
   const isAdmin = hasAdminAccess(user?.role);
 
   return (
@@ -21,7 +21,7 @@ export default function Home() {
       <header style={styles.header}>
         <h1 style={styles.title}>Welcome, {displayName}</h1>
         <p style={styles.subtitle}>
-          Your personalized guide through the college application journey.
+          Welcome to your chat app.
         </p>
       </header>
 
@@ -30,38 +30,7 @@ export default function Home() {
           <section style={styles.card}>
             <h2 style={styles.cardTitle}>Start Chatting</h2>
             <p style={styles.cardText}>
-              Ask questions about college applications, course planning, or
-              anything else on your mind. Your AI advisor is ready to help.
-            </p>
-          </section>
-        </Link>
-
-        <Link to="/profile" style={styles.cardLink}>
-          <section style={styles.card}>
-            <h2 style={styles.cardTitle}>Your Profile</h2>
-            <p style={styles.cardText}>
-              Review and update your academic interests, goals, and personal
-              information to get better recommendations.
-            </p>
-          </section>
-        </Link>
-
-        <Link to="/plan" style={styles.cardLink}>
-          <section style={styles.card}>
-            <h2 style={styles.cardTitle}>Academic Plan</h2>
-            <p style={styles.cardText}>
-              View your personalized 4-year course plan and make adjustments
-              as your goals evolve.
-            </p>
-          </section>
-        </Link>
-
-        <Link to="/questionnaire" style={styles.cardLink}>
-          <section style={styles.card}>
-            <h2 style={styles.cardTitle}>Interest Questionnaire</h2>
-            <p style={styles.cardText}>
-              Complete or revisit the questionnaire to refine your college
-              and career recommendations.
+              Jump into a conversation. Pick a channel or start a new one.
             </p>
           </section>
         </Link>

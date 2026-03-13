@@ -22,23 +22,11 @@ export interface AuthUser {
 interface AuthContextValue {
   user: AuthUser | null;
   loading: boolean;
+  login: (user: AuthUser) => void;
   logout: () => Promise<void>;
 }
 
 const AuthContext = createContext<AuthContextValue | undefined>(undefined);
-
-/** Default placeholder user shown when no session exists (demo mode). */
-const PLACEHOLDER_USER: AuthUser = {
-  id: 0,
-  email: 'eric@example.com',
-  displayName: 'Eric Busboom',
-  role: 'USER',
-  avatarUrl: null,
-  provider: null,
-  providerId: null,
-  createdAt: new Date().toISOString(),
-  updatedAt: new Date().toISOString(),
-};
 
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<AuthUser | null>(null);
@@ -48,18 +36,20 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     fetch('/api/auth/me')
       .then((res) => {
         if (res.ok) return res.json();
-        // Not authenticated — use placeholder for demo
         return null;
       })
       .then((data: AuthUser | null) => {
-        setUser(data ?? PLACEHOLDER_USER);
+        setUser(data);
       })
       .catch(() => {
-        // Network error — fall back to placeholder
-        setUser(PLACEHOLDER_USER);
+        setUser(null);
       })
       .finally(() => setLoading(false));
   }, []);
+
+  function login(authedUser: AuthUser) {
+    setUser(authedUser);
+  }
 
   async function logout() {
     try {
@@ -71,7 +61,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }
 
   return (
-    <AuthContext.Provider value={{ user, loading, logout }}>
+    <AuthContext.Provider value={{ user, loading, login, logout }}>
       {children}
     </AuthContext.Provider>
   );

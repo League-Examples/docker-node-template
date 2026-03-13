@@ -2,6 +2,8 @@ import { useEffect, useState } from 'react';
 import { Link, NavLink, Outlet, useNavigate } from 'react-router-dom';
 
 const NAV_ITEMS = [
+  { to: '/admin/users', label: 'Users' },
+  { to: '/admin/channels', label: 'Channels' },
   { to: '/admin/env', label: 'Environment' },
   { to: '/admin/db', label: 'Database' },
   { to: '/admin/config', label: 'Configuration' },

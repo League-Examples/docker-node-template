@@ -66,7 +66,7 @@ describe('AppLayout', () => {
     expect(screen.getByText('Chat')).toBeInTheDocument();
   });
 
-  it('shows admin nav items when user has admin role', () => {
+  it('shows Admin link when user has admin role', () => {
     mockUseAuth.mockReturnValue({
       user: {
         id: 1,
@@ -84,19 +84,12 @@ describe('AppLayout', () => {
     });
 
     renderLayout();
-    expect(screen.getByText('Users')).toBeInTheDocument();
-    expect(screen.getByText('Environment')).toBeInTheDocument();
-    expect(screen.getByText('Configuration')).toBeInTheDocument();
-    expect(screen.getByText('Database')).toBeInTheDocument();
-    expect(screen.getByText('Channels')).toBeInTheDocument();
+    expect(screen.getByText('Admin')).toBeInTheDocument();
   });
 
-  it('hides admin nav items when user has non-admin role', () => {
+  it('hides Admin link when user has non-admin role', () => {
     renderLayout();
-    expect(screen.queryByText('Users')).not.toBeInTheDocument();
-    expect(screen.queryByText('Environment')).not.toBeInTheDocument();
-    expect(screen.queryByText('Configuration')).not.toBeInTheDocument();
-    expect(screen.queryByText('Database')).not.toBeInTheDocument();
+    expect(screen.queryByText('Admin')).not.toBeInTheDocument();
   });
 
   it('displays user name in the top bar', () => {

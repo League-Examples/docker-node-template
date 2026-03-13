@@ -1,6 +1,7 @@
 import { Router } from 'express';
 import { requireAuth } from '../middleware/requireAuth';
 import { requireAdmin } from '../middleware/requireAdmin';
+import { addClient, broadcast } from '../services/sse';
 
 export const channelsRouter = Router();
 
@@ -14,8 +15,8 @@ channelsRouter.get('/channels', requireAuth, async (req, res, next) => {
   }
 });
 
-// POST /api/channels — create a channel (admin only)
-channelsRouter.post('/channels', requireAdmin, async (req, res, next) => {
+// POST /api/channels — create a channel (any authenticated user)
+channelsRouter.post('/channels', requireAuth, async (req, res, next) => {
   try {
     const { name, description } = req.body;
     if (!name || typeof name !== 'string' || name.trim().length === 0) {
@@ -68,6 +69,21 @@ channelsRouter.delete('/channels/:id', requireAdmin, async (req, res, next) => {
   }
 });
 
+// GET /api/channels/:id/events — SSE stream for real-time messages
+channelsRouter.get('/channels/:id/events', requireAuth, (req, res) => {
+  const channelId = parseInt(req.params.id as string, 10);
+  if (isNaN(channelId)) {
+    return res.status(400).json({ error: 'Invalid channel ID' });
+  }
+  res.writeHead(200, {
+    'Content-Type': 'text/event-stream',
+    'Cache-Control': 'no-cache',
+    Connection: 'keep-alive',
+  });
+  res.write('\n');
+  addClient(channelId, res);
+});
+
 // POST /api/channels/:id/messages — post a message to a channel
 channelsRouter.post('/channels/:id/messages', requireAuth, async (req, res, next) => {
   try {
@@ -81,6 +97,7 @@ channelsRouter.post('/channels/:id/messages', requireAuth, async (req, res, next
     }
     const authorId = (req.user as any).id;
     const message = await req.services.messages.create(channelId, authorId, content.trim());
+    broadcast(channelId, 'message', message);
     res.status(201).json(message);
   } catch (err: any) {
     if (err.code === 'P2003') {

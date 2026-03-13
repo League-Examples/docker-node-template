@@ -1,11 +1,15 @@
 import { Router } from 'express';
+import { prisma } from '../../services/prisma';
 
 export const adminUsersRouter = Router();
 
-// GET /admin/users - list all users
+// GET /admin/users - list all users with linked providers
 adminUsersRouter.get('/users', async (req, res, next) => {
   try {
-    const users = await req.services.users.list();
+    const users = await prisma.user.findMany({
+      orderBy: { createdAt: 'desc' },
+      include: { providers: { select: { provider: true } } },
+    });
     res.json(users);
   } catch (err) {
     next(err);

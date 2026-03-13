@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect } from 'react';
-import { NavLink, Outlet, useNavigate } from 'react-router-dom';
+import { NavLink, Navigate, Outlet, useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { hasAdminAccess, roleShortLabel, roleBadgeStyle } from '../lib/roles';
 
@@ -15,19 +15,6 @@ interface NavItem {
 const MAIN_NAV: NavItem[] = [
   { to: '/', label: 'Home' },
   { to: '/chat', label: 'Chat' },
-];
-
-const ADMIN_NAV: NavItem[] = [
-  { to: '/admin', label: 'Users' },
-  { to: '/admin/env', label: 'Environment' },
-  { to: '/admin/config', label: 'Configuration' },
-  { to: '/admin/db', label: 'Database' },
-  { to: '/admin/logs', label: 'Logs' },
-  { to: '/admin/sessions', label: 'Sessions' },
-  { to: '/admin/permissions', label: 'Permissions' },
-  { to: '/admin/import-export', label: 'Import/Export' },
-  { to: '/admin/scheduler', label: 'Scheduled Jobs' },
-  { to: '/admin/channels', label: 'Channels' },
 ];
 
 const BOTTOM_NAV: NavItem[] = [
@@ -130,16 +117,6 @@ const styles = {
     lineHeight: 1,
   } as const,
 
-  searchInput: {
-    flex: 1,
-    maxWidth: 400,
-    padding: '6px 12px',
-    border: '1px solid #d1d5db',
-    borderRadius: 6,
-    fontSize: 14,
-    outline: 'none',
-  } as const,
-
   userArea: {
     position: 'relative' as const,
     marginLeft: 'auto',
@@ -223,13 +200,22 @@ function useIsMobile() {
 /* ------------------------------------------------------------------ */
 
 export default function AppLayout() {
-  const { user, logout } = useAuth();
+  const { user, loading, logout } = useAuth();
   const navigate = useNavigate();
   const isMobile = useIsMobile();
 
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [dropdownOpen, setDropdownOpen] = useState(false);
+  const [appName, setAppName] = useState('Chat App');
   const dropdownRef = useRef<HTMLDivElement>(null);
+
+  // Fetch app name from health endpoint
+  useEffect(() => {
+    fetch('/api/health')
+      .then((res) => (res.ok ? res.json() : null))
+      .then((data) => { if (data?.appName) setAppName(data.appName); })
+      .catch(() => {});
+  }, []);
 
   // Close dropdown on outside click
   useEffect(() => {
@@ -242,8 +228,20 @@ export default function AppLayout() {
     return () => document.removeEventListener('mousedown', handleClick);
   }, []);
 
-  const displayName = user?.displayName ?? 'Guest';
-  const role = user?.role;
+  // Redirect to login if not authenticated
+  if (loading) {
+    return (
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', minHeight: '100vh' }}>
+        <p>Loading...</p>
+      </div>
+    );
+  }
+  if (!user) {
+    return <Navigate to="/login" replace />;
+  }
+
+  const displayName = user.displayName ?? 'User';
+  const role = user.role;
   const badge = roleBadgeStyle(role);
   const isAdmin = hasAdminAccess(role);
 
@@ -254,7 +252,7 @@ export default function AppLayout() {
   async function handleLogout() {
     setDropdownOpen(false);
     await logout();
-    navigate('/');
+    navigate('/login');
   }
 
   /* ---------- Sidebar ---------- */
@@ -267,10 +265,7 @@ export default function AppLayout() {
     <nav style={sidebarStyle}>
       {/* Logo */}
       <div style={styles.logo}>
-        <span style={{ fontSize: 20 }} role="img" aria-label="graduation cap">
-          &#x1F393;
-        </span>
-        College App Navigator
+        {appName}
       </div>
 
       {/* Main nav */}
@@ -287,23 +282,6 @@ export default function AppLayout() {
           </NavLink>
         ))}
 
-        {/* Admin section */}
-        {isAdmin && (
-          <>
-            <div style={styles.sectionLabel}>Admin</div>
-            {ADMIN_NAV.map((item) => (
-              <NavLink
-                key={item.to}
-                to={item.to}
-                end={item.to === '/admin'}
-                onClick={closeSidebarIfMobile}
-                style={({ isActive }) => styles.navLink(isActive)}
-              >
-                {item.label}
-              </NavLink>
-            ))}
-          </>
-        )}
       </div>
 
       {/* Bottom nav */}
@@ -318,6 +296,15 @@ export default function AppLayout() {
             {item.label}
           </NavLink>
         ))}
+        {isAdmin && (
+          <NavLink
+            to="/admin/users"
+            onClick={closeSidebarIfMobile}
+            style={({ isActive }) => styles.navLink(isActive)}
+          >
+            Admin
+          </NavLink>
+        )}
       </div>
     </nav>
   );
@@ -338,11 +325,7 @@ export default function AppLayout() {
         </button>
       )}
 
-      <input
-        type="text"
-        placeholder="Search..."
-        style={styles.searchInput}
-      />
+      <div style={{ flex: 1 }} />
 
       {/* User area with dropdown */}
       <div
@@ -361,16 +344,6 @@ export default function AppLayout() {
           <div style={styles.dropdown}>
             <button
               style={styles.dropdownItem}
-              onClick={(e) => {
-                e.stopPropagation();
-                setDropdownOpen(false);
-                navigate('/account');
-              }}
-            >
-              Account
-            </button>
-            <button
-              style={{ ...styles.dropdownItem, borderTop: '1px solid #e2e8f0' }}
               onClick={(e) => {
                 e.stopPropagation();
                 void handleLogout();

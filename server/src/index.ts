@@ -1,33 +1,20 @@
-import dotenv from 'dotenv';
-import path from 'path';
-import { fileURLToPath } from 'url';
-import fs from 'fs';
-
-// Load .env from project root when running locally (not in Docker).
-// In Docker, env vars are set by compose/entrypoint.
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = path.dirname(__filename);
-const envPath = path.resolve(__dirname, '../../.env');
-if (fs.existsSync(envPath)) {
-  dotenv.config({ path: envPath });
-}
-
-import app from './app';
-import { initPrisma } from './services/prisma';
-import { initConfigCache } from './services/config';
-import { ServiceRegistry } from './services/service.registry';
-import { prisma } from './services/prisma';
+import './env.js';
+import app from './app.js';
+import { initPrisma } from './services/prisma.js';
+import { initConfigCache } from './services/config.js';
+import { ServiceRegistry } from './services/service.registry.js';
+import { prisma } from './services/prisma.js';
 
 const port = parseInt(process.env.PORT || '3000', 10);
 
 const registry = ServiceRegistry.create();
 
 initPrisma().then(() => initConfigCache()).then(async () => {
-  // Seed default #general channel (idempotent)
+  // Seed default general channel (idempotent)
   await prisma.channel.upsert({
-    where: { name: '#general' },
+    where: { name: 'general' },
     update: {},
-    create: { name: '#general', description: 'General discussion' },
+    create: { name: 'general', description: 'General discussion' },
   });
 
   await registry.scheduler.seedDefaults();
