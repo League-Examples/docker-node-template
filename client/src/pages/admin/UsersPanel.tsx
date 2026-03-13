@@ -14,28 +14,20 @@ interface AdminUser {
   createdAt: string;
 }
 
-const GITHUB_LOGO =
-  'https://github.githubassets.com/favicons/favicon-dark.svg';
-const GOOGLE_LOGO =
-  'https://www.google.com/favicon.ico';
+const PROVIDER_LOGOS: Record<string, { src: string; alt: string }> = {
+  github: { src: 'https://github.githubassets.com/favicons/favicon-dark.svg', alt: 'GitHub' },
+  google: { src: 'https://www.google.com/favicon.ico', alt: 'Google' },
+  pike13: { src: 'https://www.pike13.com/favicon.ico', alt: 'Pike 13' },
+};
 
 function ProviderBadge({ provider }: { provider: string }) {
-  if (provider === 'github') {
+  const logo = PROVIDER_LOGOS[provider];
+  if (logo) {
     return (
       <img
-        src={GITHUB_LOGO}
-        alt="GitHub"
-        title="GitHub"
-        style={{ width: 18, height: 18, verticalAlign: 'middle' }}
-      />
-    );
-  }
-  if (provider === 'google') {
-    return (
-      <img
-        src={GOOGLE_LOGO}
-        alt="Google"
-        title="Google"
+        src={logo.src}
+        alt={logo.alt}
+        title={logo.alt}
         style={{ width: 18, height: 18, verticalAlign: 'middle' }}
       />
     );
