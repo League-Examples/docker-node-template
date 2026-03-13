@@ -13,7 +13,7 @@ async function cleanup() {
     const testEmailPattern = `email LIKE '%@example.com' OR email LIKE '%@test.com'`;
 
     // Delete related records first (FK constraints), then test users.
-    await pool.query(`DELETE FROM "Message" WHERE "userId" IN (SELECT id FROM "User" WHERE ${testEmailPattern})`).catch(() => {});
+    await pool.query(`DELETE FROM "Message" WHERE "authorId" IN (SELECT id FROM "User" WHERE ${testEmailPattern})`).catch(() => {});
     await pool.query(`DELETE FROM "UserProvider" WHERE "userId" IN (SELECT id FROM "User" WHERE ${testEmailPattern})`).catch(() => {});
     await pool.query(`DELETE FROM "RoleAssignmentPattern" WHERE pattern LIKE '%@example.com' OR pattern LIKE '%@test.com'`).catch(() => {});
     await pool.query(`DELETE FROM "User" WHERE ${testEmailPattern}`);
@@ -27,11 +27,9 @@ async function cleanup() {
 }
 
 export async function setup() {
-  // Clean leftover test data from previous runs
   await cleanup();
 }
 
 export async function teardown() {
-  // Clean test data created during this run
   await cleanup();
 }

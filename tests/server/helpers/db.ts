@@ -23,8 +23,8 @@ export async function cleanupTestDb(pool: Pool) {
     // Test users always use @example.com or @test.com emails.
     const testEmailPattern = `email LIKE '%@example.com' OR email LIKE '%@test.com'`;
 
-    // Messages reference userId
-    await pool.query(`DELETE FROM "Message" WHERE "userId" IN (SELECT id FROM "User" WHERE ${testEmailPattern})`).catch(() => {});
+    // Messages reference authorId
+    await pool.query(`DELETE FROM "Message" WHERE "authorId" IN (SELECT id FROM "User" WHERE ${testEmailPattern})`).catch(() => {});
     // UserProvider references userId
     await pool.query(`DELETE FROM "UserProvider" WHERE "userId" IN (SELECT id FROM "User" WHERE ${testEmailPattern})`).catch(() => {});
     // RoleAssignmentPattern may reference test patterns
