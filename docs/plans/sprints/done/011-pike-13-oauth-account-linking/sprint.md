@@ -1,7 +1,7 @@
 ---
-id: "011"
-title: "Pike 13 OAuth & Account Linking"
-status: planning
+id: '011'
+title: Pike 13 OAuth & Account Linking
+status: done
 branch: sprint/011-pike-13-oauth-account-linking
 use-cases: []
 ---
