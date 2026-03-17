@@ -195,13 +195,14 @@ to identify tokens without seeing the full value.
 **Sharp over alternatives**: Sharp is the fastest Node.js image processing
 library, backed by libvips. It's a well-maintained standard choice.
 
-## Open Questions
+## Decisions
 
-1. **Image upload size limit**: What should the maximum upload size be?
-   The TODO suggests no specific limit. 10MB is a reasonable default for
-   web image uploads.
-2. **Token expiry duration**: The TODO doesn't specify a default token
-   lifetime. Options: 90 days, 1 year, no expiry (revoke-only).
+1. **Image upload size limit**: 10MB max — reasonable default for web
+   image uploads. Can be changed via environment variable if needed.
+2. **Token expiry duration**: Revoke-only, no automatic expiry. The
+   `expiresAt` field remains in the model for optional per-token expiry,
+   but tokens are created without an expiry by default. Admins revoke
+   tokens manually when needed.
 
 ## Sprint Changes
 
