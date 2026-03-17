@@ -1,9 +1,11 @@
 ---
-id: "002"
-title: "Migrate existing services to throw typed ServiceErrors"
-status: todo
-use-cases: [SUC-001]
-depends-on: ["001"]
+id: '002'
+title: Migrate existing services to throw typed ServiceErrors
+status: done
+use-cases:
+- SUC-001
+depends-on:
+- '001'
 ---
 
 # Migrate existing services to throw typed ServiceErrors
