@@ -1,0 +1,5 @@
+app_name: docker-nodeapp
+app_name_source: package.json name
+container_template: '{app}-{env}-pg'
+database_template: '{app}_{env}'
+notes: []
