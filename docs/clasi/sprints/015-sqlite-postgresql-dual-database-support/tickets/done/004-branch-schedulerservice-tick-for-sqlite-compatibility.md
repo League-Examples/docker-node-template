@@ -1,10 +1,10 @@
 ---
-id: "004"
-title: "Branch SchedulerService tick for SQLite compatibility"
-status: todo
+id: '004'
+title: Branch SchedulerService tick for SQLite compatibility
+status: done
 use-cases: []
 depends-on: []
-github-issue: ""
+github-issue: ''
 ---
 <!-- CLASI: Before changing code or making plans, review the SE process in CLAUDE.md -->
 
