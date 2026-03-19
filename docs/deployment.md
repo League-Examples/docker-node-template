@@ -1,153 +1,97 @@
 # Deployment Guide
 
-> **Agents:** For database management (dev containers, connection strings),
-> use the `rundbat` MCP tools — call `get_environment_config` at the start
-> of a session. Run `rundbat mcp --help` for the full tool reference.
+> **Agents:** Use the `rundbat` MCP tools for all database and deployment
+> environment tasks. Run `rundbat mcp --help` for the full tool reference.
+> Use `dotconfig agent` for secrets and configuration management.
+
+## Overview
+
+This project uses **rundbat** to manage deployment environments (dev, prod,
+staging, etc.) and **dotconfig** to manage secrets and configuration. Rundbat
+handles database provisioning, container lifecycle, and connection strings.
+Dotconfig handles layered `.env` assembly, SOPS-encrypted secrets, and
+per-developer overrides.
+
+Production runs on Docker — the specific orchestrator (Swarm, Compose,
+Kubernetes, etc.) depends on how rundbat is configured for your target
+environment.
 
 ## Architecture
 
-Production runs on Docker Swarm. A single server image contains both the
-Express backend and the built React frontend (served via `express.static`
-in production mode). An external Caddy reverse proxy reads Docker Swarm
-labels for automatic HTTPS and domain routing.
+A single server image contains both the Express backend and the built React
+frontend (served via `express.static` in production mode).
 
 ```
-Internet → Caddy (*.jtlapp.net) → server:3000 → Express (API + static files)
-                                 → db:5432    → PostgreSQL
+Client → Reverse Proxy → server:3000 → Express (API + static files)
+                        → db:5432    → PostgreSQL
 ```
 
 ## Database Management
 
-### Development
+Database environments are managed by **rundbat** via its MCP tools.
 
-Dev databases are managed by **rundbat** via its MCP tools. Rundbat handles
-container lifecycle (create, start, stop), credentials, and connection
-strings through dotconfig.
+**Agents:** Call `get_environment_config` at the start of a session. It
+returns a working connection string and auto-restarts stopped containers.
 
-**Agents:** Use the `get_environment_config` MCP tool to get a working
-connection string. It auto-restarts stopped containers and detects drift.
+Key rundbat MCP tools:
 
-**Humans:**
-```bash
-# rundbat commands (if using CLI directly)
-rundbat mcp   # start the MCP server (configured in .mcp.json)
-```
+| Tool | Purpose |
+|------|---------|
+| `discover_system` | Detect OS, Docker, dotconfig, Node.js |
+| `init_project` | Initialize rundbat for a new project |
+| `create_environment` | Provision a database environment |
+| `get_environment_config` | Get connection string (auto-restarts containers) |
+| `start_database` / `stop_database` | Container lifecycle |
+| `health_check` | Verify database connectivity |
+| `validate_environment` | Full environment validation |
 
-The dev database container follows the naming convention `{app}-{env}-pg`
-and stores credentials in `config/{env}/secrets.env` via dotconfig.
+## Secrets & Configuration
 
-### Production
-
-Production uses a Postgres container in the Docker Swarm stack, configured
-in `docker-compose.yml`. Credentials are managed as Docker Swarm secrets
-(see [Secrets Management](secrets.md)).
-
-## Prerequisites
-
-- Docker context for your prod server configured and reachable
-- SOPS access to decrypt `config/prod/secrets.env`
-- Swarm initialized on the target host (`docker swarm init`)
-
-## First-Time Setup
-
-### 1. Create Swarm Secrets
-
-Secrets must exist in the swarm before the stack can deploy:
+Secrets are managed by **dotconfig**. See [Secrets Management](secrets.md)
+for the project-specific secrets inventory, and run `dotconfig agent` for
+full usage instructions.
 
 ```bash
-npm run secrets:prod
+# Load config for development
+dotconfig load -d dev -l <username>
+
+# Edit and save back
+dotconfig save
 ```
 
-This decrypts `config/prod/secrets.env` via SOPS and creates each key as a
-Docker Swarm secret on the production context. See [Secrets Management](secrets.md)
-for details.
-
-### 2. Deploy
+## Building
 
 ```bash
-npm run deploy
+# Build server + client locally
+npm run build
+
+# Build production Docker image
+npm run build:docker
 ```
 
-The deploy script (`scripts/deploy.sh`) performs pre-flight checks then:
-1. Validates clean working tree, correct branch, version tag on HEAD
-2. Builds the server Docker image with the version tag
-3. Pushes to the container registry
-4. Deploys the stack to Docker Swarm
-5. Runs Prisma migrations via a one-shot service
+## Deploying
 
-### 3. Version Tagging
+Deployment procedures depend on your target environment's rundbat
+configuration. Use the rundbat MCP tools or consult your environment's
+specific setup.
 
-Before deploying, tag the release:
+For migrations after deployment:
 
 ```bash
-npm run version:tag    # creates v0.YYYYMMDD.N tag
-npm run deploy         # deploys the tagged version
+npx prisma migrate deploy
 ```
-
-## Subsequent Deployments
-
-```bash
-npm run version:tag    # tag the release
-npm run deploy         # build, push, deploy, migrate
-```
-
-Docker Swarm performs rolling updates by default — new containers start
-before old ones are drained.
-
-## Caddy Labels
-
-The external Caddy reverse proxy reads labels from the `deploy` block in
-`docker-compose.yml`:
-
-```yaml
-deploy:
-  labels:
-    caddy: ${APP_DOMAIN:-myapp.jtlapp.net}
-    caddy.reverse_proxy: "{{upstreams 3000}}"
-```
-
-`APP_DOMAIN` is set in `.env` and sourced by the deploy script.
-
-## Rollback
-
-To roll back to a previous image, re-deploy with a previous tag:
-
-```bash
-set -a && . .env && set +a
-DOCKER_CONTEXT=$PROD_DOCKER_CONTEXT TAG=<previous-version> docker stack deploy -c docker-compose.yml $APP_NAME
-```
-
-## npm Script Reference
-
-| Script | What It Does |
-|--------|-------------|
-| `npm run version:bump` | Print the next version number (does not tag) |
-| `npm run version:tag` | Create annotated git tag `v0.YYYYMMDD.N` |
-| `npm run deploy` | Pre-flight checks → build → push → deploy → migrate |
-| `npm run secrets:prod` | Create swarm secrets from `config/prod/secrets.env` |
-| `npm run secrets:prod:rm` | Remove existing swarm secrets (needed before updating) |
-| `npm run build:docker` | Build prod image on the dev Docker context |
 
 ## Troubleshooting
 
-**`secret not found: db_password`**
-Swarm secrets haven't been created. Run `npm run secrets:prod` first.
-
-**`image not found`**
-The build step failed or hasn't run. `deploy` builds automatically,
-but check the build output for errors.
-
-**`HEAD is not tagged`**
-Run `npm run version:tag` before deploying.
-
-**Container won't start**
-Check logs: `DOCKER_CONTEXT=<context> docker service logs <app>_server`
-
-**Migration failures**
-Connect to the database and check state:
-`DOCKER_CONTEXT=<context> docker exec -it $(docker ps -q -f name=<app>_db) psql -U app`
-
 **Dev database won't start / port conflict**
 Use `rundbat` MCP tools or check `docker ps` for port conflicts. Each
-project's dev database should use a unique port (configured via `DB_PORT`
-in dotconfig).
+project's dev database should use a unique port (configured via dotconfig).
+
+**Container won't start**
+Check container logs via Docker.
+
+**Migration failures**
+Connect to the database directly and check the migration state.
+
+**Secrets not available**
+Run `dotconfig load -d <env> -l <username>` to regenerate `.env`.
