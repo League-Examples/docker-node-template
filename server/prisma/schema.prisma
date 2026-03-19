@@ -4,7 +4,7 @@ generator client {
 }
 
 datasource db {
-  provider = "postgresql"
+  provider = ["sqlite", "postgresql"]
 }
 
 // Runtime configuration store for admin-managed credentials.
@@ -91,12 +91,11 @@ model ScheduledJob {
   updatedAt DateTime  @updatedAt
 }
 
-// Express session store (connect-pg-simple).
-// Must match the table structure that connect-pg-simple expects.
+// Express session store (PrismaSessionStore).
 model Session {
-  sid    String   @id @db.VarChar(255)
+  sid    String   @id
   sess   Json
-  expire DateTime @db.Timestamptz(6)
+  expire DateTime
 
   @@index([expire])
   @@map("session")

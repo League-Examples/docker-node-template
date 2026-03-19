@@ -1,7 +1,7 @@
 import path from 'path';
 import express from 'express';
 import session from 'express-session';
-import pgSimple from 'connect-pg-simple';
+import { PrismaSessionStore } from './services/prisma-session-store';
 import passport from 'passport';
 import pino from 'pino';
 import pinoHttp from 'pino-http';
@@ -48,7 +48,7 @@ const logger = pino(
 
 app.use(pinoHttp({ logger }));
 
-// Session middleware — PostgreSQL store for persistence across restarts.
+// Session middleware — Prisma-based store works on both SQLite and Postgres.
 // Falls back to MemoryStore in test environment.
 const sessionConfig: session.SessionOptions = {
   secret: process.env.SESSION_SECRET || 'dev-secret-change-me',
@@ -61,12 +61,8 @@ const sessionConfig: session.SessionOptions = {
   },
 };
 
-if (process.env.NODE_ENV !== 'test' && process.env.DATABASE_URL) {
-  const PgStore = pgSimple(session);
-  sessionConfig.store = new PgStore({
-    conString: process.env.DATABASE_URL,
-    // Table created by Prisma migration, not auto-created here.
-  });
+if (process.env.NODE_ENV !== 'test') {
+  sessionConfig.store = new PrismaSessionStore(prisma);
 }
 
 app.use(session(sessionConfig));

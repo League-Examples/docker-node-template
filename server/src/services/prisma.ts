@@ -1,14 +1,21 @@
-// Lazy-initialized Prisma client.
-// Uses dynamic import() to avoid loading the generated ESM client at module
-// evaluation time, which breaks Jest's CJS environment.
+// Lazy-initialized Prisma client with dual-provider support.
+// SQLite: no adapter needed. Postgres: uses @prisma/adapter-pg.
 let _prisma: any;
+
+export function isSqlite(): boolean {
+  return (process.env.DATABASE_URL || '').startsWith('file:');
+}
 
 async function getPrismaClient() {
   if (!_prisma) {
     const { PrismaClient } = await import('../generated/prisma/client');
-    const { PrismaPg } = await import('@prisma/adapter-pg');
-    const adapter = new PrismaPg({ connectionString: process.env.DATABASE_URL });
-    _prisma = new PrismaClient({ adapter });
+    if (isSqlite()) {
+      _prisma = new PrismaClient();
+    } else {
+      const { PrismaPg } = await import('@prisma/adapter-pg');
+      const adapter = new PrismaPg({ connectionString: process.env.DATABASE_URL });
+      _prisma = new PrismaClient({ adapter });
+    }
   }
   return _prisma;
 }

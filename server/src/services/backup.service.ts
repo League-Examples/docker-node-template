@@ -3,6 +3,7 @@ import { promisify } from 'util';
 import fs from 'fs/promises';
 import path from 'path';
 import { S3Client, PutObjectCommand, ListObjectsV2Command, DeleteObjectCommand, GetObjectCommand } from '@aws-sdk/client-s3';
+import { isSqlite } from './prisma';
 
 const execFileAsync = promisify(execFile);
 
@@ -16,6 +17,13 @@ function internalDbUrl(url: string): string {
   } catch {
     return url;
   }
+}
+
+/** Resolve the SQLite database file path from DATABASE_URL. */
+function sqliteDbPath(): string {
+  const url = process.env.DATABASE_URL || '';
+  // file:./data/dev.db → ./data/dev.db
+  return url.replace(/^file:/, '');
 }
 
 /** Build an S3 client for DigitalOcean Spaces, or null if not configured. */
@@ -64,13 +72,13 @@ export class BackupService {
     return !!(this.s3 && this.bucket);
   }
 
-  private async uploadToS3(filename: string, body: string): Promise<void> {
+  private async uploadToS3(filename: string, body: string | Buffer): Promise<void> {
     if (!this.s3Configured) return;
     await this.s3!.send(new PutObjectCommand({
       Bucket: this.bucket,
       Key: `${this.s3Prefix}${filename}`,
       Body: body,
-      ContentType: 'application/sql',
+      ContentType: filename.endsWith('.db') ? 'application/x-sqlite3' : 'application/sql',
     }));
   }
 
@@ -85,6 +93,36 @@ export class BackupService {
   async createBackup(): Promise<{ filename: string; timestamp: string; size: number; s3: boolean }> {
     await this.ensureDir();
     const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
+
+    if (isSqlite()) {
+      return this.createSqliteBackup(timestamp);
+    }
+    return this.createPostgresBackup(timestamp);
+  }
+
+  private async createSqliteBackup(timestamp: string): Promise<{ filename: string; timestamp: string; size: number; s3: boolean }> {
+    const filename = `backup-${timestamp}.db`;
+    const filepath = path.join(this.backupDir, filename);
+    const dbPath = sqliteDbPath();
+
+    await fs.copyFile(dbPath, filepath);
+    const stats = await fs.stat(filepath);
+
+    let s3Ok = false;
+    if (this.s3Configured) {
+      try {
+        const body = await fs.readFile(filepath);
+        await this.uploadToS3(filename, body);
+        s3Ok = true;
+      } catch (err) {
+        console.error('S3 upload failed:', err);
+      }
+    }
+
+    return { filename, timestamp: new Date().toISOString(), size: stats.size, s3: s3Ok };
+  }
+
+  private async createPostgresBackup(timestamp: string): Promise<{ filename: string; timestamp: string; size: number; s3: boolean }> {
     const filename = `backup-${timestamp}.sql`;
     const filepath = path.join(this.backupDir, filename);
 
@@ -96,7 +134,6 @@ export class BackupService {
     await fs.writeFile(filepath, stdout);
     const stats = await fs.stat(filepath);
 
-    // Also upload to S3
     let s3Ok = false;
     if (this.s3Configured) {
       try {
@@ -113,10 +150,10 @@ export class BackupService {
   async listBackups(): Promise<Array<{ filename: string; size: number; created: string; s3: boolean }>> {
     await this.ensureDir();
 
-    // Local backups
+    // Local backups (both .sql and .db files)
     const localFiles = await fs.readdir(this.backupDir);
     const backupMap = new Map<string, { filename: string; size: number; created: string; s3: boolean }>();
-    for (const file of localFiles.filter(f => f.endsWith('.sql'))) {
+    for (const file of localFiles.filter(f => f.endsWith('.sql') || f.endsWith('.db'))) {
       const stats = await fs.stat(path.join(this.backupDir, file));
       backupMap.set(file, { filename: file, size: stats.size, created: stats.birthtime.toISOString(), s3: false });
     }
@@ -131,7 +168,7 @@ export class BackupService {
         for (const obj of resp.Contents || []) {
           const key = obj.Key || '';
           const fname = key.replace(this.s3Prefix, '');
-          if (!fname || !fname.endsWith('.sql')) continue;
+          if (!fname || (!fname.endsWith('.sql') && !fname.endsWith('.db'))) continue;
           if (backupMap.has(fname)) {
             backupMap.get(fname)!.s3 = true;
           } else {
@@ -155,19 +192,30 @@ export class BackupService {
     this.validateFilename(filename);
     const filepath = path.join(this.backupDir, filename);
 
+    if (filename.endsWith('.db')) {
+      return this.restoreSqliteBackup(filepath);
+    }
+    return this.restorePostgresBackup(filename, filepath);
+  }
+
+  private async restoreSqliteBackup(filepath: string): Promise<{ success: boolean }> {
+    const dbPath = sqliteDbPath();
+    await fs.copyFile(filepath, dbPath);
+    return { success: true };
+  }
+
+  private async restorePostgresBackup(filename: string, filepath: string): Promise<{ success: boolean }> {
     let sql: string;
     try {
       await fs.access(filepath);
       sql = await fs.readFile(filepath, 'utf-8');
     } catch {
-      // Try downloading from S3 if not available locally
       if (!this.s3Configured) throw new Error('Backup not found locally and S3 not configured');
       const resp = await this.s3!.send(new GetObjectCommand({
         Bucket: this.bucket,
         Key: `${this.s3Prefix}${filename}`,
       }));
       sql = await resp.Body!.transformToString();
-      // Cache locally
       await this.ensureDir();
       await fs.writeFile(filepath, sql);
     }
@@ -182,7 +230,6 @@ export class BackupService {
   async deleteBackup(filename: string): Promise<void> {
     this.validateFilename(filename);
 
-    // Delete local
     const filepath = path.join(this.backupDir, filename);
     try {
       await fs.unlink(filepath);
@@ -190,7 +237,6 @@ export class BackupService {
       if (err.code !== 'ENOENT') throw err;
     }
 
-    // Delete from S3
     if (this.s3Configured) {
       try {
         await this.deleteFromS3(filename);

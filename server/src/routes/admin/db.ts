@@ -1,41 +1,13 @@
 import { Router } from 'express';
+import { createIntrospector } from '../../services/db-introspector';
 
 export const adminDbRouter = Router();
 
-interface TableInfo {
-  table_name: string;
-}
-
-interface ColumnInfo {
-  column_name: string;
-  data_type: string;
-  is_nullable: string;
-}
-
 adminDbRouter.get('/db/tables', async (req, res, next) => {
   try {
-    const prisma = req.services.prisma;
-    const tables = await prisma.$queryRaw<TableInfo[]>`
-      SELECT table_name
-      FROM information_schema.tables
-      WHERE table_schema = 'public'
-        AND table_type = 'BASE TABLE'
-      ORDER BY table_name
-    `;
-
-    const result = await Promise.all(
-      tables.map(async (t: TableInfo) => {
-        const countResult = await prisma.$queryRawUnsafe(
-          `SELECT count(*) FROM "${t.table_name}"`
-        ) as [{ count: bigint }];
-        return {
-          name: t.table_name,
-          rowCount: Number(countResult[0].count),
-        };
-      })
-    );
-
-    res.json(result);
+    const introspector = createIntrospector(req.services.prisma);
+    const tables = await introspector.listTables();
+    res.json(tables);
   } catch (err) {
     next(err);
   }
@@ -43,55 +15,18 @@ adminDbRouter.get('/db/tables', async (req, res, next) => {
 
 adminDbRouter.get('/db/tables/:name', async (req, res, next) => {
   try {
-    const prisma = req.services.prisma;
     const { name } = req.params;
     const page = Math.max(1, parseInt(req.query.page as string) || 1);
     const limit = Math.min(200, Math.max(1, parseInt(req.query.limit as string) || 50));
-    const offset = (page - 1) * limit;
 
-    // Validate table name exists (SQL injection prevention)
-    const validTables = await prisma.$queryRaw<TableInfo[]>`
-      SELECT table_name
-      FROM information_schema.tables
-      WHERE table_schema = 'public'
-        AND table_type = 'BASE TABLE'
-        AND table_name = ${name}
-    `;
+    const introspector = createIntrospector(req.services.prisma);
+    const detail = await introspector.getTableDetail(name, page, limit);
 
-    if (validTables.length === 0) {
+    if (!detail) {
       return res.status(404).json({ error: `Table '${name}' not found` });
     }
 
-    // Get column metadata
-    const columns = await prisma.$queryRaw<ColumnInfo[]>`
-      SELECT column_name, data_type, is_nullable
-      FROM information_schema.columns
-      WHERE table_schema = 'public' AND table_name = ${name}
-      ORDER BY ordinal_position
-    `;
-
-    // Get total row count
-    const countResult = await prisma.$queryRawUnsafe(
-      `SELECT count(*) FROM "${name}"`
-    ) as [{ count: bigint }];
-    const total = Number(countResult[0].count);
-
-    // Get rows
-    const rows = await prisma.$queryRawUnsafe(
-      `SELECT * FROM "${name}" ORDER BY 1 LIMIT ${limit} OFFSET ${offset}`
-    );
-
-    res.json({
-      columns: columns.map((c: ColumnInfo) => ({
-        name: c.column_name,
-        type: c.data_type,
-        nullable: c.is_nullable === 'YES',
-      })),
-      rows,
-      total,
-      page,
-      limit,
-    });
+    res.json(detail);
   } catch (err) {
     next(err);
   }

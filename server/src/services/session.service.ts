@@ -7,12 +7,6 @@ export interface SessionListItem {
   createdAt: Date | null;
 }
 
-interface SessionRow {
-  sid: string;
-  sess: Record<string, unknown>;
-  expire: Date;
-}
-
 export class SessionService {
   private prisma: any;
 
@@ -21,12 +15,10 @@ export class SessionService {
   }
 
   async list(): Promise<SessionListItem[]> {
-    const sessions = await this.prisma.$queryRaw<SessionRow[]>`
-      SELECT sid, sess, expire
-      FROM session
-      WHERE expire > NOW()
-      ORDER BY expire DESC
-    `;
+    const sessions = await this.prisma.session.findMany({
+      where: { expire: { gt: new Date() } },
+      orderBy: { expire: 'desc' },
+    });
 
     const items: SessionListItem[] = [];
 
@@ -79,16 +71,15 @@ export class SessionService {
   }
 
   async count(): Promise<number> {
-    const result = await this.prisma.$queryRaw<{ count: bigint }[]>`
-      SELECT COUNT(*) as count FROM session WHERE expire > NOW()
-    `;
-    return Number(result[0].count);
+    return this.prisma.session.count({
+      where: { expire: { gt: new Date() } },
+    });
   }
 
   async deleteExpired(): Promise<number> {
-    const result = await this.prisma.$executeRaw`
-      DELETE FROM session WHERE expire < NOW()
-    `;
-    return result;
+    const result = await this.prisma.session.deleteMany({
+      where: { expire: { lt: new Date() } },
+    });
+    return result.count;
   }
 }

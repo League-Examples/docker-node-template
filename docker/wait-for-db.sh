@@ -1,7 +1,13 @@
 #!/bin/sh
-# Wait for Postgres to be ready and accepting connections.
+# Wait for the database to be ready and accepting connections.
 # Usage: ./docker/wait-for-db.sh [timeout_seconds]
-# Requires: DATABASE_URL env var, pg package in server/node_modules
+# For SQLite: exits immediately (no server to wait for).
+# For Postgres: requires DATABASE_URL env var, pg package in server/node_modules.
+
+# SQLite databases are file-based — no server to wait for
+case "${DATABASE_URL:-}" in
+  file:*) echo "SQLite database — no wait needed."; exit 0 ;;
+esac
 
 TIMEOUT="${1:-60}"
 ELAPSED=0
