@@ -1,10 +1,10 @@
 ---
-id: "005"
-title: "Create DbIntrospector and update admin DB viewer"
-status: todo
+id: '005'
+title: Create DbIntrospector and update admin DB viewer
+status: done
 use-cases: []
 depends-on: []
-github-issue: ""
+github-issue: ''
 ---
 <!-- CLASI: Before changing code or making plans, review the SE process in CLAUDE.md -->
 
