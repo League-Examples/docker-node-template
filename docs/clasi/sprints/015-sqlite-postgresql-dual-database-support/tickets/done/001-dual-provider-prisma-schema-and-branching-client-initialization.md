@@ -1,10 +1,10 @@
 ---
-id: "001"
-title: "Dual-provider Prisma schema and branching client initialization"
-status: todo
+id: '001'
+title: Dual-provider Prisma schema and branching client initialization
+status: done
 use-cases: []
 depends-on: []
-github-issue: ""
+github-issue: ''
 ---
 <!-- CLASI: Before changing code or making plans, review the SE process in CLAUDE.md -->
 
