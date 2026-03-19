@@ -144,7 +144,7 @@ Work happens at two levels: **project initiation** and **sprints**.
 
 **Sprint lifecycle** (repeated per sprint):
 
-1. **Mine TODOs** — Scan `docs/plans/todo/` with `list_todos()` for
+1. **Mine TODOs** — Scan `docs/clasi/todo/` with `list_todos()` for
    ideas relevant to the sprint. Discuss with the stakeholder.
 2. **Create sprint** — `create_sprint(title)` sets up the directory and
    registers the sprint. Create the branch: `git checkout -b sprint/NNN-slug`.
@@ -205,7 +205,7 @@ When the stakeholder corrects your behavior or expresses frustration
 
 1. Acknowledge the correction immediately.
 2. Run `get_skill_definition("self-reflect")` to produce a structured
-   reflection in `docs/plans/reflections/`.
+   reflection in `docs/clasi/reflections/`.
 3. Continue with the corrected approach.
 
 Do NOT trigger on simple clarifications, new instructions, or questions
