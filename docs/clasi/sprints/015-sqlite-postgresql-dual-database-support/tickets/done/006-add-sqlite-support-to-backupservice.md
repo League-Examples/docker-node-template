@@ -1,10 +1,10 @@
 ---
-id: "006"
-title: "Add SQLite support to BackupService"
-status: todo
+id: '006'
+title: Add SQLite support to BackupService
+status: done
 use-cases: []
 depends-on: []
-github-issue: ""
+github-issue: ''
 ---
 <!-- CLASI: Before changing code or making plans, review the SE process in CLAUDE.md -->
 
