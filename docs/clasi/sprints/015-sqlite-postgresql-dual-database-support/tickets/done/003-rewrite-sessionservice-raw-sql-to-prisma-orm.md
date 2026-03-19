@@ -1,10 +1,10 @@
 ---
-id: "003"
-title: "Rewrite SessionService raw SQL to Prisma ORM"
-status: todo
+id: '003'
+title: Rewrite SessionService raw SQL to Prisma ORM
+status: done
 use-cases: []
 depends-on: []
-github-issue: ""
+github-issue: ''
 ---
 <!-- CLASI: Before changing code or making plans, review the SE process in CLAUDE.md -->
 
