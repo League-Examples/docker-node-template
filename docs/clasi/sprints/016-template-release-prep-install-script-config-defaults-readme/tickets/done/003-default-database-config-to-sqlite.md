@@ -1,11 +1,13 @@
 ---
-id: "003"
-title: "Default database config to SQLite"
-status: todo
-use-cases: ["SUC-001", "SUC-002"]
+id: '003'
+title: Default database config to SQLite
+status: done
+use-cases:
+- SUC-001
+- SUC-002
 depends-on: []
-github-issue: ""
-todo: "sqlite-default-config"
+github-issue: ''
+todo: sqlite-default-config
 ---
 
 # Default database config to SQLite

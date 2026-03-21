@@ -1,7 +1,11 @@
 ---
-title: "Default Database Config to SQLite"
+title: Default Database Config to SQLite
 type: todo
 priority: high
+status: done
+sprint: '016'
+tickets:
+- '003'
 ---
 
 # Default Database Config to SQLite
