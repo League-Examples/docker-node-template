@@ -104,38 +104,44 @@ else
 fi
 
 # ---------------------------------------------------------------------------
-# 4. CLASI Software Engineering Process
+# 4. Python Tools (CLASI, dotconfig, rundbat)
 # ---------------------------------------------------------------------------
-header "CLASI SE Process"
+header "Python Tools"
 
-CLASI_REPO="git+https://github.com/ericbusboom/claude-agent-skills.git"
-
-if command -v clasi &>/dev/null; then
-  success "clasi already installed"
-else
-  if ! command -v pipx &>/dev/null; then
-    warn "${BOLD}pipx${RESET} is not installed"
-    detail "CLASI requires pipx. Install it first:"
-    echo ""
-    bullet "macOS:   ${CYAN}brew install pipx && pipx ensurepath${RESET}"
-    bullet "Linux:   ${CYAN}python3 -m pip install --user pipx && pipx ensurepath${RESET}"
-    bullet "Windows: ${CYAN}pip install pipx && pipx ensurepath${RESET}"
-    echo ""
-    detail "Then re-run this script to install CLASI."
+# Helper: install or upgrade a pipx package
+# Usage: pipx_install <command> <package_or_url> <display_name>
+pipx_install() {
+  local cmd="$1" pkg="$2" name="$3"
+  if command -v "$cmd" &>/dev/null; then
+    success "$name already installed"
   else
-    info "Installing CLASI via pipx..."
-    if pipx install "$CLASI_REPO" 2>/dev/null; then
-      success "CLASI installed"
+    info "Installing $name via pipx..."
+    if pipx install "$pkg" 2>/dev/null; then
+      success "$name installed"
     else
-      # pipx install fails if already installed but not on PATH; try upgrade
-      if pipx upgrade claude-agent-skills 2>/dev/null; then
-        success "CLASI upgraded"
+      if pipx upgrade "$pkg" 2>/dev/null; then
+        success "$name upgraded"
       else
-        err "Failed to install CLASI"
-        detail "Try manually: pipx install $CLASI_REPO"
+        err "Failed to install $name"
+        detail "Try manually: pipx install $pkg"
       fi
     fi
   fi
+}
+
+if ! command -v pipx &>/dev/null; then
+  warn "${BOLD}pipx${RESET} is not installed"
+  detail "Python tools require pipx. Install it first:"
+  echo ""
+  bullet "macOS:   ${CYAN}brew install pipx && pipx ensurepath${RESET}"
+  bullet "Linux:   ${CYAN}python3 -m pip install --user pipx && pipx ensurepath${RESET}"
+  bullet "Windows: ${CYAN}pip install pipx && pipx ensurepath${RESET}"
+  echo ""
+  detail "Then re-run this script."
+else
+  pipx_install clasi     "git+https://github.com/ericbusboom/claude-agent-skills.git" "CLASI"
+  pipx_install dotconfig "git+https://github.com/ericbusboom/dotconfig.git"           "dotconfig"
+  pipx_install rundbat   "git+https://github.com/ericbusboom/rundbat.git"             "rundbat"
 fi
 
 # Run clasi init to create a fresh project database
