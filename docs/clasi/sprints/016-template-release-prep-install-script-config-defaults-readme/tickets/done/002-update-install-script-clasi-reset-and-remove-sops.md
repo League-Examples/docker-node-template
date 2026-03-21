@@ -1,11 +1,13 @@
 ---
-id: "002"
-title: "Update install script — CLASI reset and remove SOPS"
-status: todo
-use-cases: ["SUC-001"]
-depends-on: ["001"]
-github-issue: ""
-todo: "install-script-clasi-reset"
+id: '002'
+title: "Update install script \u2014 CLASI reset and remove SOPS"
+status: done
+use-cases:
+- SUC-001
+depends-on:
+- '001'
+github-issue: ''
+todo: install-script-clasi-reset
 ---
 
 # Update install script — CLASI reset and remove SOPS

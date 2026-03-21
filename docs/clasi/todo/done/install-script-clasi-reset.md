@@ -1,7 +1,11 @@
 ---
-title: "Install Script: CLASI Reset for New Projects"
+title: 'Install Script: CLASI Reset for New Projects'
 type: todo
 priority: high
+status: done
+sprint: '016'
+tickets:
+- '002'
 ---
 
 # Install Script: CLASI Reset for New Projects
