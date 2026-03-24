@@ -80,27 +80,56 @@ else
 fi
 
 # ---------------------------------------------------------------------------
-# 3. Reset CLASI project (clear template development history)
+# 3. Remove CLASI directory (not needed for application development)
 # ---------------------------------------------------------------------------
 header "Project Initialization"
 
 CLASI_DIR="docs/clasi"
 
-if [ -d "$CLASI_DIR/sprints/done" ] && [ "$(ls -A "$CLASI_DIR/sprints/done" 2>/dev/null)" ]; then
-  info "Clearing template development history..."
+if [ -d "$CLASI_DIR" ]; then
+  echo ""
+  echo "  The ${BOLD}docs/clasi/${RESET} directory contains the SE process used to"
+  echo "  develop this template. If you're building an application ${BOLD}using${RESET}"
+  echo "  this template, you should delete it — it's not part of your app."
+  echo ""
+  echo "  Only keep it if you're contributing to the template itself."
+  echo ""
+  echo "  ${CYAN}1${RESET}) ${BOLD}Delete${RESET} docs/clasi/ ${DIM}(recommended for app development)${RESET}"
+  echo "  ${CYAN}2${RESET}) Keep docs/clasi/ ${DIM}(template development only)${RESET}"
+  echo ""
 
-  # Remove completed sprints, TODOs, reflections, architecture snapshots
-  rm -rf "$CLASI_DIR/sprints/done"/*
-  rm -rf "$CLASI_DIR/todo/done"/*
-  rm -rf "$CLASI_DIR/todo/for-later"/*
-  rm -f  "$CLASI_DIR/todo"/*.md
-  rm -rf "$CLASI_DIR/reflections"/*
-  rm -rf "$CLASI_DIR/architecture/done"/*
-  rm -f  "$CLASI_DIR/.clasi.db"
-
-  success "Template history cleared"
+  while true; do
+    read -rp "  ${BOLD}Choose [1/2] (default: 1):${RESET} " clasi_choice
+    clasi_choice="${clasi_choice:-1}"
+    case "$clasi_choice" in
+      1)
+        rm -rf "$CLASI_DIR"
+        success "Removed docs/clasi/"
+        break
+        ;;
+      2)
+        info "Keeping docs/clasi/"
+        # Still clear template development history
+        if [ -d "$CLASI_DIR/sprints/done" ] && [ "$(ls -A "$CLASI_DIR/sprints/done" 2>/dev/null)" ]; then
+          info "Clearing template development history..."
+          rm -rf "$CLASI_DIR/sprints/done"/*
+          rm -rf "$CLASI_DIR/todo/done"/*
+          rm -rf "$CLASI_DIR/todo/for-later"/*
+          rm -f  "$CLASI_DIR/todo"/*.md
+          rm -rf "$CLASI_DIR/reflections"/*
+          rm -rf "$CLASI_DIR/architecture/done"/*
+          rm -f  "$CLASI_DIR/.clasi.db"
+          success "Template history cleared"
+        fi
+        break
+        ;;
+      *)
+        err "Please enter 1 or 2."
+        ;;
+    esac
+  done
 else
-  success "Project already clean"
+  success "docs/clasi/ not present"
 fi
 
 # ---------------------------------------------------------------------------
@@ -230,3 +259,4 @@ echo "${GREEN}${BOLD}└──────────────────�
 echo ""
 echo "  Next step: ${CYAN}npm run dev${RESET}"
 echo ""
+                                
