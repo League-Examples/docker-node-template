@@ -1,7 +1,7 @@
 ---
-id: "016"
-title: "Template Release Prep — Install Script, Config Defaults, README"
-status: planning
+id: '016'
+title: "Template Release Prep \u2014 Install Script, Config Defaults, README"
+status: done
 branch: sprint/016-template-release-prep-install-script-config-defaults-readme
 use-cases: []
 ---
