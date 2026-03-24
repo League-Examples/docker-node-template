@@ -24,42 +24,23 @@ strings, use the `rundbat` MCP tools (available via `.mcp.json`).
 The docs below provide project-specific context but **must not conflict**
 with the tool instructions above — if they do, the tool instructions win.
 
-## Key Documentation
+## Documentation
 
-Refer to these docs for project-specific context. For procedures
-involving secrets or database management, also consult the external tool
-instructions listed above.
+Human-facing docs live in `docs/`. Consult them for reference:
 
-| Guide | When to consult |
-|-------|-----------------|
-| [docs/setup.md](docs/setup.md) | First-time checkout, running the install script, starting the dev server, running tests |
-| [docs/template-spec.md](docs/template-spec.md) | Technology decisions, project structure, backend/frontend/database conventions, Docker architecture |
-| [docs/deployment.md](docs/deployment.md) | Production builds, Swarm deployment, rolling updates, rollback |
-| [docs/secrets.md](docs/secrets.md) | Project-specific secrets inventory and onboarding (procedures defer to `dotconfig agent`) |
-| [docs/api-integrations.md](docs/api-integrations.md) | GitHub OAuth, Google OAuth, Pike 13 API — setup, endpoints, callback URLs |
-| [docs/testing.md](docs/testing.md) | Test strategy, auth bypass for tests, server/client/E2E conventions, agent test guidelines |
+- [docs/setup.md](docs/setup.md) — First-time checkout, install script, dev server
+- [docs/template-spec.md](docs/template-spec.md) — Technology decisions, project structure, conventions
+- [docs/deployment.md](docs/deployment.md) — Production builds, deployment
+- [docs/secrets.md](docs/secrets.md) — Secrets inventory and onboarding
+- [docs/api-integrations.md](docs/api-integrations.md) — GitHub, Google, Pike 13 OAuth setup
+- [docs/testing.md](docs/testing.md) — Full test strategy and patterns
 
-## MANDATORY: Testing Requirements
+Agent behavioral rules are in `.claude/rules/` (auto-loaded):
 
-**Read [docs/testing.md](docs/testing.md) before writing any tests.**
-
-Key rules that agents must follow:
-
-1. **Test-login endpoint.** The server exposes `POST /api/auth/test-login`
-   (test/dev environment only) to bypass OAuth. Use this — never mock
-   session middleware or fabricate cookies.
-2. **Supertest agents.** Use `request.agent(app)` to maintain session
-   cookies across requests within a test suite.
-3. **Assert the database.** When a route modifies data, assert both the
-   HTTP response AND the database state via Prisma queries.
-4. **Layer separation.** Server tests go in `tests/server/`, client tests
-   in `tests/client/`, E2E in `tests/e2e/`. Never co-locate tests with
-   source code.
-5. **Every new route gets tests.** No API route ships without at least a
-   happy-path test and an auth/error test.
-6. **Run before closing.** `npm run test:server` after backend changes,
-   `npm run test:client` after frontend changes. All must pass before a
-   ticket is marked done.
+- `testing.md` — Test authentication, assertions, layer separation, SQLite
+- `architecture.md` — Service layer, API conventions, database philosophy, dual DB support
+- `secrets.md` — Secrets handling, security rules, config structure
+- `rundbat.md` — Database and deployment MCP tools
 
 <!-- CLASI:START -->
 ## CLASI Software Engineering Process
