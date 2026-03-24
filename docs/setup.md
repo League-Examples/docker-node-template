@@ -1,24 +1,18 @@
 # Developer Setup
 
 This guide covers everything needed to go from a fresh checkout to a running
-development server, plus tests and common tasks. Codespaces-specific notes are
-called out inline where the defaults differ.
+development server.
 
 ---
 
 ## Prerequisites
 
 - **Node.js 20** (LTS)
-- **Docker** with a local daemon (e.g., OrbStack, Docker Desktop, or the
-  daemon built into GitHub Codespaces)
-- **SOPS** + **age** — only required for the standard secrets workflow;
-  see [Option B](#option-b--create-manually-codespaces--no-sops) if you
-  don't have them yet
-  ```bash
-  brew install sops age   # macOS
-  ```
-- An age keypair — see [Secrets Management](secrets.md) for setup
-- **pipx** — required to install the CLASI SE process tooling
+- **Docker** — optional. The app defaults to SQLite for development. Docker
+  is only needed if you want to use PostgreSQL.
+  Install via [OrbStack](https://orbstack.dev/) (macOS) or
+  [Docker Desktop](https://docs.docker.com/get-docker/).
+- **pipx** — required to install Python tools (CLASI, dotconfig, rundbat)
   ```bash
   brew install pipx && pipx ensurepath   # macOS
   ```
@@ -27,109 +21,79 @@ called out inline where the defaults differ.
 
 ## 1. Run the Install Script
 
-The install script handles all first-time setup in one step:
-
 ```bash
 ./scripts/install.sh
 ```
 
-It performs the following, in order:
+The script performs the following, in order:
 
 1. **npm dependencies** — installs packages for root, server, and client
 2. **Docker context detection** — finds your local Docker daemon (OrbStack,
-   Docker Desktop, or default)
-3. **SOPS + age** — locates or generates an age keypair, adds your public
-   key to `.sops.yaml`
-4. **CLASI SE process** — installs the CLASI tooling via `pipx` and runs
-   `clasi init` to configure the MCP server
-5. **`.env` generation** — creates `.env` from `.env.template`, fills in
-   detected values, and appends decrypted application secrets
+   Docker Desktop, or default). Skips gracefully if Docker is not installed.
+3. **Project initialization** — asks whether to delete `docs/clasi/` (the
+   template's SE process directory). Delete it unless you're contributing
+   to the template itself.
+4. **Python tools** — installs CLASI, dotconfig, and rundbat via pipx
+   (if pipx is available), then runs `clasi init`
+5. **`.env` generation** — assembles `.env` from `config/dev/public.env`
+   and appends secrets via dotconfig (or placeholders if dotconfig is not
+   installed)
 
-Re-running the script is safe — it detects existing state and skips steps
-that are already done. If `.env` already exists, it asks whether to
-overwrite or keep it.
+Re-running the script is safe — if `.env` already exists, it asks whether
+to overwrite or keep it.
 
 ---
 
 ## 2. Review `.env`
 
-The install script generates `.env` from `.env.template`. It contains Docker
-context configuration, SOPS/age key settings, and decrypted application
-secrets — all in one file sourced by every npm script.
+The install script generates `.env` from `config/dev/public.env` plus
+Docker context settings and (optionally) decrypted secrets via dotconfig.
 
-To change your Docker context later, edit `.env` directly or delete it and
-re-run `./scripts/install.sh`.
+Key defaults:
 
-> **Codespaces:** The only available Docker context is `default`.
+| Variable | Default | Notes |
+|----------|---------|-------|
+| `DATABASE_URL` | `file:./data/dev.db` | SQLite — works without Docker |
+| `DEV_DOCKER_CONTEXT` | auto-detected | OrbStack, Docker Desktop, or default |
 
-If the install script couldn't decrypt secrets (new key, not yet authorised),
-add them manually:
+To use PostgreSQL instead, change `DATABASE_URL` to a `postgresql://` URL
+and start a Postgres container (see [Deployment Guide](deployment.md)).
 
-```bash
-echo "SESSION_SECRET=dev-session-secret-change-me" >> .env
-echo "DATABASE_URL=postgresql://app:devpassword@localhost:${DB_PORT:-5433}/app" >> .env
-```
-
-See [Secrets Management](secrets.md) for key setup and onboarding.
-
-> **Codespaces:** The devcontainer sets `DB_PORT=5432`, which causes Docker
-> Compose to map Postgres to host port **5432** instead of the default 5433.
-> The command above reads `$DB_PORT` automatically, so the right port is used.
-
-To confirm which port Postgres is bound to after starting:
-
-```bash
-docker ps
-# e.g. "0.0.0.0:5432->5432/tcp" or "0.0.0.0:5433->5432/tcp"
-```
+If the install script couldn't load secrets (dotconfig not installed or
+no key access), add them manually to `.env`. See
+`config/dev/secrets.env.example` for the required variables, and
+[Secrets Management](secrets.md) for key setup.
 
 ---
 
 ## 3. Start Development
 
-There are two development modes.
-
-### Local Native (recommended)
-
-Database runs in Docker; server and client run natively with hot-reload:
-
 ```bash
 npm run dev
 ```
 
-`concurrently` starts three services in parallel:
+This runs `scripts/dev.sh`, which detects the database mode from
+`DATABASE_URL`:
 
-| Label      | What it does |
-|------------|--------------|
-| `[db]`     | Starts `postgres:16-alpine` via `docker-compose.dev.yml` |
-| `[server]` | Waits for Postgres, runs Prisma migrations, starts Express with hot-reload |
+**SQLite mode** (default — no Docker needed):
+
+| Label | What it does |
+|-------|--------------|
+| `[server]` | Pushes SQLite schema, starts Express with hot-reload |
 | `[client]` | Waits for the API health check, then starts Vite |
 
-| Service  | URL | Hot-reload |
-|----------|-----|------------|
+**PostgreSQL mode** (when `DATABASE_URL` is a `postgresql://` URL):
+
+| Label | What it does |
+|-------|--------------|
+| `[db]` | Starts `postgres:16-alpine` via `docker-compose.dev.yml` |
+| `[server]` | Waits for Postgres, runs Prisma migrations, starts Express |
+| `[client]` | Waits for the API health check, then starts Vite |
+
+| Service | URL | Hot-reload |
+|---------|-----|------------|
 | Frontend | http://localhost:5173 | Yes (Vite HMR) |
-| Backend  | http://localhost:3000/api | Yes (tsx watch) |
-| Database | localhost:5433 (or 5432 in Codespaces) | N/A |
-
-### Docker Development
-
-All three services run in Docker:
-
-```bash
-npm run dev:docker
-```
-
-| Service  | URL | Hot-reload |
-|----------|-----|------------|
-| Frontend | http://localhost:5173 | Rebuild required |
-| Backend  | http://localhost:3000/api | Rebuild required |
-| Database | Internal (port 5432) | N/A |
-
-Stop with:
-
-```bash
-npm run dev:docker:down
-```
+| Backend | http://localhost:3000/api | Yes (tsx watch) |
 
 ---
 
@@ -147,11 +111,11 @@ Opening http://localhost:5173 in a browser should show the React app.
 ## 5. Run Tests
 
 ```bash
-npm run test:db       # Database layer (Jest + Prisma)
-npm run test:server   # Backend API (Jest + Supertest)
+npm run test:server   # Backend API (Vitest + Supertest)
 npm run test:client   # Frontend components (Vitest + RTL)
-npm run test:e2e      # End-to-end (Playwright, requires running containers)
 ```
+
+Tests default to SQLite. No Docker or external database required.
 
 ---
 
@@ -159,10 +123,9 @@ npm run test:e2e      # End-to-end (Playwright, requires running containers)
 
 | Task | Command |
 |------|---------|
-| Run Prisma migrations (local) | `cd server && npx prisma migrate dev` |
-| Run Prisma migrations (Docker dev) | `npm run dev:docker:migrate` |
+| Run Prisma migrations (PostgreSQL) | `cd server && npx prisma migrate dev` |
+| Push schema to SQLite | `cd server && ./prisma/sqlite-push.sh` |
 | Open Prisma Studio | `cd server && npx prisma studio` |
-| Build for production | `npm run build:docker` |
 | Deploy to production | See [Deployment Guide](deployment.md) |
 
 ---
@@ -172,19 +135,15 @@ npm run test:e2e      # End-to-end (Playwright, requires running containers)
 **`concurrently: not found`**
 The root `npm install` was skipped. Run `npm install` from the project root.
 
-**`Waiting for database...` hangs or times out**
-Either the Docker daemon isn't running, the Docker context in `.env`
-is wrong, or the `DATABASE_URL` port in `.env` doesn't match the port Docker
-actually bound. Check `docker ps` to confirm the port.
-
-**`pg` module not found during DB wait**
-Server dependencies aren't installed. Run `cd server && npm install`.
-
-**Prisma migration errors on first run**
-`_prisma_migrations` not found is normal on a brand-new database — Prisma
-creates it automatically during `migrate dev`. Any other error usually means
-`DATABASE_URL` points to the wrong host or port.
-
 **Vite starts but the app can't reach the API**
 Check that the Vite proxy target in `client/vite.config.ts` matches the
 port the server is running on (default `http://localhost:3000`).
+
+**SQLite "database is locked" errors**
+Only one process can write to SQLite at a time. Make sure you don't have
+multiple dev servers running against the same `.db` file.
+
+**Prisma schema mismatch**
+If you switch between SQLite and PostgreSQL, regenerate the Prisma client:
+- SQLite: `cd server && ./prisma/sqlite-push.sh`
+- PostgreSQL: `cd server && npx prisma generate && npx prisma migrate dev`
