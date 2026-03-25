@@ -89,14 +89,15 @@ CLASI_DIR="docs/clasi"
 
 if [ -d "$CLASI_DIR" ]; then
   echo ""
-  echo "  The ${BOLD}docs/clasi/${RESET} directory contains the SE process used to"
-  echo "  develop this template. If you're building an application ${BOLD}using${RESET}"
-  echo "  this template, you should delete it — it's not part of your app."
+  echo "  The ${BOLD}docs/clasi/${RESET} directory contains the CLASI SE process — sprint"
+  echo "  history, architecture docs, TODOs, and the project database. Right now"
+  echo "  it holds the template's own development history."
   echo ""
-  echo "  Only keep it if you're contributing to the template itself."
+  echo "  If you're building a new app from this template, reset it to start"
+  echo "  fresh. If you're developing the template itself, keep it as-is."
   echo ""
-  echo "  ${CYAN}1${RESET}) ${BOLD}Delete${RESET} docs/clasi/ ${DIM}(recommended for app development)${RESET}"
-  echo "  ${CYAN}2${RESET}) Keep docs/clasi/ ${DIM}(template development only)${RESET}"
+  echo "  ${CYAN}1${RESET}) ${BOLD}Reset${RESET} — clear template history, keep structure ${DIM}(new app)${RESET}"
+  echo "  ${CYAN}2${RESET}) Keep as-is ${DIM}(template development)${RESET}"
   echo ""
 
   while true; do
@@ -104,24 +105,19 @@ if [ -d "$CLASI_DIR" ]; then
     clasi_choice="${clasi_choice:-1}"
     case "$clasi_choice" in
       1)
-        rm -rf "$CLASI_DIR"
-        success "Removed docs/clasi/"
+        info "Clearing template development history..."
+        rm -rf "$CLASI_DIR/sprints/done"/*
+        rm -rf "$CLASI_DIR/todo/done"/*
+        rm -rf "$CLASI_DIR/todo/for-later"/*
+        rm -f  "$CLASI_DIR/todo"/*.md
+        rm -rf "$CLASI_DIR/reflections"/*
+        rm -rf "$CLASI_DIR/architecture/done"/*
+        rm -f  "$CLASI_DIR/.clasi.db"
+        success "CLASI reset — ready for your project"
         break
         ;;
       2)
-        info "Keeping docs/clasi/"
-        # Still clear template development history
-        if [ -d "$CLASI_DIR/sprints/done" ] && [ "$(ls -A "$CLASI_DIR/sprints/done" 2>/dev/null)" ]; then
-          info "Clearing template development history..."
-          rm -rf "$CLASI_DIR/sprints/done"/*
-          rm -rf "$CLASI_DIR/todo/done"/*
-          rm -rf "$CLASI_DIR/todo/for-later"/*
-          rm -f  "$CLASI_DIR/todo"/*.md
-          rm -rf "$CLASI_DIR/reflections"/*
-          rm -rf "$CLASI_DIR/architecture/done"/*
-          rm -f  "$CLASI_DIR/.clasi.db"
-          success "Template history cleared"
-        fi
+        success "Keeping docs/clasi/ as-is"
         break
         ;;
       *)
