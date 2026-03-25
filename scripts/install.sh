@@ -81,7 +81,36 @@ else
 fi
 
 # ---------------------------------------------------------------------------
-# 3. Remove CLASI directory (not needed for application development)
+# 3. Check for age and SOPS (needed by dotconfig for secrets)
+# ---------------------------------------------------------------------------
+header "Encryption Tools"
+
+MISSING_TOOLS=()
+
+if command -v age &>/dev/null; then
+  success "age installed"
+else
+  MISSING_TOOLS+=("age")
+fi
+
+if command -v sops &>/dev/null; then
+  success "sops installed"
+else
+  MISSING_TOOLS+=("sops")
+fi
+
+if [ ${#MISSING_TOOLS[@]} -gt 0 ]; then
+  warn "Missing: ${MISSING_TOOLS[*]}"
+  detail "These are needed by dotconfig for secrets encryption."
+  echo ""
+  bullet "macOS:   ${CYAN}brew install ${MISSING_TOOLS[*]}${RESET}"
+  bullet "Linux:   See https://github.com/FiloSottile/age and https://github.com/getsops/sops"
+  echo ""
+  detail "Secrets will be unavailable until these are installed."
+fi
+
+# ---------------------------------------------------------------------------
+# 4. Remove CLASI directory (not needed for application development)
 # ---------------------------------------------------------------------------
 header "Project Initialization"
 
@@ -168,6 +197,16 @@ else
   pipx_install clasi     "git+https://github.com/ericbusboom/claude-agent-skills.git" "CLASI"
   pipx_install dotconfig "git+https://github.com/ericbusboom/dotconfig.git"           "dotconfig"
   pipx_install rundbat   "git+https://github.com/ericbusboom/rundbat.git"             "rundbat"
+fi
+
+# Run dotconfig init to set up age key and SOPS config
+if command -v dotconfig &>/dev/null; then
+  info "Initializing dotconfig..."
+  if dotconfig init 2>/dev/null; then
+    success "dotconfig initialized"
+  else
+    warn "dotconfig init returned an error — you may need to run it manually"
+  fi
 fi
 
 # Run clasi init to create a fresh project database

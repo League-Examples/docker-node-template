@@ -23,7 +23,8 @@
     },
     "ghcr.io/devcontainers-extra/features/sops:1": {
       "version": "latest"
-    }
+    }, 
+    "ghcr.io/devcontainers-extra/features/age-keygen:1": {}
   },
 
   "postCreateCommand": ".devcontainer/post-create.sh",
