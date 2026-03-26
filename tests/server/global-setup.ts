@@ -5,9 +5,8 @@
  */
 
 const connectionString = process.env.DATABASE_URL || 'file:./data/test.db';
-const isSqlite = connectionString.startsWith('file:');
 
-async function cleanupSqlite() {
+async function cleanup() {
   const Database = (await import('better-sqlite3')).default;
   const dbPath = connectionString.replace('file:', '');
   let db;
@@ -22,31 +21,6 @@ async function cleanupSqlite() {
     // DB file may not exist yet
   } finally {
     db?.close();
-  }
-}
-
-async function cleanupPostgres() {
-  const pg = (await import('pg')).default;
-  const pool = new pg.Pool({ connectionString });
-  try {
-    const testEmailPattern = `email LIKE '%@example.com' OR email LIKE '%@test.com'`;
-    await pool.query(`DELETE FROM "Message" WHERE "authorId" IN (SELECT id FROM "User" WHERE ${testEmailPattern})`).catch(() => {});
-    await pool.query(`DELETE FROM "UserProvider" WHERE "userId" IN (SELECT id FROM "User" WHERE ${testEmailPattern})`).catch(() => {});
-    await pool.query(`DELETE FROM "RoleAssignmentPattern" WHERE pattern LIKE '%@example.com' OR pattern LIKE '%@test.com'`).catch(() => {});
-    await pool.query(`DELETE FROM "User" WHERE ${testEmailPattern}`);
-    await pool.query(`DELETE FROM "Channel" WHERE name ~ '[0-9]{10,}'`).catch(() => {});
-  } catch {
-    // Tables may not exist yet
-  } finally {
-    await pool.end();
-  }
-}
-
-async function cleanup() {
-  if (isSqlite) {
-    await cleanupSqlite();
-  } else {
-    await cleanupPostgres();
   }
 }
 

@@ -1,5 +1,3 @@
-import { isSqlite } from './prisma';
-
 export class SchedulerService {
   private prisma: any;
   private handlers: Map<string, () => Promise<void>> = new Map();
@@ -25,17 +23,9 @@ export class SchedulerService {
   }
 
   async tick(): Promise<void> {
-    // Postgres: FOR UPDATE SKIP LOCKED for multi-instance concurrency safety
-    // SQLite: simple ORM query (single-writer, no lock contention)
-    const dueJobs = isSqlite()
-      ? await this.prisma.scheduledJob.findMany({
-          where: { enabled: true, nextRun: { lte: new Date() } },
-        })
-      : await this.prisma.$queryRawUnsafe(`
-          SELECT * FROM "ScheduledJob"
-          WHERE enabled = true AND "nextRun" <= NOW()
-          FOR UPDATE SKIP LOCKED
-        `);
+    const dueJobs = await this.prisma.scheduledJob.findMany({
+      where: { enabled: true, nextRun: { lte: new Date() } },
+    });
 
     for (const job of dueJobs as any[]) {
       const handler = this.handlers.get(job.name);

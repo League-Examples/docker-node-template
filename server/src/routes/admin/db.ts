@@ -1,26 +1,13 @@
 import { Router } from 'express';
 import { createIntrospector } from '../../services/db-introspector';
-import { isSqlite } from '../../services/prisma';
 
 export const adminDbRouter = Router();
-
-/** Redact password from a connection URL. */
-function redactUrl(raw: string): string {
-  if (raw.startsWith('file:')) return raw;
-  try {
-    const u = new URL(raw);
-    if (u.password) u.password = '****';
-    return u.toString();
-  } catch {
-    return raw.replace(/:([^@/:]+)@/, ':****@');
-  }
-}
 
 adminDbRouter.get('/db/info', (_req, res) => {
   const dbUrl = process.env.DATABASE_URL || '';
   res.json({
-    provider: isSqlite() ? 'sqlite' : 'postgresql',
-    connectionString: redactUrl(dbUrl),
+    provider: 'sqlite',
+    connectionString: dbUrl,
   });
 });
 

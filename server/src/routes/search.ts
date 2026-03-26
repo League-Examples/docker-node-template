@@ -1,6 +1,5 @@
 import { Router } from 'express';
 import { requireAuth } from '../middleware/requireAuth';
-import { isSqlite } from '../services/prisma';
 
 export const searchRouter = Router();
 
@@ -15,10 +14,8 @@ searchRouter.get('/search', requireAuth, async (req, res, next) => {
     const query = q.trim();
     const prisma = req.services.prisma;
 
-    // SQLite doesn't support mode: 'insensitive' — its LIKE is already case-insensitive for ASCII
-    const containsFilter = isSqlite()
-      ? { contains: query }
-      : { contains: query, mode: 'insensitive' as const };
+    // SQLite LIKE is case-insensitive for ASCII
+    const containsFilter = { contains: query };
 
     const [channels, messages] = await Promise.all([
       prisma.channel.findMany({
