@@ -1,8 +1,9 @@
 {
   "name": "Docker Node App",
-  "build": {
-    "dockerfile": "Dockerfile"
-  },
+  // Pre-built image from .devcontainer/Dockerfile via .github/workflows/devcontainer-image.yml
+  // To build locally instead, replace "image" with:
+  //   "build": { "dockerfile": "Dockerfile" },
+  "image": "ghcr.io/league-examples/docker-node-template/devcontainer:latest",
 
   "features": {
     "ghcr.io/devcontainers/features/docker-in-docker:2": {

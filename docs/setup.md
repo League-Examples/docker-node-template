@@ -12,7 +12,8 @@ development server.
   is only needed if you want to use PostgreSQL.
   Install via [OrbStack](https://orbstack.dev/) (macOS) or
   [Docker Desktop](https://docs.docker.com/get-docker/).
-- **pipx** — required to install Python tools (CLASI, dotconfig, rundbat)
+- **pipx** — required to install Python tools (CLASI, dotconfig, rundbat).
+  Pre-installed in Codespaces; for local dev:
   ```bash
   brew install pipx && pipx ensurepath   # macOS
   ```
