@@ -13,6 +13,81 @@
           }
         ]
       }
+    ],
+    "SubagentStart": [
+      {
+        "matcher": ".*",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python3 .claude/hooks/subagent_start.py"
+          }
+        ]
+      }
+    ],
+    "SubagentStop": [
+      {
+        "matcher": ".*",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python3 .claude/hooks/subagent_stop.py"
+          }
+        ]
+      }
+    ],
+    "TaskCreated": [
+      {
+        "matcher": ".*",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python3 .claude/hooks/task_created.py"
+          }
+        ]
+      }
+    ],
+    "TaskCompleted": [
+      {
+        "matcher": ".*",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python3 .claude/hooks/task_completed.py"
+          }
+        ]
+      }
+    ],
+    "PreToolUse": [
+      {
+        "matcher": "Edit|Write|MultiEdit",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python3 .claude/hooks/role_guard.py"
+          }
+        ]
+      },
+      {
+        "matcher": "mcp__clasi__create_ticket|mcp__clasi__create_sprint",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python3 .claude/hooks/mcp_guard.py"
+          }
+        ]
+      }
+    ],
+    "PostToolUse": [
+      {
+        "matcher": "Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "if echo \"$TOOL_INPUT\" | grep -q 'git commit' && git branch --show-current 2>/dev/null | grep -qE '^(master|main)$'; then echo 'CLASI: You committed on master. Call tag_version() to bump the version.'; fi"
+          }
+        ]
+      }
     ]
   }
 }

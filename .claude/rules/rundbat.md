@@ -1,22 +1,39 @@
-# rundbat — Deployment Expert MCP Server
+# rundbat — Deployment Expert
 
-When working on tasks that involve any of the following, use the **rundbat
-MCP tools** instead of running Docker or dotconfig commands directly:
+When working on tasks that involve deployment, Docker containers, or
+environment setup, use **rundbat CLI** for setup and deploy, and
+**docker compose** / **dotconfig** for day-to-day operations.
 
-- Setting up a database (local or remote)
-- Getting a database connection string
-- Starting or stopping database containers
-- Managing deployment environments (dev, staging, production)
-- Storing or retrieving secrets and environment variables
-- Checking system prerequisites (Docker, dotconfig, Node.js)
+## rundbat CLI commands
 
-rundbat handles Docker container lifecycle, dotconfig integration, port
-allocation, health checks, and stale state recovery automatically.
+```bash
+rundbat init               # Set up rundbat in a project
+rundbat init-docker        # Generate Docker artifacts
+rundbat deploy <name>      # Deploy to a remote host
+rundbat deploy-init <name> # Set up a deployment target
+```
 
-**Key tools:**
-- `discover_system` — check what's installed
-- `init_project` — set up rundbat for a new project
-- `create_environment` — provision a database environment
-- `get_environment_config` — get connection string (auto-restarts containers)
-- `set_secret` — store encrypted secrets
-- `health_check` — verify database connectivity
+## Docker operations
+
+Use docker compose directly for container lifecycle:
+
+```bash
+docker compose -f docker/docker-compose.yml up -d
+docker compose -f docker/docker-compose.yml down
+docker compose -f docker/docker-compose.yml ps
+docker compose -f docker/docker-compose.yml logs
+```
+
+## Configuration access
+
+Read config through dotconfig, not by reading files directly:
+
+```bash
+# All config merged
+dotconfig load -d <env> --json --flat -S
+
+# Project config
+dotconfig load -d <env> --file rundbat.yaml -S
+```
+
+Write config through dotconfig — never edit `config/` files directly.

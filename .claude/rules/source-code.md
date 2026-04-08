@@ -1,6 +1,6 @@
 ---
 paths:
-  - claude_agent_skills/**
+  - clasi/**
   - tests/**
 ---
 
