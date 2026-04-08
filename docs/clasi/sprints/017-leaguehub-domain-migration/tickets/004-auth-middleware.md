@@ -1,11 +1,11 @@
 ---
-id: "004"
-title: "Auth + Middleware"
-status: todo
+id: '004'
+title: Auth + Middleware
+status: in-progress
 use-cases: []
 depends-on: []
-github-issue: ""
-todo: ""
+github-issue: ''
+todo: ''
 ---
 <!-- CLASI: Before changing code or making plans, review the SE process in CLAUDE.md -->
 

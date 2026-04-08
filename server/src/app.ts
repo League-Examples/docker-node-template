@@ -70,7 +70,15 @@ passport.serializeUser((user: any, done) => {
 });
 passport.deserializeUser(async (id: number, done) => {
   try {
-    const user = await prisma.user.findUnique({ where: { id } });
+    const user = await prisma.user.findUnique({
+      where: { id },
+      include: { instructors: { take: 1 } },
+    });
+    if (user) {
+      const instructor = user.instructors[0];
+      (user as any).instructorId = instructor?.id ?? null;
+      (user as any).isActiveInstructor = instructor?.isActive ?? false;
+    }
     done(null, user);
   } catch (err) {
     done(err);

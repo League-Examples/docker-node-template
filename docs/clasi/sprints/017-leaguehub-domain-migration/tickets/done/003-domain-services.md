@@ -1,11 +1,11 @@
 ---
-id: "003"
-title: "Domain Services"
-status: todo
+id: '003'
+title: Domain Services
+status: in-progress
 use-cases: []
 depends-on: []
-github-issue: ""
-todo: ""
+github-issue: ''
+todo: ''
 ---
 <!-- CLASI: Before changing code or making plans, review the SE process in CLAUDE.md -->
 

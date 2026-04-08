@@ -6,7 +6,7 @@ import {
   type ReactNode,
 } from 'react';
 
-/** Shape returned by GET /api/auth/me (mirrors Prisma User model). */
+/** Shape returned by GET /api/auth/me (mirrors Prisma User model + instructor fields). */
 export interface AuthUser {
   id: number;
   email: string;
@@ -17,6 +17,8 @@ export interface AuthUser {
   providerId: string | null;
   createdAt: string;
   updatedAt: string;
+  instructorId?: number | null;
+  isActiveInstructor?: boolean;
 }
 
 interface AuthContextValue {

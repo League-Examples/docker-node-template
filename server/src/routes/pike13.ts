@@ -1,5 +1,6 @@
 import { Router, Request, Response } from 'express';
 import { findOrCreateOAuthUser } from './auth';
+import { prisma } from '../services/prisma';
 
 export const pike13Router = Router();
 
@@ -155,14 +156,52 @@ pike13Router.get('/auth/pike13/callback', async (req: Request, res: Response) =>
       // Pike 13 account response shape: { people: [{ id, first_name, last_name, email, ... }] }
       const person = profileData?.people?.[0] || profileData?.account || profileData;
       const pike13Id = String(person.id || tokenData.resource_owner_id || '');
-      const email = person.email || '';
+      const email = (person.email || '').toLowerCase();
       const displayName = [person.first_name, person.last_name].filter(Boolean).join(' ') || email;
+
+      // Domain check: only @jointheleague.org emails allowed
+      if (email && !email.endsWith('@jointheleague.org')) {
+        return res.redirect('/login?error=denied');
+      }
 
       if (pike13Id && email) {
         const user = await findOrCreateOAuthUser('pike13', pike13Id, email, displayName, null);
+
+        // Create or activate instructor record
+        let instructor = await prisma.instructor.findUnique({ where: { userId: user.id } });
+        if (!instructor) {
+          instructor = await prisma.instructor.create({ data: { userId: user.id, isActive: true } });
+        } else if (!instructor.isActive) {
+          instructor = await prisma.instructor.update({ where: { id: instructor.id }, data: { isActive: true } });
+        }
+
+        // Save Pike13 token for this instructor
+        const expiresAt = tokenData.expires_in
+          ? new Date(Date.now() + tokenData.expires_in * 1000)
+          : null;
+        await prisma.pike13Token.upsert({
+          where: { instructorId: instructor.id },
+          update: { accessToken, refreshToken: tokenData.refresh_token ?? null, expiresAt },
+          create: { instructorId: instructor.id, accessToken, refreshToken: tokenData.refresh_token ?? null, expiresAt },
+        });
+
+        // If admin, store as global admin sync token
+        if (user.role === 'ADMIN') {
+          await prisma.pike13AdminToken.deleteMany();
+          await prisma.pike13AdminToken.create({
+            data: { accessToken, refreshToken: tokenData.refresh_token ?? null, expiresAt },
+          });
+        }
+
         await new Promise<void>((resolve, reject) => {
           req.login(user, (err) => (err ? reject(err) : resolve()));
         });
+
+        // Redirect based on role
+        if (user.role === 'ADMIN') {
+          return res.redirect('/admin');
+        }
+        return res.redirect('/dashboard');
       }
     }
 
