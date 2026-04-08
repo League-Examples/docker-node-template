@@ -192,6 +192,16 @@ if command -v dotconfig &>/dev/null; then
   fi
 fi
 
+# Run rundbat init to set up database configuration
+if command -v rundbat &>/dev/null; then
+  info "Initializing rundbat..."
+  if rundbat init 2>/dev/null; then
+    success "rundbat initialized"
+  else
+    warn "rundbat init returned an error — you may need to run it manually"
+  fi
+fi
+
 # Run clasi init to create a fresh project database
 if command -v clasi &>/dev/null; then
   info "Initializing CLASI project..."
@@ -274,6 +284,19 @@ else
 fi
 
 success "Created .env"
+
+# ---------------------------------------------------------------------------
+# Commit setup changes so the user starts with a clean working tree
+# ---------------------------------------------------------------------------
+header "Committing Setup Changes"
+
+if [ -n "$(git status --porcelain 2>/dev/null)" ]; then
+  git add -A
+  git commit -m "initial configuration" --quiet
+  success "Committed setup changes"
+else
+  success "Nothing to commit — working tree already clean"
+fi
 
 # ---------------------------------------------------------------------------
 # Done
