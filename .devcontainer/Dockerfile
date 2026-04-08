@@ -27,4 +27,3 @@ RUN curl -fsSL https://cli.github.com/packages/githubcli-archive-keyring.gpg \
 # Install CLASI via pipx (runs as root; post-create.sh skips this step)
 ENV PIPX_HOME=/opt/pipx
 ENV PIPX_BIN_DIR=/usr/local/bin
-RUN pipx install git+https://github.com/ericbusboom/claude-agent-skills.git
