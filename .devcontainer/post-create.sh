@@ -2,12 +2,6 @@
 set -e
 
 
-echo "=== Installing pipx and CLASI ==="
-pip install --user pipx
-pipx ensurepath
-pipx install git+https://github.com/ericbusboom/claude-agent-skills.git
-
-
 echo "=== Configuring age key for SOPS ==="
 # If AGE_PRIVATE_KEY is set (via a GitHub Codespaces secret), write it to the
 # default SOPS key location so `sops -d` works immediately after container start.
