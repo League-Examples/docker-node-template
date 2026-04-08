@@ -29,8 +29,9 @@ model User {
   providerId  String?
   createdAt   DateTime  @default(now())
   updatedAt   DateTime  @updatedAt
-  messages    Message[]
   providers   UserProvider[]
+  instructors Instructor[]
+  notifications AdminNotification[]
 
   @@unique([provider, providerId])
 }
@@ -45,27 +46,6 @@ model UserProvider {
   user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@unique([provider, providerId])
-}
-
-model Channel {
-  id          Int       @id @default(autoincrement())
-  name        String    @unique
-  description String?
-  createdAt   DateTime  @default(now())
-  updatedAt   DateTime  @updatedAt
-  messages    Message[]
-}
-
-model Message {
-  id        Int      @id @default(autoincrement())
-  content   String
-  channelId Int
-  authorId  Int
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-
-  channel   Channel  @relation(fields: [channelId], references: [id], onDelete: Cascade)
-  author    User     @relation(fields: [authorId], references: [id])
 }
 
 model RoleAssignmentPattern {
@@ -99,4 +79,187 @@ model Session {
 
   @@index([expire])
   @@map("session")
+}
+
+// ---------- LEAGUEhub Domain Models ----------
+
+model Instructor {
+  id        Int      @id @default(autoincrement())
+  userId    Int      @unique
+  isActive  Boolean  @default(false)
+  createdAt DateTime @default(now())
+
+  user       User               @relation(fields: [userId], references: [id])
+  students   InstructorStudent[]
+  reviews    MonthlyReview[]
+  templates  ReviewTemplate[]
+  checkins   TaCheckin[]
+  pike13Token Pike13Token?
+  attendance StudentAttendance[]
+}
+
+model Student {
+  id              Int      @id @default(autoincrement())
+  name            String
+  guardianEmail   String?
+  guardianName    String?
+  githubUsername   String?
+  pike13SyncId    String?  @unique
+  createdAt       DateTime @default(now())
+
+  instructors     InstructorStudent[]
+  reviews         MonthlyReview[]
+  attendance      StudentAttendance[]
+}
+
+model InstructorStudent {
+  instructorId Int
+  studentId    Int
+  assignedAt   DateTime @default(now())
+  lastSeenAt   DateTime @default(now())
+
+  instructor   Instructor @relation(fields: [instructorId], references: [id])
+  student      Student    @relation(fields: [studentId], references: [id])
+
+  @@id([instructorId, studentId])
+}
+
+enum ReviewStatus {
+  PENDING
+  DRAFT
+  SENT
+}
+
+model MonthlyReview {
+  id            Int          @id @default(autoincrement())
+  instructorId  Int
+  studentId     Int
+  month         String       // YYYY-MM
+  status        ReviewStatus @default(PENDING)
+  subject       String?
+  body          String?
+  sentAt        DateTime?
+  feedbackToken String       @unique @default(uuid())
+  createdAt     DateTime     @default(now())
+  updatedAt     DateTime     @updatedAt
+
+  instructor    Instructor   @relation(fields: [instructorId], references: [id])
+  student       Student      @relation(fields: [studentId], references: [id])
+  feedback      ServiceFeedback[]
+
+  @@unique([instructorId, studentId, month])
+}
+
+model ReviewTemplate {
+  id           Int      @id @default(autoincrement())
+  instructorId Int
+  name         String
+  subject      String
+  body         String
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  instructor   Instructor @relation(fields: [instructorId], references: [id])
+}
+
+model ServiceFeedback {
+  id          Int      @id @default(autoincrement())
+  reviewId    Int
+  rating      Int      // 1-5
+  comment     String?
+  suggestion  String?
+  submittedAt DateTime @default(now())
+
+  review      MonthlyReview @relation(fields: [reviewId], references: [id])
+}
+
+model AdminSetting {
+  id        Int      @id @default(autoincrement())
+  email     String   @unique
+  createdAt DateTime @default(now())
+}
+
+model Pike13Token {
+  id           Int       @id @default(autoincrement())
+  instructorId Int       @unique
+  accessToken  String
+  refreshToken String?
+  expiresAt    DateTime?
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+
+  instructor   Instructor @relation(fields: [instructorId], references: [id])
+}
+
+model TaCheckin {
+  id           Int      @id @default(autoincrement())
+  instructorId Int
+  taName       String
+  weekOf       String   // ISO date of Monday, e.g. "2026-03-02"
+  wasPresent   Boolean
+  submittedAt  DateTime @default(now())
+
+  instructor   Instructor @relation(fields: [instructorId], references: [id])
+
+  @@unique([instructorId, taName, weekOf])
+}
+
+model AdminNotification {
+  id         Int      @id @default(autoincrement())
+  fromUserId Int?
+  message    String
+  isRead     Boolean  @default(false)
+  createdAt  DateTime @default(now())
+
+  fromUser   User?    @relation(fields: [fromUserId], references: [id])
+}
+
+model VolunteerHour {
+  id            Int      @id @default(autoincrement())
+  volunteerName String
+  category      String
+  hours         Float
+  description   String?
+  externalId    String?
+  recordedAt    DateTime @default(now())
+  source        String   @default("manual")
+
+  @@unique([source, externalId])
+}
+
+model StudentAttendance {
+  id                Int      @id @default(autoincrement())
+  studentId         Int
+  instructorId      Int
+  attendedAt        DateTime
+  eventOccurrenceId String
+
+  student           Student    @relation(fields: [studentId], references: [id])
+  instructor        Instructor @relation(fields: [instructorId], references: [id])
+
+  @@unique([studentId, instructorId, eventOccurrenceId])
+}
+
+model VolunteerSchedule {
+  volunteerName String   @id
+  isScheduled   Boolean  @default(false)
+  updatedAt     DateTime @updatedAt
+}
+
+model VolunteerEventSchedule {
+  id                Int      @id @default(autoincrement())
+  eventOccurrenceId String   @unique
+  startAt           DateTime
+  endAt             DateTime
+  instructors       Json     // Array of {pike13Id, name, instructorId, studentCount}
+  volunteers        Json     // Array of {pike13Id, name}
+  updatedAt         DateTime @updatedAt
+}
+
+model Pike13AdminToken {
+  id           Int       @id @default(autoincrement())
+  accessToken  String
+  refreshToken String?
+  expiresAt    DateTime?
+  updatedAt    DateTime  @updatedAt
 }
