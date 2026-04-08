@@ -10,6 +10,11 @@ import { adminUsersRouter } from './users';
 import { adminPermissionsRouter } from './permissions';
 import { adminSchedulerRouter } from './scheduler';
 import { adminBackupsRouter } from './backups';
+import { instructorsAdminRouter } from './instructors';
+import { complianceRouter } from './compliance';
+import { volunteerHoursRouter } from './volunteer-hours';
+import { adminFeedbackRouter } from './admin-feedback';
+import { notificationsRouter } from './notifications';
 
 export const adminRouter = Router();
 
@@ -29,3 +34,10 @@ adminRouter.use('/admin', adminUsersRouter);
 adminRouter.use('/admin', adminPermissionsRouter);
 adminRouter.use('/admin', adminSchedulerRouter);
 adminRouter.use('/admin', adminBackupsRouter);
+
+// LEAGUEhub admin routes
+adminRouter.use('/admin/instructors', instructorsAdminRouter);
+adminRouter.use('/admin/compliance', complianceRouter);
+adminRouter.use('/admin/volunteer-hours', volunteerHoursRouter);
+adminRouter.use('/admin/feedback', adminFeedbackRouter);
+adminRouter.use('/admin/notifications', notificationsRouter);

@@ -1,11 +1,11 @@
 ---
-id: "005"
-title: "Domain Route Handlers"
-status: todo
+id: '005'
+title: Domain Route Handlers
+status: in-progress
 use-cases: []
 depends-on: []
-github-issue: ""
-todo: ""
+github-issue: ''
+todo: ''
 ---
 <!-- CLASI: Before changing code or making plans, review the SE process in CLAUDE.md -->
 

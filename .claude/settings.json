@@ -20,7 +20,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "python3 .claude/hooks/subagent_start.py"
+            "command": "cd /Users/eric/proj/scratch/student-progress-report && python3 .claude/hooks/subagent_start.py"
           }
         ]
       }
@@ -31,7 +31,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "python3 .claude/hooks/subagent_stop.py"
+            "command": "cd /Users/eric/proj/scratch/student-progress-report && python3 .claude/hooks/subagent_stop.py"
           }
         ]
       }
@@ -42,7 +42,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "python3 .claude/hooks/task_created.py"
+            "command": "cd /Users/eric/proj/scratch/student-progress-report && python3 .claude/hooks/task_created.py"
           }
         ]
       }
@@ -53,7 +53,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "python3 .claude/hooks/task_completed.py"
+            "command": "cd /Users/eric/proj/scratch/student-progress-report && python3 .claude/hooks/task_completed.py"
           }
         ]
       }
@@ -64,7 +64,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "python3 .claude/hooks/role_guard.py"
+            "command": "cd /Users/eric/proj/scratch/student-progress-report && python3 .claude/hooks/role_guard.py"
           }
         ]
       },
@@ -73,7 +73,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "python3 .claude/hooks/mcp_guard.py"
+            "command": "cd /Users/eric/proj/scratch/student-progress-report && python3 .claude/hooks/mcp_guard.py"
           }
         ]
       }
