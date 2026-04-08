@@ -20,6 +20,11 @@ import Account from './pages/Account';
 
 import AdminLogin from './pages/admin/AdminLogin';
 import AdminLayout from './pages/admin/AdminLayout';
+import { AdminDashboardPanel } from './pages/admin/AdminDashboardPanel';
+import { InstructorListPanel } from './pages/admin/InstructorListPanel';
+import { CompliancePanel } from './pages/admin/CompliancePanel';
+import { VolunteerHoursPanel } from './pages/admin/VolunteerHoursPanel';
+import { AdminFeedbackPanel } from './pages/admin/AdminFeedbackPanel';
 import EnvironmentInfo from './pages/admin/EnvironmentInfo';
 import DatabaseViewer from './pages/admin/DatabaseViewer';
 import ConfigPanel from './pages/admin/ConfigPanel';
@@ -71,6 +76,11 @@ function App() {
               {/* Admin pages — auth-gated by AdminLayout */}
               <Route element={<AdminLayout />}>
                 <Route path="/admin/users" element={<UsersPanel />} />
+                <Route path="/admin/dashboard" element={<AdminDashboardPanel />} />
+                <Route path="/admin/instructors" element={<InstructorListPanel />} />
+                <Route path="/admin/compliance" element={<CompliancePanel />} />
+                <Route path="/admin/volunteer-hours" element={<VolunteerHoursPanel />} />
+                <Route path="/admin/feedback" element={<AdminFeedbackPanel />} />
                 <Route path="/admin/env" element={<EnvironmentInfo />} />
                 <Route path="/admin/db" element={<DatabaseViewer />} />
                 <Route path="/admin/config" element={<ConfigPanel />} />
