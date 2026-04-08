@@ -239,7 +239,7 @@ export default function AppLayout() {
 
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [dropdownOpen, setDropdownOpen] = useState(false);
-  const [appName, setAppName] = useState('Chat App');
+  const [appName, setAppName] = useState('LEAGUEhub');
   const dropdownRef = useRef<HTMLDivElement>(null);
 
   // Fetch app name from health endpoint
