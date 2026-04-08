@@ -1,7 +1,7 @@
 ---
 id: '007'
 title: Client Instructor Pages
-status: in-progress
+status: done
 use-cases: []
 depends-on: []
 github-issue: ''

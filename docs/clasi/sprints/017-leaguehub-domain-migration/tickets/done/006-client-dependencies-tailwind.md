@@ -1,7 +1,7 @@
 ---
 id: '006'
 title: Client Dependencies + Tailwind
-status: in-progress
+status: done
 use-cases: []
 depends-on: []
 github-issue: ''

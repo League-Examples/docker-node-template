@@ -1,7 +1,7 @@
 ---
 id: '004'
 title: Auth + Middleware
-status: in-progress
+status: done
 use-cases: []
 depends-on: []
 github-issue: ''

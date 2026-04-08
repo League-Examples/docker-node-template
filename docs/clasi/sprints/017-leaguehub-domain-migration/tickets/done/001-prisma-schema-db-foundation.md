@@ -1,7 +1,7 @@
 ---
 id: '001'
 title: Prisma Schema + DB Foundation
-status: in-progress
+status: done
 use-cases: []
 depends-on: []
 github-issue: ''

@@ -1,7 +1,7 @@
 ---
 id: 009
 title: Cleanup + Verification
-status: in-progress
+status: done
 use-cases: []
 depends-on: []
 github-issue: ''

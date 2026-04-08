@@ -1,7 +1,7 @@
 ---
 id: '002'
 title: Remove Chat Infrastructure
-status: in-progress
+status: done
 use-cases: []
 depends-on: []
 github-issue: ''

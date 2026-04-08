@@ -1,7 +1,7 @@
 ---
 id: '003'
 title: Domain Services
-status: in-progress
+status: done
 use-cases: []
 depends-on: []
 github-issue: ''

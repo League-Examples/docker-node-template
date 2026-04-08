@@ -1,7 +1,7 @@
 ---
 id: 008
 title: Client Admin Pages
-status: in-progress
+status: done
 use-cases: []
 depends-on: []
 github-issue: ''
