@@ -208,31 +208,38 @@ fi
 header "Environment File"
 
 if [ -f .env ]; then
-  warn ".env already exists"
-  echo ""
-  echo "  ${CYAN}1${RESET}) Overwrite with fresh .env"
-  echo "  ${CYAN}2${RESET}) Keep existing .env"
-  echo ""
+  if [ -t 0 ]; then
+    # Interactive — ask the user
+    warn ".env already exists"
+    echo ""
+    echo "  ${CYAN}1${RESET}) Overwrite with fresh .env"
+    echo "  ${CYAN}2${RESET}) Keep existing .env"
+    echo ""
 
-  while true; do
-    read -rp "  ${BOLD}Choose [1/2]:${RESET} " env_choice
-    case "$env_choice" in
-      1)
-        info "Overwriting .env..."
-        rm -f .env
-        break
-        ;;
-      2)
-        success "Keeping existing .env"
-        echo ""
-        echo "${GREEN}${BOLD}Setup complete.${RESET}"
-        exit 0
-        ;;
-      *)
-        err "Please enter 1 or 2."
-        ;;
-    esac
-  done
+    while true; do
+      read -rp "  ${BOLD}Choose [1/2]:${RESET} " env_choice
+      case "$env_choice" in
+        1)
+          info "Overwriting .env..."
+          rm -f .env
+          break
+          ;;
+        2)
+          success "Keeping existing .env"
+          echo ""
+          echo "${GREEN}${BOLD}Setup complete.${RESET}"
+          exit 0
+          ;;
+        *)
+          err "Please enter 1 or 2."
+          ;;
+      esac
+    done
+  else
+    # Non-interactive (Codespaces, CI) — overwrite silently
+    info "Overwriting .env (non-interactive)..."
+    rm -f .env
+  fi
 fi
 
 info "Generating .env..."
