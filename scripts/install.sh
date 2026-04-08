@@ -110,52 +110,35 @@ if [ ${#MISSING_TOOLS[@]} -gt 0 ]; then
 fi
 
 # ---------------------------------------------------------------------------
-# 4. Remove CLASI directory (not needed for application development)
+# 4. CLASI directory — auto-detect template vs application vs clone
 # ---------------------------------------------------------------------------
 header "Project Initialization"
 
 CLASI_DIR="docs/clasi"
+TEMPLATE_REMOTE="League-Examples/docker-node-template"
 
-if [ -d "$CLASI_DIR" ]; then
-  echo ""
-  echo "  The ${BOLD}docs/clasi/${RESET} directory contains the CLASI SE process — sprint"
-  echo "  history, architecture docs, TODOs, and the project database. Right now"
-  echo "  it holds the template's own development history."
-  echo ""
-  echo "  If you're building a new app from this template, reset it to start"
-  echo "  fresh. If you're developing the template itself, keep it as-is."
-  echo ""
-  echo "  ${CYAN}1${RESET}) ${BOLD}Reset${RESET} — clear template history, keep structure ${DIM}(new app)${RESET}"
-  echo "  ${CYAN}2${RESET}) Keep as-is ${DIM}(template development)${RESET}"
-  echo ""
+origin_url=$(git remote get-url origin 2>/dev/null || true)
 
-  while true; do
-    read -rp "  ${BOLD}Choose [1/2] (default: 1):${RESET} " clasi_choice
-    clasi_choice="${clasi_choice:-1}"
-    case "$clasi_choice" in
-      1)
-        info "Clearing template development history..."
-        rm -rf "$CLASI_DIR/sprints/done"/*
-        rm -rf "$CLASI_DIR/todo/done"/*
-        rm -rf "$CLASI_DIR/todo/for-later"/*
-        rm -f  "$CLASI_DIR/todo"/*.md
-        rm -rf "$CLASI_DIR/reflections"/*
-        rm -rf "$CLASI_DIR/architecture/done"/*
-        rm -f  "$CLASI_DIR/.clasi.db"
-        success "CLASI reset — ready for your project"
-        break
-        ;;
-      2)
-        success "Keeping docs/clasi/ as-is"
-        break
-        ;;
-      *)
-        err "Please enter 1 or 2."
-        ;;
-    esac
-  done
+if echo "$origin_url" | grep -q "$TEMPLATE_REMOTE"; then
+  # Developing the template itself — keep everything
+  success "CLASI retained (template development)"
+elif [ -f .template ]; then
+  # First instantiation from the template — clear history and consume marker
+  info "New project detected — clearing template development history..."
+  if [ -d "$CLASI_DIR" ]; then
+    rm -rf "$CLASI_DIR/sprints/done"/*
+    rm -rf "$CLASI_DIR/todo/done"/*
+    rm -rf "$CLASI_DIR/todo/for-later"/*
+    rm -f  "$CLASI_DIR/todo"/*.md
+    rm -rf "$CLASI_DIR/reflections"/*
+    rm -rf "$CLASI_DIR/architecture/done"/*
+    rm -f  .clasi.db
+  fi
+  rm -f .template
+  success "CLASI reset — ready for your project"
 else
-  success "docs/clasi/ not present"
+  # No marker, not the template repo — this is a clone of an instantiated project
+  success "CLASI directory unchanged"
 fi
 
 # ---------------------------------------------------------------------------
