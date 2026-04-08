@@ -15,12 +15,11 @@ interface NavItem {
 
 const MAIN_NAV: NavItem[] = [
   { to: '/', label: 'Home', end: true },
-  { to: '/chat', label: 'Chat' },
 ];
 
 const ADMIN_NAV: NavItem[] = [
   { to: '/admin/users', label: 'Users' },
-  { to: '/admin/channels', label: 'Channels' },
+
   { to: '/admin/env', label: 'Environment' },
   { to: '/admin/db', label: 'Database' },
   { to: '/admin/config', label: 'Configuration' },

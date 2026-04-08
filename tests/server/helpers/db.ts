@@ -21,9 +21,6 @@ export async function cleanupTestDb() {
 
     if (userIds.length > 0) {
       // Delete related records first (FK constraints)
-      await prisma.message.deleteMany({
-        where: { authorId: { in: userIds } },
-      });
       await prisma.userProvider.deleteMany({
         where: { userId: { in: userIds } },
       });
@@ -40,21 +37,6 @@ export async function cleanupTestDb() {
         })),
       },
     });
-
-    // Clean up test channels (names containing long numeric strings)
-    // Use a broad approach: delete channels created during tests
-    const channels = await prisma.channel.findMany();
-    const testChannelIds = channels
-      .filter((c: any) => /[0-9]{10,}/.test(c.name))
-      .map((c: any) => c.id);
-    if (testChannelIds.length > 0) {
-      await prisma.message.deleteMany({
-        where: { channelId: { in: testChannelIds } },
-      });
-      await prisma.channel.deleteMany({
-        where: { id: { in: testChannelIds } },
-      });
-    }
   } catch {
     // Tables may not exist yet
   }
