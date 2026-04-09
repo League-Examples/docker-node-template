@@ -36,7 +36,7 @@ async function fetchStudents(): Promise<StudentRow[]> {
 }
 
 async function fetchPendingCheckin(): Promise<PendingCheckinResponse> {
-  const res = await fetch('/api/checkins/pending')
+  const res = await fetch('/api/checkins')
   if (!res.ok) throw new Error('Failed to load check-in status')
   return res.json()
 }

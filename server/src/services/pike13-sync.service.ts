@@ -94,12 +94,15 @@ export class Pike13SyncService {
     accessToken: string,
     fetchFn: typeof fetch = fetch,
   ): Promise<SyncResult> {
-    if (!process.env.PIKE13_BASE_URL && !process.env.PIKE13_CLIENT_ID) {
+    if (!process.env.PIKE13_API_BASE && !process.env.PIKE13_BASE_URL && !process.env.PIKE13_CLIENT_ID) {
       console.warn('[Pike13SyncService] Pike13 credentials not configured — skipping sync');
       return { studentsUpserted: 0, instructorsUpserted: 0, assignmentsCreated: 0, hoursCreated: 0 };
     }
 
-    const base = (process.env.PIKE13_BASE_URL ?? 'https://pike13.com').replace(/\/$/, '');
+    // PIKE13_API_BASE is the full desk API URL (e.g. https://jtl.pike13.com/api/v2/desk)
+    // Strip /api/v2/desk to get the base domain for building API paths
+    const apiBase = process.env.PIKE13_API_BASE || process.env.PIKE13_BASE_URL || 'https://pike13.com';
+    const base = apiBase.replace(/\/api\/v2\/desk\/?$/, '').replace(/\/$/, '');
     const ytdStart = `${new Date().getFullYear()}-01-01`;
     const now = new Date();
 
