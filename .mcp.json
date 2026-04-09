@@ -6,12 +6,6 @@
         "mcp"
       ]
     },
-    "rundbat": {
-      "command": "rundbat",
-      "args": [
-        "mcp"
-      ]
-    },
     "browsermcp": {
       "command": "npx",
       "args": [

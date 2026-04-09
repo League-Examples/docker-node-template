@@ -45,6 +45,29 @@ Bootstrap a new project from a stakeholder's specification.
    sprint plans.
 4. Present the roadmap to the stakeholder for feedback.
 
+### Capture Ideas and Plans
+
+**When:** The stakeholder has ideas or tasks they want to capture
+for future work, but not execute now.
+
+Two paths based on the stakeholder's intent:
+
+1. **Quick capture** — The stakeholder gives a direct statement of
+   what to do. Invoke the `todo` skill to create a TODO file.
+   Example: "Add rate limiting to the API"
+
+2. **Discussed planning** — The stakeholder wants to explore and
+   discuss an idea. Enter plan mode (`EnterPlanMode`). Have the
+   conversation, explore the codebase, ask clarifying questions,
+   and write the plan. On `ExitPlanMode`, the plan-to-todo hook
+   automatically creates the TODO. Do not implement after exit.
+   Example: "Let's talk about how we should handle authentication"
+
+**How to tell the difference:**
+- Quick capture: imperative statement, single sentence, clear task
+- Discussed planning: "let's talk about", "let's plan", "I want to
+  discuss", exploratory language, questions about approach
+
 ### Execute TODOs Through a Sprint
 
 Take TODOs through the full SE lifecycle — plan, execute, close.

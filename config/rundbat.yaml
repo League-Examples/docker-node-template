@@ -2,4 +2,11 @@ app_name: docker-nodeapp
 app_name_source: package.json name
 container_template: '{app}-{env}-pg'
 database_template: '{app}_{env}'
+deployments:
+  test:
+    build_strategy: ssh-transfer
+    docker_context: docker1.apps1.jointheleague.org
+    host: ssh://root@docker1.apps1.jointheleague.org
+    platform: linux/amd64
+    ssh_key: config/files/docker1.apps1.jointheleague.org.pem
 notes: []

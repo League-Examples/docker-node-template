@@ -70,6 +70,13 @@ Monitor the task list for completion. Handle failures:
 - If a programmer fails after repeated attempts, escalate to the
   stakeholder.
 
+After each programmer Task completes successfully:
+1. Verify `status: done` is set in the ticket's frontmatter.
+2. Call `move_ticket_to_done(ticket_path)` where `ticket_path` is the relative
+   path: `docs/clasi/sprints/NNN-slug/tickets/NNN-slug.md`.
+   This is a team-lead responsibility — the programmer sets the frontmatter;
+   the team-lead moves the file.
+3. Continue monitoring remaining tasks.
 
 **Ticket completion is mandatory.** When a programmer completes a ticket,
 its status must be set to `done` and `move_ticket_to_done` called.

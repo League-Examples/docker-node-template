@@ -22,7 +22,16 @@ to the user and stop — do not execute any skill.
 | `/se gh-import [repo] [--labels L]` | Import GitHub issues as TODOs | Invoke the `gh-import` skill |
 | `/se knowledge <description>` | Capture hard-won technical understanding | Invoke the `project-knowledge` skill |
 | `/se oop` | Make a quick out-of-process change | Invoke the `oop` skill |
+| `/se plan` | Enter plan mode for a discussed TODO | Enter plan mode via `EnterPlanMode` |
 
 Pass any remaining text after the subcommand as the argument to the
 skill (e.g., `/se todo fix the login bug` passes "fix the login bug"
 to the todo skill).
+
+## When to use /se todo vs /se plan
+
+- `/se todo <text>`: Quick capture. The user has a clear idea and just
+  wants it recorded. One statement → one TODO file.
+- `/se plan`: The user wants to discuss, explore, and refine an idea
+  before capturing it. Enters plan mode for a conversation. On exit,
+  the plan-to-todo hook automatically creates the TODO.

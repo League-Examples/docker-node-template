@@ -1,26 +1,12 @@
 {
-  "permissions": {
-    "defaultMode": "bypassPermissions"
-  },
   "hooks": {
-    "UserPromptSubmit": [
-      {
-        "matcher": "",
-        "hooks": [
-          {
-            "type": "command",
-            "command": "echo 'rundbat: If this task involves databases, deployment, or environment setup, use the rundbat MCP server.'"
-          }
-        ]
-      }
-    ],
     "SubagentStart": [
       {
         "matcher": ".*",
         "hooks": [
           {
             "type": "command",
-            "command": "cd /Users/eric/proj/scratch/student-progress-report && python3 .claude/hooks/subagent_start.py"
+            "command": "clasi hook subagent-start"
           }
         ]
       }
@@ -31,7 +17,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "cd /Users/eric/proj/scratch/student-progress-report && python3 .claude/hooks/subagent_stop.py"
+            "command": "clasi hook subagent-stop"
           }
         ]
       }
@@ -42,7 +28,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "cd /Users/eric/proj/scratch/student-progress-report && python3 .claude/hooks/task_created.py"
+            "command": "clasi hook task-created"
           }
         ]
       }
@@ -53,7 +39,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "cd /Users/eric/proj/scratch/student-progress-report && python3 .claude/hooks/task_completed.py"
+            "command": "clasi hook task-completed"
           }
         ]
       }
@@ -64,7 +50,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "cd /Users/eric/proj/scratch/student-progress-report && python3 .claude/hooks/role_guard.py"
+            "command": "clasi hook role-guard"
           }
         ]
       },
@@ -73,7 +59,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "cd /Users/eric/proj/scratch/student-progress-report && python3 .claude/hooks/mcp_guard.py"
+            "command": "clasi hook mcp-guard"
           }
         ]
       }
@@ -84,7 +70,16 @@
         "hooks": [
           {
             "type": "command",
-            "command": "if echo \"$TOOL_INPUT\" | grep -q 'git commit' && git branch --show-current 2>/dev/null | grep -qE '^(master|main)$'; then echo 'CLASI: You committed on master. Call tag_version() to bump the version.'; fi"
+            "command": "clasi hook commit-check"
+          }
+        ]
+      },
+      {
+        "matcher": "ExitPlanMode",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "clasi hook plan-to-todo"
           }
         ]
       }

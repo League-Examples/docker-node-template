@@ -2,10 +2,7 @@
   "permissions": {
     "allow": [
       "mcp__clasi__*",
-      "Bash(*)",
-      "WebFetch(*)",
-      "mcp__*",
-      "WebSearch"
+      "Bash(clasi hook:*)"
     ]
   }
 }
