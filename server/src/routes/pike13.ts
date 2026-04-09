@@ -146,66 +146,87 @@ pike13Router.get('/auth/pike13/callback', async (req: Request, res: Response) =>
     (req.session as any).pike13Token = accessToken;
     if (process.env.NODE_ENV !== 'test') console.log('Pike 13 OAuth token obtained via authorization code');
 
-    // Fetch the current user's profile from Pike 13
-    const profileResponse = await fetch(`${getBaseUrl()}/account`, {
+    // Fetch the authenticated user's profile from Pike 13
+    // Use the same endpoints as LEAGUEhub-orig: /api/v2/front/people/me, fallback /api/v2/me
+    const pike13Base = getAuthBaseUrl(); // e.g. https://jtl.pike13.com
+
+    let profileResponse = await fetch(`${pike13Base}/api/v2/front/people/me`, {
       headers: { Authorization: `Bearer ${accessToken}`, Accept: 'application/json' },
     });
-
-    if (profileResponse.ok) {
-      const profileData: any = await profileResponse.json();
-      // Pike 13 account response shape: { people: [{ id, first_name, last_name, email, ... }] }
-      const person = profileData?.people?.[0] || profileData?.account || profileData;
-      const pike13Id = String(person.id || tokenData.resource_owner_id || '');
-      const email = (person.email || '').toLowerCase();
-      const displayName = [person.first_name, person.last_name].filter(Boolean).join(' ') || email;
-
-      // Domain check: only @jointheleague.org emails allowed
-      if (email && !email.endsWith('@jointheleague.org')) {
-        return res.redirect('/login?error=denied');
-      }
-
-      if (pike13Id && email) {
-        const user = await findOrCreateOAuthUser('pike13', pike13Id, email, displayName, null);
-
-        // Create or activate instructor record
-        let instructor = await prisma.instructor.findUnique({ where: { userId: user.id } });
-        if (!instructor) {
-          instructor = await prisma.instructor.create({ data: { userId: user.id, isActive: true } });
-        } else if (!instructor.isActive) {
-          instructor = await prisma.instructor.update({ where: { id: instructor.id }, data: { isActive: true } });
-        }
-
-        // Save Pike13 token for this instructor
-        const expiresAt = tokenData.expires_in
-          ? new Date(Date.now() + tokenData.expires_in * 1000)
-          : null;
-        await prisma.pike13Token.upsert({
-          where: { instructorId: instructor.id },
-          update: { accessToken, refreshToken: tokenData.refresh_token ?? null, expiresAt },
-          create: { instructorId: instructor.id, accessToken, refreshToken: tokenData.refresh_token ?? null, expiresAt },
-        });
-
-        // If admin, store as global admin sync token
-        if (user.role === 'ADMIN') {
-          await prisma.pike13AdminToken.deleteMany();
-          await prisma.pike13AdminToken.create({
-            data: { accessToken, refreshToken: tokenData.refresh_token ?? null, expiresAt },
-          });
-        }
-
-        await new Promise<void>((resolve, reject) => {
-          req.login(user, (err) => (err ? reject(err) : resolve()));
-        });
-
-        // Redirect based on role
-        if (user.role === 'ADMIN') {
-          return res.redirect('/admin');
-        }
-        return res.redirect('/dashboard');
-      }
+    if (!profileResponse.ok) {
+      profileResponse = await fetch(`${pike13Base}/api/v2/me`, {
+        headers: { Authorization: `Bearer ${accessToken}`, Accept: 'application/json' },
+      });
     }
 
-    res.redirect('/');
+    if (!profileResponse.ok) {
+      const body = await profileResponse.text();
+      console.error('[pike13] Profile fetch failed:', profileResponse.status, body);
+      return res.redirect('/login?error=profile_fetch_failed');
+    }
+
+    const profileData: any = await profileResponse.json();
+    // Response shape varies: { person: { id, name, email } } or { people: [{ id, name, email }] }
+    const person = profileData?.person ?? profileData?.people?.[0];
+    if (!person) {
+      console.error('[pike13] Unexpected profile response shape:', JSON.stringify(profileData).slice(0, 500));
+      return res.redirect('/login?error=unexpected_profile');
+    }
+
+    const pike13Id = String(person.id || tokenData.resource_owner_id || '');
+    const email = (person.email || '').toLowerCase();
+    const displayName = person.name || [person.first_name, person.last_name].filter(Boolean).join(' ') || email;
+
+    if (!pike13Id || !email) {
+      console.error('[pike13] Missing pike13Id or email:', { pike13Id, email });
+      return res.redirect('/login?error=missing_profile_data');
+    }
+
+    // Domain check: only @jointheleague.org emails allowed
+    if (!email.endsWith('@jointheleague.org')) {
+      console.log(`[pike13] Email domain rejected: ${email}`);
+      return res.redirect('/login?error=denied');
+    }
+
+    const user = await findOrCreateOAuthUser('pike13', pike13Id, email, displayName, null);
+
+    // Create or activate instructor record
+    let instructor = await prisma.instructor.findUnique({ where: { userId: user.id } });
+    if (!instructor) {
+      instructor = await prisma.instructor.create({ data: { userId: user.id, isActive: true } });
+    } else if (!instructor.isActive) {
+      instructor = await prisma.instructor.update({ where: { id: instructor.id }, data: { isActive: true } });
+    }
+
+    // Save Pike13 token for this instructor
+    const expiresAt = tokenData.expires_in
+      ? new Date(Date.now() + tokenData.expires_in * 1000)
+      : null;
+    await prisma.pike13Token.upsert({
+      where: { instructorId: instructor.id },
+      update: { accessToken, refreshToken: tokenData.refresh_token ?? null, expiresAt },
+      create: { instructorId: instructor.id, accessToken, refreshToken: tokenData.refresh_token ?? null, expiresAt },
+    });
+
+    // If admin, store as global admin sync token
+    if (user.role === 'ADMIN') {
+      await prisma.pike13AdminToken.deleteMany();
+      await prisma.pike13AdminToken.create({
+        data: { accessToken, refreshToken: tokenData.refresh_token ?? null, expiresAt },
+      });
+    }
+
+    await new Promise<void>((resolve, reject) => {
+      req.login(user, (err) => (err ? reject(err) : resolve()));
+    });
+
+    console.log(`[pike13] Login successful: ${email} (instructorId=${instructor.id})`);
+
+    // Redirect based on role
+    if (user.role === 'ADMIN') {
+      return res.redirect('/admin');
+    }
+    return res.redirect('/dashboard');
   } catch (err: any) {
     console.error('Pike 13 token exchange error:', err.message);
     res.redirect('/?pike13_error=token_exchange_error');
