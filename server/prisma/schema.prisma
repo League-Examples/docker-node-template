@@ -69,6 +69,13 @@ model ScheduledJob {
   updatedAt DateTime  @updatedAt
 }
 
+model Counter {
+  id        String   @id @default(uuid())
+  name      String   @unique
+  value     Int      @default(0)
+  updatedAt DateTime @updatedAt
+}
+
 // Express session store (PrismaSessionStore).
 model Session {
   sid    String   @id

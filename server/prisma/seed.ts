@@ -5,7 +5,15 @@ const adapter = new PrismaBetterSqlite3({ url: process.env.DATABASE_URL! });
 const prisma = new PrismaClient({ adapter });
 
 async function main() {
-  console.log('Seed: no default data to create');
+  // Seed counter rows for alpha and beta — idempotent via upsert.
+  for (const name of ['alpha', 'beta']) {
+    await prisma.counter.upsert({
+      where: { name },
+      update: {},
+      create: { name, value: 0 },
+    });
+  }
+  console.log('Seed: counter rows upserted (alpha, beta)');
 }
 
 main()

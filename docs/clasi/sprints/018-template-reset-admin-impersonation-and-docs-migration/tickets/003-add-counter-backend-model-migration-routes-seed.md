@@ -1,9 +1,11 @@
 ---
 id: '003'
 title: Add Counter backend (model, migration, routes, seed)
-status: todo
-use-cases: [SUC-003]
-depends-on: ['001']
+status: done
+use-cases:
+- SUC-003
+depends-on:
+- '001'
 github-issue: ''
 todo: plan-revert-template-app-to-simple-two-button-counter-demo.md
 ---
@@ -69,14 +71,14 @@ npx prisma db seed
 
 ## Acceptance Criteria
 
-- [ ] `Counter` model present in `schema.prisma` with correct fields
-- [ ] Migration generated and applies cleanly (`npx prisma migrate dev`)
-- [ ] `GET /api/counters` returns JSON array; requires authentication (401 if unauthenticated)
-- [ ] `POST /api/counters/alpha/increment` increments `alpha` and returns `{ name: "alpha", value: N }`
-- [ ] `POST /api/counters/unknown/increment` auto-creates a counter with `value = 1`
-- [ ] Seed inserts `alpha` and `beta` rows idempotently
-- [ ] Counter values persist across server restart (stored in DB, not memory)
-- [ ] TypeScript compiles without errors
+- [x] `Counter` model present in `schema.prisma` with correct fields
+- [x] Migration generated and applies cleanly (`npx prisma migrate dev`)
+- [x] `GET /api/counters` returns JSON array; requires authentication (401 if unauthenticated)
+- [x] `POST /api/counters/alpha/increment` increments `alpha` and returns `{ name: "alpha", value: N }`
+- [x] `POST /api/counters/unknown/increment` auto-creates a counter with `value = 1`
+- [x] Seed inserts `alpha` and `beta` rows idempotently
+- [x] Counter values persist across server restart (stored in DB, not memory)
+- [x] TypeScript compiles without errors
 
 ## Implementation Plan
 
