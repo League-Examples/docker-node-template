@@ -1,9 +1,12 @@
 ---
 id: '006'
 title: Tighten app shell (AppLayout nav, branding, README)
-status: todo
-use-cases: [SUC-001, SUC-002]
-depends-on: ['002']
+status: done
+use-cases:
+- SUC-001
+- SUC-002
+depends-on:
+- '002'
 github-issue: ''
 todo: plan-revert-template-app-to-simple-two-button-counter-demo.md
 ---
@@ -63,18 +66,18 @@ Actions:
 
 ## Acceptance Criteria
 
-- [ ] `MAIN_NAV` contains only "Home"
-- [ ] `BOTTOM_NAV` contains "MCP Setup" and "About"
-- [ ] "Configuration" link (→ `/admin/config`) appears in sidebar for ADMIN role only
-- [ ] "Admin" link appears in sidebar for ADMIN role only
-- [ ] No sidebar links reference deleted domain pages
-- [ ] No "LEAGUEhub", "Pike13", "LEAGUE Progress Report" strings visible in the running app
-- [ ] `appName` default is no longer "LEAGUEhub"
-- [ ] Topbar shows username, role badge, and Account/Log out dropdown
-- [ ] `AppLayout` redirects unauthenticated users to `/login`
-- [ ] `README.md` describes a generic counter demo template (no LEAGUEhub mentions)
-- [ ] `docs/template-spec.md` reflects demo login and counter domain
-- [ ] `npm run build` (client) succeeds
+- [x] `MAIN_NAV` contains only "Home"
+- [x] `BOTTOM_NAV` contains "MCP Setup" and "About"
+- [x] "Configuration" link (→ `/admin/config`) appears in sidebar for ADMIN role only
+- [x] "Admin" link appears in sidebar for ADMIN role only
+- [x] No sidebar links reference deleted domain pages
+- [x] No "LEAGUEhub", "Pike13", "LEAGUE Progress Report" strings visible in the running app
+- [x] `appName` default is no longer "LEAGUEhub"
+- [x] Topbar shows username, role badge, and Account/Log out dropdown
+- [x] `AppLayout` redirects unauthenticated users to `/login`
+- [x] `README.md` describes a generic counter demo template (no LEAGUEhub mentions)
+- [x] `docs/template-spec.md` reflects demo login and counter domain
+- [x] `npm run build` (client) succeeds
 
 ## Implementation Plan
 

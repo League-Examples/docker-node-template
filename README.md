@@ -1,6 +1,8 @@
 # Docker Node Application Template
 
-A Node.js web application template with Express, React, and SQLite. Clone it, run the install script, and start building.
+A Node.js web application template with Express, React, Prisma, and SQLite. Clone it, run the install script, and start building.
+
+The default home page is a counter demo: two named counters (`alpha` and `beta`) that any logged-in user can increment. Log in with `user` / `pass` (USER role) or `admin` / `admin` (ADMIN role) — no OAuth setup required.
 
 ## Getting Started
 

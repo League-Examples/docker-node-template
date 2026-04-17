@@ -40,7 +40,7 @@ stack with the following components:
 │   ├── deployment.md             # Production deployment guide
 │   ├── secrets.md                # Secrets management guide
 │   ├── testing.md                # Test strategy and conventions
-│   ├── api-integrations.md       # OAuth and third-party API setup
+│   ├── api-integrations.md       # Third-party API setup (optional integrations)
 │   └── plans/                    # CLASI sprint artifacts
 ├── config/                       # Configuration and secrets
 │   ├── sops.yaml                 # SOPS encryption policy (age public keys)
@@ -60,9 +60,9 @@ stack with the following components:
 │   │   ├── components/
 │   │   │   └── AppLayout.tsx     # Shell layout with sidebar navigation
 │   │   ├── pages/
-│   │   │   ├── Home.tsx
-│   │   │   ├── Channels.tsx      # Chat channel list
-│   │   │   ├── Chat.tsx          # Channel message view
+│   │   │   ├── HomePage.tsx      # Counter demo (alpha + beta counters)
+│   │   │   ├── About.tsx
+│   │   │   ├── Account.tsx
 │   │   │   ├── McpSetup.tsx      # MCP server connection guide
 │   │   │   └── admin/            # Admin dashboard pages
 │   │   │       ├── AdminLayout.tsx
@@ -88,10 +88,8 @@ stack with the following components:
 │   │   ├── app.ts                # Express app setup
 │   │   ├── routes/
 │   │   │   ├── health.ts
-│   │   │   ├── auth.ts           # Passport OAuth + test-login
-│   │   │   ├── channels.ts       # Channel CRUD
-│   │   │   ├── messages.ts       # Message CRUD
-│   │   │   ├── search.ts         # Search endpoint
+│   │   │   ├── auth.ts           # Demo login (username/password)
+│   │   │   ├── counters.ts       # Counter CRUD (GET list, POST increment)
 │   │   │   ├── integrations.ts   # Third-party integration status
 │   │   │   └── admin/            # Admin API routes
 │   │   │       ├── index.ts
@@ -110,8 +108,7 @@ stack with the following components:
 │   │   │   ├── prisma.ts         # Prisma client (lazy-init)
 │   │   │   ├── config.ts         # App config key-value store
 │   │   │   ├── user.service.ts
-│   │   │   ├── channel.service.ts
-│   │   │   ├── message.service.ts
+│   │   │   ├── counter.service.ts
 │   │   │   ├── permissions.service.ts
 │   │   │   ├── session.service.ts
 │   │   │   ├── scheduler.service.ts
@@ -158,7 +155,7 @@ stack with the following components:
 See `server/src/` for the actual implementation. Key layout:
 
 - `index.ts` — App bootstrap, middleware registration, server start
-- `routes/` — Route handlers grouped by domain (e.g., `health.ts`, `channels.ts`, `admin/`)
+- `routes/` — Route handlers grouped by domain (e.g., `health.ts`, `counters.ts`, `admin/`)
 - `middleware/` — Error handling, logging (pino), authentication
 - `services/` — Service layer with `ServiceRegistry` (see section 3.4)
 - `mcp/` — MCP server integration (see section 3.5)
@@ -184,16 +181,15 @@ import { ServiceRegistry } from '../services/service.registry';
 
 const services = ServiceRegistry.create('UI');  // or 'MCP'
 const users = await services.users.list();
-const channel = await services.channels.create('general');
+const counters = await services.counters.list();
 ```
 
 Available services:
 
 | Service | Class | Responsibility |
 |---------|-------|---------------|
-| `users` | `UserService` | User CRUD, lookup by provider ID |
-| `channels` | `ChannelService` | Chat channel CRUD |
-| `messages` | `MessageService` | Message CRUD within channels |
+| `users` | `UserService` | User CRUD, lookup by ID |
+| `counters` | `CounterService` | Counter list and increment (upsert) |
 | `permissions` | `PermissionsService` | Role assignment patterns, permission checks |
 | `scheduler` | `SchedulerService` | Scheduled job management |
 | `backups` | `BackupService` | Database backup operations |
@@ -232,10 +228,8 @@ programmatically.
 |------|-------------|
 | `get_version` | Returns the application version |
 | `list_users` | List all users |
-| `list_channels` | List all chat channels |
-| `get_channel_messages` | Get messages from a channel |
-| `post_message` | Post a message to a channel |
-| `create_channel` | Create a new chat channel |
+| `list_counters` | List all counters and their current values |
+| `increment_counter` | Increment a named counter |
 
 MCP tools use the same `ServiceRegistry` as the web UI, ensuring
 consistent business logic and access control.
@@ -258,11 +252,10 @@ that provides a sidebar navigation shell wrapping all pages. Key pages:
 
 | Page | Path | Description |
 |------|------|-------------|
-| Home | `/` | Landing / dashboard |
-| Channels | `/channels` | Chat channel list |
-| Chat | `/channels/:id` | Message view for a channel |
+| Home | `/` | Counter demo — displays and increments `alpha` and `beta` counters |
 | MCP Setup | `/mcp-setup` | MCP server connection instructions |
-| Admin | `/admin/*` | Admin dashboard (password-protected) |
+| About | `/about` | About this template |
+| Admin | `/admin/*` | Admin dashboard (role-protected) |
 
 ### 4.3 Admin Dashboard
 
@@ -281,10 +274,23 @@ area with panels for managing all aspects of the application:
 | Backups | `ImportExport.tsx` | Database backup and restore |
 | Scheduler | `ScheduledJobsPanel.tsx` | Scheduled background jobs |
 
-Admin access requires authenticating via `POST /api/admin/login` with
-the `ADMIN_PASSWORD` environment variable.
+Admin access requires the `ADMIN` role. The demo seed creates an admin account
+with the credentials `admin` / `admin`.
 
-### 4.4 Development Proxy
+### 4.4 Demo Login
+
+The template uses a username/password login form (no OAuth required). Two
+hardcoded credential pairs are accepted out of the box:
+
+| Username | Password | Role |
+|----------|----------|------|
+| `user` | `pass` | USER |
+| `admin` | `admin` | ADMIN |
+
+The endpoint `POST /api/auth/demo-login` finds or creates the user record on
+first login. No seed step is required for user accounts.
+
+### 4.5 Development Proxy
 
 Vite proxies `/api` requests to the Express backend. The proxy target is
 configurable via the `VITE_API_URL` environment variable (defaults to
@@ -466,16 +472,12 @@ The `docker/entrypoint.sh` script converts file-mounted secrets from
 |--------|---------|-------------|
 | `SESSION_SECRET` | server | Express session signing key |
 | `ADMIN_PASSWORD` | server | Admin dashboard login password |
-| `GITHUB_CLIENT_ID` | server | GitHub OAuth app client ID |
-| `GITHUB_CLIENT_SECRET` | server | GitHub OAuth app client secret |
-| `GOOGLE_CLIENT_ID` | server | Google OAuth client ID |
-| `GOOGLE_CLIENT_SECRET` | server | Google OAuth client secret |
 | `MCP_DEFAULT_TOKEN` | server | Bearer token for MCP server authentication |
 | `ANTHROPIC_API_KEY` | server | Claude API key for AI features |
 
-All OAuth secrets are optional. The app starts cleanly without them —
-unconfigured integrations return 501 with setup instructions. See
-[secrets.md](secrets.md) for full details.
+All secrets except `SESSION_SECRET` and `ADMIN_PASSWORD` are optional. The app
+starts cleanly without them — unconfigured integrations return 501 with setup
+instructions.
 
 ---
 
@@ -597,21 +599,6 @@ For GitHub login or API access on behalf of users:
 - **Secrets:** `github_client_id`, `github_client_secret`
 - **Callback URL:** `https://<app>.jtlapp.net/api/auth/github/callback`
 - **Scopes:** Request only what you need (`read:user`, `user:email`, `repo`, etc.)
-
-### 10.3 Pike 13 API
-
-[Pike13](https://www.pike13.com/) is a business management platform for
-fitness, dance, and activity-based businesses.
-
-- **API Base URL:** `https://pike13.com/api/v2/` (or `https://<business>.pike13.com/api/v2/`)
-- **Authentication:** OAuth 2.0 Bearer token
-- **Secrets:** `pike13_client_id`, `pike13_client_secret`, `pike13_access_token`
-- **Common endpoints:**
-  - `GET /api/v2/desk/people` — list members/clients
-  - `GET /api/v2/desk/event_occurrences` — list scheduled classes/events
-  - `GET /api/v2/desk/invoices` — billing/invoices
-  - `GET /api/v2/desk/visits` — attendance/check-ins
-- **Rate limits:** Respect Pike 13's rate limits; implement exponential backoff
 
 ---
 

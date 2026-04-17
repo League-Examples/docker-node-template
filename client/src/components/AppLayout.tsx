@@ -233,7 +233,7 @@ export default function AppLayout() {
 
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [dropdownOpen, setDropdownOpen] = useState(false);
-  const [appName, setAppName] = useState('LEAGUEhub');
+  const [appName, setAppName] = useState(import.meta.env.VITE_APP_NAME ?? 'Template App');
   const dropdownRef = useRef<HTMLDivElement>(null);
 
   // Fetch app name from health endpoint
@@ -342,6 +342,15 @@ export default function AppLayout() {
             {item.label}
           </NavLink>
         ))}
+        {isAdmin && !isAdminSection && (
+          <NavLink
+            to="/admin/config"
+            onClick={closeSidebarIfMobile}
+            style={({ isActive }) => styles.navLink(isActive)}
+          >
+            Configuration
+          </NavLink>
+        )}
         {isAdmin && !isAdminSection && (
           <NavLink
             to="/admin/users"
