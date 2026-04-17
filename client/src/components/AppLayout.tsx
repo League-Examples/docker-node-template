@@ -195,6 +195,17 @@ const styles = {
     minWidth: 0,
     overflow: 'auto',
   } as const,
+
+  impersonationBanner: {
+    background: '#f59e0b',
+    color: '#1c1917',
+    padding: '8px 16px',
+    fontSize: 13,
+    fontWeight: 600,
+    display: 'flex',
+    alignItems: 'center',
+    gap: 8,
+  } as const,
 };
 
 /* ------------------------------------------------------------------ */
@@ -280,6 +291,12 @@ export default function AppLayout() {
     setDropdownOpen(false);
     await logout();
     navigate('/login');
+  }
+
+  async function handleStopImpersonating() {
+    setDropdownOpen(false);
+    await fetch('/api/admin/stop-impersonating', { method: 'POST' });
+    window.location.reload();
   }
 
   /* ---------- Sidebar ---------- */
@@ -418,15 +435,27 @@ export default function AppLayout() {
             >
               Account
             </button>
-            <button
-              style={{ ...styles.dropdownItem, borderTop: '1px solid #e2e8f0' }}
-              onClick={(e) => {
-                e.stopPropagation();
-                void handleLogout();
-              }}
-            >
-              Log out
-            </button>
+            {user.impersonating ? (
+              <button
+                style={{ ...styles.dropdownItem, borderTop: '1px solid #e2e8f0', color: '#92400e' }}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  void handleStopImpersonating();
+                }}
+              >
+                Stop impersonating
+              </button>
+            ) : (
+              <button
+                style={{ ...styles.dropdownItem, borderTop: '1px solid #e2e8f0' }}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  void handleLogout();
+                }}
+              >
+                Log out
+              </button>
+            )}
           </div>
         )}
       </div>
@@ -452,6 +481,13 @@ export default function AppLayout() {
         }}
       >
         {topbar}
+        {user.impersonating && user.realAdmin && (
+          <div style={styles.impersonationBanner}>
+            <span>
+              Viewing as {user.displayName ?? 'unknown'} — real admin: {user.realAdmin.displayName}
+            </span>
+          </div>
+        )}
         <main style={styles.content}>
           <Outlet />
         </main>

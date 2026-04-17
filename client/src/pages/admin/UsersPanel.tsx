@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react';
+import { useAuth } from '../../context/AuthContext';
 
 interface UserProvider {
   provider: string;
@@ -49,10 +50,12 @@ function ProviderBadge({ provider }: { provider: string }) {
 }
 
 export default function UsersPanel() {
+  const { user: currentUser } = useAuth();
   const [users, setUsers] = useState<AdminUser[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [updating, setUpdating] = useState<number | null>(null);
+  const [impersonating, setImpersonating] = useState<number | null>(null);
 
   useEffect(() => {
     fetchUsers();
@@ -92,6 +95,23 @@ export default function UsersPanel() {
     }
   }
 
+  async function handleImpersonate(user: AdminUser) {
+    setImpersonating(user.id);
+    try {
+      const res = await fetch(`/api/admin/users/${user.id}/impersonate`, {
+        method: 'POST',
+      });
+      if (!res.ok) {
+        const body = await res.json().catch(() => ({}));
+        throw new Error((body as { error?: string }).error || `HTTP ${res.status}`);
+      }
+      window.location.reload();
+    } catch (err: any) {
+      alert(err.message || 'Failed to impersonate user');
+      setImpersonating(null);
+    }
+  }
+
   function getProviders(user: AdminUser): string[] {
     const set = new Set<string>();
     if (user.providers) {
@@ -117,11 +137,13 @@ export default function UsersPanel() {
             <th style={thStyle}>Providers</th>
             <th style={thStyle}>Admin</th>
             <th style={thStyle}>Joined</th>
+            <th style={thStyle}>Actions</th>
           </tr>
         </thead>
         <tbody>
           {users.map((user) => {
             const providers = getProviders(user);
+            const isOwnRow = currentUser?.id === user.id;
             return (
               <tr key={user.id}>
                 <td style={tdStyle}>{user.displayName || '-'}</td>
@@ -147,6 +169,17 @@ export default function UsersPanel() {
                 </td>
                 <td style={tdStyle}>
                   {new Date(user.createdAt).toLocaleDateString()}
+                </td>
+                <td style={tdStyle}>
+                  {!isOwnRow && (
+                    <button
+                      style={impersonateButtonStyle}
+                      disabled={impersonating === user.id}
+                      onClick={() => handleImpersonate(user)}
+                    >
+                      {impersonating === user.id ? 'Working...' : 'Impersonate'}
+                    </button>
+                  )}
                 </td>
               </tr>
             );
@@ -180,4 +213,15 @@ const thStyle: React.CSSProperties = {
 const tdStyle: React.CSSProperties = {
   padding: '8px 12px',
   borderBottom: '1px solid #f1f5f9',
+};
+
+const impersonateButtonStyle: React.CSSProperties = {
+  padding: '4px 10px',
+  fontSize: 12,
+  background: '#f59e0b',
+  color: '#fff',
+  border: 'none',
+  borderRadius: 4,
+  cursor: 'pointer',
+  fontWeight: 600,
 };

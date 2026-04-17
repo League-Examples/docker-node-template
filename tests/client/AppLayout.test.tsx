@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { render, screen } from '@testing-library/react';
+import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
 import AppLayout from '../../client/src/components/AppLayout';
 
@@ -37,6 +37,21 @@ function renderLayout() {
   );
 }
 
+function makeAdminUser(overrides = {}) {
+  return {
+    id: 1,
+    email: 'admin@example.com',
+    displayName: 'Admin User',
+    role: 'ADMIN',
+    avatarUrl: null,
+    provider: null,
+    providerId: null,
+    createdAt: '2025-01-01T00:00:00Z',
+    updatedAt: '2025-01-01T00:00:00Z',
+    ...overrides,
+  };
+}
+
 // ---- Tests ----
 
 describe('AppLayout', () => {
@@ -67,17 +82,7 @@ describe('AppLayout', () => {
 
   it('shows Admin link when user has admin role', () => {
     mockUseAuth.mockReturnValue({
-      user: {
-        id: 1,
-        email: 'admin@example.com',
-        displayName: 'Admin User',
-        role: 'ADMIN',
-        avatarUrl: null,
-        provider: null,
-        providerId: null,
-        createdAt: '2025-01-01T00:00:00Z',
-        updatedAt: '2025-01-01T00:00:00Z',
-      },
+      user: makeAdminUser(),
       loading: false,
       logout: mockLogout,
     });
@@ -101,5 +106,105 @@ describe('AppLayout', () => {
     // The Outlet renders inside a <main> element
     const mainEl = document.querySelector('main');
     expect(mainEl).toBeInTheDocument();
+  });
+
+  // ---- Impersonation banner tests ----
+
+  it('does not show impersonation banner when not impersonating', () => {
+    renderLayout();
+    expect(screen.queryByText(/Viewing as/i)).not.toBeInTheDocument();
+  });
+
+  it('shows impersonation banner when user.impersonating is true', () => {
+    mockUseAuth.mockReturnValue({
+      user: makeAdminUser({
+        impersonating: true,
+        displayName: 'Target User',
+        realAdmin: { id: '1', displayName: 'Real Admin' },
+      }),
+      loading: false,
+      logout: mockLogout,
+    });
+
+    renderLayout();
+    expect(screen.getByText(/Viewing as Target User/i)).toBeInTheDocument();
+    expect(screen.getByText(/real admin: Real Admin/i)).toBeInTheDocument();
+  });
+
+  it('does not show impersonation banner when impersonating is false', () => {
+    mockUseAuth.mockReturnValue({
+      user: makeAdminUser({ impersonating: false }),
+      loading: false,
+      logout: mockLogout,
+    });
+
+    renderLayout();
+    expect(screen.queryByText(/Viewing as/i)).not.toBeInTheDocument();
+  });
+
+  // ---- Dropdown tests ----
+
+  it('shows "Log out" in dropdown when not impersonating', () => {
+    renderLayout();
+    // hover over user area to open dropdown
+    const userArea = screen.getByText('Jane Student').closest('div[style]')!;
+    fireEvent.mouseEnter(userArea);
+    expect(screen.getByText('Log out')).toBeInTheDocument();
+    expect(screen.queryByText('Stop impersonating')).not.toBeInTheDocument();
+  });
+
+  it('shows "Stop impersonating" in dropdown instead of "Log out" when impersonating', () => {
+    mockUseAuth.mockReturnValue({
+      user: makeAdminUser({
+        impersonating: true,
+        displayName: 'Target User',
+        realAdmin: { id: '1', displayName: 'Real Admin' },
+      }),
+      loading: false,
+      logout: mockLogout,
+    });
+
+    renderLayout();
+    const userArea = screen.getByText('Target User').closest('div[style]')!;
+    fireEvent.mouseEnter(userArea);
+    expect(screen.getByText('Stop impersonating')).toBeInTheDocument();
+    expect(screen.queryByText('Log out')).not.toBeInTheDocument();
+  });
+
+  it('calls stop-impersonating endpoint and reloads when "Stop impersonating" is clicked', async () => {
+    const mockFetch = vi.fn().mockResolvedValue({ ok: true });
+    const mockReload = vi.fn();
+    vi.stubGlobal('fetch', mockFetch);
+    Object.defineProperty(window, 'location', {
+      value: { ...window.location, reload: mockReload },
+      writable: true,
+    });
+
+    mockUseAuth.mockReturnValue({
+      user: makeAdminUser({
+        impersonating: true,
+        displayName: 'Target User',
+        realAdmin: { id: '1', displayName: 'Real Admin' },
+      }),
+      loading: false,
+      logout: mockLogout,
+    });
+
+    renderLayout();
+    const userArea = screen.getByText('Target User').closest('div[style]')!;
+    fireEvent.mouseEnter(userArea);
+
+    const stopBtn = screen.getByText('Stop impersonating');
+    fireEvent.click(stopBtn);
+
+    await waitFor(() => {
+      expect(mockFetch).toHaveBeenCalledWith(
+        '/api/admin/stop-impersonating',
+        { method: 'POST' },
+      );
+      expect(mockReload).toHaveBeenCalled();
+    });
+
+    vi.unstubAllGlobals();
   });
 });

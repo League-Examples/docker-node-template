@@ -1,9 +1,13 @@
 ---
-id: '009'
+id: 009
 title: Add impersonation admin UI (UsersPanel button + AppLayout banner)
-status: todo
-use-cases: [SUC-004, SUC-005]
-depends-on: ['005', '008']
+status: done
+use-cases:
+- SUC-004
+- SUC-005
+depends-on:
+- '005'
+- 008
 github-issue: ''
 todo: plan-admin-user-impersonation.md
 ---
@@ -62,17 +66,17 @@ Note: Do not also add the Configuration nav entry here — that is ticket 006.
 
 ## Acceptance Criteria
 
-- [ ] UsersPanel renders an "Impersonate" button in each user row
-- [ ] The button is absent for the current user's own row
-- [ ] Clicking "Impersonate" calls the endpoint and reloads the page
-- [ ] After reload, the app presents as the impersonated user (role badge, nav)
-- [ ] A colored impersonation banner is visible when `user.impersonating === true`
-- [ ] Banner shows the target user's display name
-- [ ] Account dropdown shows "Stop impersonating" instead of "Log out" during impersonation
-- [ ] Clicking "Stop impersonating" calls the endpoint and reloads the page
-- [ ] After reload, the app presents as the original admin
-- [ ] Normal "Log out" is restored after stopping impersonation
-- [ ] TypeScript compiles without errors; `npm run test:client` passes
+- [x] UsersPanel renders an "Impersonate" button in each user row
+- [x] The button is absent for the current user's own row
+- [x] Clicking "Impersonate" calls the endpoint and reloads the page
+- [x] After reload, the app presents as the impersonated user (role badge, nav)
+- [x] A colored impersonation banner is visible when `user.impersonating === true`
+- [x] Banner shows the target user's display name
+- [x] Account dropdown shows "Stop impersonating" instead of "Log out" during impersonation
+- [x] Clicking "Stop impersonating" calls the endpoint and reloads the page
+- [x] After reload, the app presents as the original admin
+- [x] Normal "Log out" is restored after stopping impersonation
+- [x] TypeScript compiles without errors; `npm run test:client` passes
 
 ## Implementation Plan
 
