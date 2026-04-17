@@ -90,6 +90,7 @@ authRouter.get('/auth/me', (req: Request, res: Response) => {
     return res.status(401).json({ error: 'Not authenticated' });
   }
   const user = req.user as any;
+  const realAdmin = (req as any).realAdmin as any | undefined;
   res.json({
     id: user.id,
     email: user.email,
@@ -100,6 +101,10 @@ authRouter.get('/auth/me', (req: Request, res: Response) => {
     providerId: user.providerId,
     createdAt: user.createdAt,
     updatedAt: user.updatedAt,
+    impersonating: !!realAdmin,
+    realAdmin: realAdmin
+      ? { id: realAdmin.id, displayName: realAdmin.displayName ?? null }
+      : null,
   });
 });
 

@@ -1,9 +1,13 @@
 ---
-id: '008'
+id: 008
 title: Add impersonation API endpoints and extend auth/me
-status: todo
-use-cases: [SUC-004, SUC-005, SUC-006]
-depends-on: ['007']
+status: done
+use-cases:
+- SUC-004
+- SUC-005
+- SUC-006
+depends-on:
+- '007'
 github-issue: ''
 todo: plan-admin-user-impersonation.md
 ---
@@ -58,15 +62,15 @@ Read the current `me` response shape, then extend it:
 
 ## Acceptance Criteria
 
-- [ ] `POST /api/admin/users/:id/impersonate` sets session fields and returns 200
-- [ ] `POST /api/admin/users/:id/impersonate` returns 404 if target user does not exist
-- [ ] `POST /api/admin/users/:id/impersonate` returns 409 if target is self
-- [ ] `POST /api/admin/users/:id/impersonate` returns 403 if caller is not admin
-- [ ] `POST /api/admin/stop-impersonating` clears session fields and returns 200
-- [ ] `GET /api/auth/me` includes `impersonating: true` and `realAdmin: { id, displayName }` during impersonation
-- [ ] `GET /api/auth/me` includes `impersonating: false` and `realAdmin: null` when not impersonating
-- [ ] TypeScript compiles without errors
-- [ ] `npm run test:server` passes
+- [x] `POST /api/admin/users/:id/impersonate` sets session fields and returns 200
+- [x] `POST /api/admin/users/:id/impersonate` returns 404 if target user does not exist
+- [x] `POST /api/admin/users/:id/impersonate` returns 409 if target is self
+- [x] `POST /api/admin/users/:id/impersonate` returns 403 if caller is not admin
+- [x] `POST /api/admin/stop-impersonating` clears session fields and returns 200
+- [x] `GET /api/auth/me` includes `impersonating: true` and `realAdmin: { id, displayName }` during impersonation
+- [x] `GET /api/auth/me` includes `impersonating: false` and `realAdmin: null` when not impersonating
+- [x] TypeScript compiles without errors
+- [x] `npm run test:server` passes
 
 ## Implementation Plan
 
