@@ -27,7 +27,6 @@ export async function impersonateMiddleware(req: Request, _res: Response, next: 
   try {
     const impersonatedUser = await prisma.user.findUnique({
       where: { id: req.session.impersonatingUserId },
-      include: { instructors: { take: 1 } },
     });
 
     if (!impersonatedUser) {
@@ -36,11 +35,6 @@ export async function impersonateMiddleware(req: Request, _res: Response, next: 
       delete req.session.realAdminId;
       return next();
     }
-
-    // Mirror deserializeUser: attach instructor fields
-    const instructor = impersonatedUser.instructors[0];
-    (impersonatedUser as any).instructorId = instructor?.id ?? null;
-    (impersonatedUser as any).isActiveInstructor = instructor?.isActive ?? false;
 
     // Preserve real admin identity, swap req.user
     req.realAdmin = req.user;

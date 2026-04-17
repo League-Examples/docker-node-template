@@ -12,6 +12,7 @@ import { authRouter } from './routes/auth';
 import { githubRouter } from './routes/github';
 import { adminRouter } from './routes/admin';
 import { countersRouter } from './routes/counters';
+import { impersonateMiddleware } from './middleware/impersonate';
 import { mcpTokenAuth } from './middleware/mcpAuth';
 import { createMcpHandler } from './mcp/handler';
 import { errorHandler } from './middleware/errorHandler';
@@ -80,6 +81,7 @@ passport.deserializeUser(async (id: number, done) => {
 });
 app.use(passport.initialize());
 app.use(passport.session());
+app.use(impersonateMiddleware);
 
 // Service registry — provides req.services to all route handlers
 const registry = ServiceRegistry.create('API');

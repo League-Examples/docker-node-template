@@ -1,9 +1,11 @@
 ---
 id: '007'
 title: Wire impersonation middleware and update requireAdmin
-status: todo
-use-cases: [SUC-006]
-depends-on: ['001']
+status: done
+use-cases:
+- SUC-006
+depends-on:
+- '001'
 github-issue: ''
 todo: plan-admin-user-impersonation.md
 ---
@@ -62,13 +64,13 @@ Also verify `req.realAdmin` is typed as `User | undefined` on Express.Request. A
 
 ## Acceptance Criteria
 
-- [ ] `impersonateMiddleware` imported and mounted in `app.ts` after `passport.session()`
-- [ ] `requireAdmin.ts` checks `req.realAdmin.role` when `req.realAdmin` is present
-- [ ] `requireAdmin.ts` falls back to `req.user.role` when `req.realAdmin` is absent
-- [ ] Session type augmentation includes `impersonatingUserId` and `realAdminId`
-- [ ] `req.realAdmin` typed on Express.Request
-- [ ] TypeScript compiles without errors
-- [ ] `npm run test:server` passes
+- [x] `impersonateMiddleware` imported and mounted in `app.ts` after `passport.session()`
+- [x] `requireAdmin.ts` checks `req.realAdmin.role` when `req.realAdmin` is present
+- [x] `requireAdmin.ts` falls back to `req.user.role` when `req.realAdmin` is absent
+- [x] Session type augmentation includes `impersonatingUserId` and `realAdminId`
+- [x] `req.realAdmin` typed on Express.Request
+- [x] TypeScript compiles without errors
+- [x] `npm run test:server` passes
 
 ## Implementation Plan
 
