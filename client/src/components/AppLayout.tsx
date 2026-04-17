@@ -19,13 +19,7 @@ const MAIN_NAV: NavItem[] = [
 
 const ADMIN_NAV: NavItem[] = [
   { to: '/admin/users', label: 'Users' },
-
   { to: '/admin/dashboard', label: 'Dashboard' },
-  { to: '/admin/instructors', label: 'Instructors' },
-  { to: '/admin/compliance', label: 'Compliance' },
-  { to: '/admin/volunteer-hours', label: 'Volunteer Hours' },
-  { to: '/admin/feedback', label: 'Feedback' },
-
   { to: '/admin/env', label: 'Environment' },
   { to: '/admin/db', label: 'Database' },
   { to: '/admin/config', label: 'Configuration' },

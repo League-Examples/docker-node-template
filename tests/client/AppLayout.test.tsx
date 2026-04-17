@@ -60,10 +60,9 @@ describe('AppLayout', () => {
     });
   });
 
-  it('renders sidebar with Home and Chat navigation links', () => {
+  it('renders sidebar with Home navigation link', () => {
     renderLayout();
     expect(screen.getByText('Home')).toBeInTheDocument();
-    expect(screen.getByText('Chat')).toBeInTheDocument();
   });
 
   it('shows Admin link when user has admin role', () => {

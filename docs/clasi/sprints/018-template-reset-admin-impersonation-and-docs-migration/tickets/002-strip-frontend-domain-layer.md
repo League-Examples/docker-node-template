@@ -1,7 +1,7 @@
 ---
 id: '002'
 title: Strip frontend domain layer
-status: todo
+status: done
 use-cases: []
 depends-on: []
 github-issue: ''
@@ -64,15 +64,15 @@ This ticket is deletion only.
 
 ## Acceptance Criteria
 
-- [ ] All listed domain pages deleted from `client/src/pages/`
-- [ ] `InstructorLayout.tsx` deleted
-- [ ] `MonthPicker.tsx` deleted if domain-specific (decision documented in PR)
-- [ ] All four domain admin panels deleted from `client/src/pages/admin/`
-- [ ] `App.tsx` has no route or import referencing deleted pages
-- [ ] Admin dashboard/layout has no nav links to deleted panels
-- [ ] `npm run build` (client) succeeds with no TypeScript errors
-- [ ] `npm run test:client` passes (deleted-feature tests also deleted)
-- [ ] `grep -ri "InstructorLayout\|MonthlyReview\|ReviewList\|ReviewEditor\|TemplateList\|TemplateEditor\|CheckinPage\|FeedbackPage\|PendingActivation\|DashboardPage" client/src` returns zero hits
+- [x] All listed domain pages deleted from `client/src/pages/`
+- [x] `InstructorLayout.tsx` deleted
+- [x] `MonthPicker.tsx` deleted if domain-specific (decision documented in PR)
+- [x] All four domain admin panels deleted from `client/src/pages/admin/`
+- [x] `App.tsx` has no route or import referencing deleted pages
+- [x] Admin dashboard/layout has no nav links to deleted panels
+- [x] `npm run build` (client) succeeds with no TypeScript errors
+- [x] `npm run test:client` passes (deleted-feature tests also deleted)
+- [x] `grep -ri "InstructorLayout\|MonthlyReview\|ReviewList\|ReviewEditor\|TemplateList\|TemplateEditor\|CheckinPage\|FeedbackPage\|PendingActivation\|DashboardPage" client/src` returns zero hits
 
 ## Implementation Plan
 

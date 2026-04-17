@@ -2,16 +2,7 @@ import { BrowserRouter, Routes, Route } from 'react-router-dom';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { AuthProvider } from './context/AuthContext';
 import AppLayout from './components/AppLayout';
-import { LoginPage } from './pages/LoginPage';
-import { PendingActivationPage } from './pages/PendingActivationPage';
-import { FeedbackPage } from './pages/FeedbackPage';
-import { InstructorLayout } from './components/InstructorLayout';
-import { DashboardPage } from './pages/DashboardPage';
-import { ReviewListPage } from './pages/ReviewListPage';
-import { ReviewEditorPage } from './pages/ReviewEditorPage';
-import { TemplateListPage } from './pages/TemplateListPage';
-import { TemplateEditorPage } from './pages/TemplateEditorPage';
-import { CheckinPage } from './pages/CheckinPage';
+import HomePage from './pages/HomePage';
 
 import About from './pages/About';
 import McpSetup from './pages/McpSetup';
@@ -21,10 +12,6 @@ import Account from './pages/Account';
 import AdminLogin from './pages/admin/AdminLogin';
 import AdminLayout from './pages/admin/AdminLayout';
 import { AdminDashboardPanel } from './pages/admin/AdminDashboardPanel';
-import { InstructorListPanel } from './pages/admin/InstructorListPanel';
-import { CompliancePanel } from './pages/admin/CompliancePanel';
-import { VolunteerHoursPanel } from './pages/admin/VolunteerHoursPanel';
-import { AdminFeedbackPanel } from './pages/admin/AdminFeedbackPanel';
 import EnvironmentInfo from './pages/admin/EnvironmentInfo';
 import DatabaseViewer from './pages/admin/DatabaseViewer';
 import ConfigPanel from './pages/admin/ConfigPanel';
@@ -43,31 +30,12 @@ function App() {
       <QueryClientProvider client={queryClient}>
         <AuthProvider>
           <Routes>
-            {/* Login (standalone, no layout) */}
-            <Route path="/login" element={<LoginPage />} />
-
-            {/* Pending activation (standalone, no layout) */}
-            <Route path="/pending-activation" element={<PendingActivationPage />} />
-
-            {/* Feedback (standalone, no layout) */}
-            <Route path="/feedback/:token" element={<FeedbackPage />} />
-
             {/* Admin login (standalone, no layout) */}
             <Route path="/admin" element={<AdminLogin />} />
 
             {/* All authenticated routes share AppLayout (sidebar + topbar) */}
             <Route element={<AppLayout />}>
-              {/* Instructor routes inside InstructorLayout */}
-              <Route element={<InstructorLayout />}>
-                <Route path="/" element={<DashboardPage />} />
-                <Route path="/dashboard" element={<DashboardPage />} />
-                <Route path="/reviews" element={<ReviewListPage />} />
-                <Route path="/reviews/:id" element={<ReviewEditorPage />} />
-                <Route path="/templates" element={<TemplateListPage />} />
-                <Route path="/templates/new" element={<TemplateEditorPage />} />
-                <Route path="/templates/:id" element={<TemplateEditorPage />} />
-                <Route path="/checkin" element={<CheckinPage />} />
-              </Route>
+              <Route path="/" element={<HomePage />} />
 
               <Route path="/about" element={<About />} />
               <Route path="/account" element={<Account />} />
@@ -77,10 +45,6 @@ function App() {
               <Route element={<AdminLayout />}>
                 <Route path="/admin/users" element={<UsersPanel />} />
                 <Route path="/admin/dashboard" element={<AdminDashboardPanel />} />
-                <Route path="/admin/instructors" element={<InstructorListPanel />} />
-                <Route path="/admin/compliance" element={<CompliancePanel />} />
-                <Route path="/admin/volunteer-hours" element={<VolunteerHoursPanel />} />
-                <Route path="/admin/feedback" element={<AdminFeedbackPanel />} />
                 <Route path="/admin/env" element={<EnvironmentInfo />} />
                 <Route path="/admin/db" element={<DatabaseViewer />} />
                 <Route path="/admin/config" element={<ConfigPanel />} />
