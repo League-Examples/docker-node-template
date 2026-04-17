@@ -1,9 +1,12 @@
 ---
 id: '004'
 title: Add demo login backend (replace OAuth with hardcoded credentials)
-status: todo
-use-cases: [SUC-001, SUC-002]
-depends-on: ['001']
+status: done
+use-cases:
+- SUC-001
+- SUC-002
+depends-on:
+- '001'
 github-issue: ''
 todo: plan-revert-template-app-to-simple-two-button-counter-demo.md
 ---
@@ -59,14 +62,14 @@ Ensure `POST /api/auth/logout` exists and calls `req.logout()` then destroys the
 
 ## Acceptance Criteria
 
-- [ ] `POST /api/auth/demo-login` with `user`/`pass` → 200, session established, role = USER
-- [ ] `POST /api/auth/demo-login` with `admin`/`admin` → 200, session established, role = ADMIN
-- [ ] `POST /api/auth/demo-login` with unknown credentials → 401 `{ error: "Invalid credentials" }`
-- [ ] `POST /api/auth/demo-login` with missing body fields → 400
-- [ ] After demo-login, `GET /api/auth/me` returns the correct user object
-- [ ] `POST /api/auth/logout` destroys session and returns 200
-- [ ] No Pike13/Google/GitHub OAuth routes remain in `routes/auth.ts`
-- [ ] TypeScript compiles without errors
+- [x] `POST /api/auth/demo-login` with `user`/`pass` → 200, session established, role = USER
+- [x] `POST /api/auth/demo-login` with `admin`/`admin` → 200, session established, role = ADMIN
+- [x] `POST /api/auth/demo-login` with unknown credentials → 401 `{ error: "Invalid credentials" }`
+- [x] `POST /api/auth/demo-login` with missing body fields → 400
+- [x] After demo-login, `GET /api/auth/me` returns the correct user object
+- [x] `POST /api/auth/logout` destroys session and returns 200
+- [x] No Pike13/Google/GitHub OAuth routes remain in `routes/auth.ts`
+- [x] TypeScript compiles without errors
 
 ## Implementation Plan
 

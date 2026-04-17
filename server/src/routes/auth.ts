@@ -1,200 +1,58 @@
 import { Router, Request, Response } from 'express';
-import passport from 'passport';
-import pkg_github2 from 'passport-github2';
-import pkg_google from 'passport-google-oauth20';
 import { prisma } from '../services/prisma';
-import { PermissionsService } from '../services/permissions.service';
-
-const permissionsService = new PermissionsService(prisma);
-
-/**
- * After a user is upserted via OAuth, check RoleAssignmentPatterns
- * and update the user's role if a match is found.
- */
-async function applyRolePatterns(user: any): Promise<any> {
-  if (!user.email) return user;
-  const matchedRole = await permissionsService.matchEmail(user.email);
-  if (matchedRole && matchedRole !== user.role) {
-    return prisma.user.update({
-      where: { id: user.id },
-      data: { role: matchedRole },
-    });
-  }
-  return user;
-}
-
-/**
- * Find or create a user via OAuth, linking accounts by email.
- * Also ensures a UserProvider record exists for the provider.
- */
-export async function findOrCreateOAuthUser(
-  provider: string,
-  providerId: string,
-  email: string,
-  displayName: string,
-  avatarUrl: string | null,
-): Promise<any> {
-  // 1. Check if this exact provider+id is already linked
-  const existingProvider = await prisma.userProvider.findUnique({
-    where: { provider_providerId: { provider, providerId } },
-    include: { user: true },
-  });
-  if (existingProvider) {
-    // Update profile info
-    const user = await prisma.user.update({
-      where: { id: existingProvider.userId },
-      data: { email, displayName, avatarUrl },
-    });
-    return applyRolePatterns(user);
-  }
-
-  // 2. Check if a user with this email already exists (account linking)
-  let user = email ? await prisma.user.findUnique({ where: { email } }) : null;
-
-  if (user) {
-    // Link this new provider to the existing user
-    // Update provider/providerId on user if not set
-    if (!user.provider) {
-      await prisma.user.update({
-        where: { id: user.id },
-        data: { provider, providerId, displayName, avatarUrl },
-      });
-    }
-  } else {
-    // 3. Create a new user
-    user = await prisma.user.create({
-      data: { provider, providerId, email, displayName, avatarUrl },
-    });
-  }
-
-  // Ensure UserProvider record exists
-  await prisma.userProvider.upsert({
-    where: { provider_providerId: { provider, providerId } },
-    update: { userId: user.id },
-    create: { userId: user.id, provider, providerId },
-  });
-
-  return applyRolePatterns(user);
-}
 
 export const authRouter = Router();
 
-// --- GitHub OAuth Strategy ---
-// Register only if credentials are configured.
-// Docs: https://docs.github.com/en/apps/oauth-apps/building-oauth-apps/creating-an-oauth-app
-if (process.env.GITHUB_CLIENT_ID && process.env.GITHUB_CLIENT_SECRET) {
-  const GitHubStrategy = pkg_github2.Strategy;
-  passport.use(new GitHubStrategy(
-    {
-      clientID: process.env.GITHUB_CLIENT_ID,
-      clientSecret: process.env.GITHUB_CLIENT_SECRET,
-      callbackURL: process.env.GITHUB_CALLBACK_URL || '/api/auth/github/callback',
-      proxy: true,
-      scope: ['read:user', 'user:email'],
-    },
-    async (_accessToken: string, _refreshToken: string, profile: any, done: any) => {
-      try {
-        const email = profile.emails?.[0]?.value || '';
-        const user = await findOrCreateOAuthUser(
-          'github',
-          String(profile.id),
-          email,
-          profile.displayName || profile.username,
-          profile.photos?.[0]?.value || null,
-        );
-        done(null, user);
-      } catch (err) {
-        done(err);
-      }
-    },
-  ));
-  if (process.env.NODE_ENV !== 'test') console.log('GitHub OAuth strategy registered');
-} else {
-  if (process.env.NODE_ENV !== 'test') console.log('GitHub OAuth not configured — set GITHUB_CLIENT_ID and GITHUB_CLIENT_SECRET');
-}
+// --- Demo login credentials ---
+// These are intentionally hardcoded for template demonstration purposes.
+const DEMO_CREDENTIALS = [
+  { username: 'user',  password: 'pass',  email: 'user@demo.local',  displayName: 'Demo User',  role: 'USER'  as const },
+  { username: 'admin', password: 'admin', email: 'admin@demo.local', displayName: 'Demo Admin', role: 'ADMIN' as const },
+];
 
-// GitHub OAuth initiation
-authRouter.get('/auth/github', (req: Request, res: Response, next) => {
-  if (!(passport as any)._strategy('github')) {
-    return res.status(501).json({
-      error: 'GitHub OAuth not configured',
-      docs: 'https://github.com/settings/developers',
-    });
+// POST /api/auth/demo-login
+// Authenticates against hardcoded credential pairs; finds or creates the User record.
+authRouter.post('/auth/demo-login', async (req: Request, res: Response) => {
+  const { username, password } = req.body ?? {};
+
+  if (!username || !password) {
+    return res.status(400).json({ error: 'username and password are required' });
   }
-  passport.authenticate('github', { scope: ['read:user', 'user:email'] })(req, res, next);
-});
 
-// GitHub OAuth callback
-authRouter.get('/auth/github/callback',
-  (req: Request, res: Response, next) => {
-    if (!(passport as any)._strategy('github')) {
-      return res.status(501).json({ error: 'GitHub OAuth not configured' });
-    }
-    passport.authenticate('github', { failureRedirect: '/' })(req, res, next);
-  },
-  (_req: Request, res: Response) => {
-    res.redirect('/');
-  },
-);
+  const match = DEMO_CREDENTIALS.find(
+    (c) => c.username === username && c.password === password,
+  );
 
-// --- Google OAuth Strategy ---
-// Register only if credentials are configured.
-// Docs: https://developers.google.com/identity/protocols/oauth2/web-server
-if (process.env.GOOGLE_CLIENT_ID && process.env.GOOGLE_CLIENT_SECRET) {
-  const GoogleStrategy = pkg_google.Strategy;
-  passport.use(new GoogleStrategy(
-    {
-      clientID: process.env.GOOGLE_CLIENT_ID,
-      clientSecret: process.env.GOOGLE_CLIENT_SECRET,
-      callbackURL: process.env.GOOGLE_CALLBACK_URL || '/api/auth/google/callback',
-      proxy: true,
-      scope: ['profile', 'email'],
-    },
-    async (_accessToken: string, _refreshToken: string, profile: any, done: any) => {
-      try {
-        const email = profile.emails?.[0]?.value || '';
-        const user = await findOrCreateOAuthUser(
-          'google',
-          String(profile.id),
-          email,
-          profile.displayName || '',
-          profile.photos?.[0]?.value || null,
-        );
-        done(null, user);
-      } catch (err) {
-        done(err);
-      }
-    },
-  ));
-  if (process.env.NODE_ENV !== 'test') console.log('Google OAuth strategy registered');
-} else {
-  if (process.env.NODE_ENV !== 'test') console.log('Google OAuth not configured — set GOOGLE_CLIENT_ID and GOOGLE_CLIENT_SECRET');
-}
-
-// Google OAuth initiation
-// Setup: https://console.cloud.google.com/apis/credentials
-authRouter.get('/auth/google', (req: Request, res: Response, next) => {
-  if (!(passport as any)._strategy('google')) {
-    return res.status(501).json({
-      error: 'Google OAuth not configured',
-      docs: 'https://console.cloud.google.com/apis/credentials',
-    });
+  if (!match) {
+    return res.status(401).json({ error: 'Invalid credentials' });
   }
-  passport.authenticate('google', { scope: ['profile', 'email'] })(req, res, next);
-});
 
-// Google OAuth callback
-authRouter.get('/auth/google/callback',
-  (req: Request, res: Response, next) => {
-    if (!(passport as any)._strategy('google')) {
-      return res.status(501).json({ error: 'Google OAuth not configured' });
-    }
-    passport.authenticate('google', { failureRedirect: '/' })(req, res, next);
-  },
-  (_req: Request, res: Response) => {
-    res.redirect('/');
-  },
-);
+  try {
+    const user = await prisma.user.upsert({
+      where: { email: match.email },
+      update: { role: match.role },
+      create: {
+        email: match.email,
+        displayName: match.displayName,
+        role: match.role,
+      },
+    });
+
+    req.login(user, (err) => {
+      if (err) return res.status(500).json({ error: 'Login failed' });
+      res.json({
+        user: {
+          id: user.id,
+          email: user.email,
+          displayName: user.displayName,
+          role: user.role,
+        },
+      });
+    });
+  } catch (err) {
+    res.status(500).json({ error: 'Login failed' });
+  }
+});
 
 // --- Test login (non-production only) ---
 authRouter.post('/auth/test-login', async (req: Request, res: Response) => {
