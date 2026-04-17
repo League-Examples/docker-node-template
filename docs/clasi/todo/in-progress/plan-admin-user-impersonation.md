@@ -1,5 +1,10 @@
 ---
-status: pending
+status: in-progress
+sprint: 018
+tickets:
+- 018-007
+- 018-008
+- 018-009
 ---
 
 # Plan: Admin User Impersonation

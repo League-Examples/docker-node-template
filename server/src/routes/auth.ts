@@ -226,7 +226,7 @@ authRouter.post('/auth/test-login', async (req: Request, res: Response) => {
 
 // --- Shared auth endpoints ---
 
-// Get current user (includes instructor fields from deserializeUser)
+// Get current user
 authRouter.get('/auth/me', (req: Request, res: Response) => {
   if (!req.user) {
     return res.status(401).json({ error: 'Not authenticated' });
@@ -242,8 +242,6 @@ authRouter.get('/auth/me', (req: Request, res: Response) => {
     providerId: user.providerId,
     createdAt: user.createdAt,
     updatedAt: user.updatedAt,
-    instructorId: user.instructorId ?? null,
-    isActiveInstructor: user.isActiveInstructor ?? false,
   });
 });
 

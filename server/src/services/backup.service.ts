@@ -165,13 +165,11 @@ export class BackupService {
   }
 
   async exportJson(): Promise<any> {
-    const [users, configs, rolePatterns, scheduledJobs, channels, messages] = await Promise.all([
+    const [users, configs, rolePatterns, scheduledJobs] = await Promise.all([
       this.prisma.user.findMany(),
       this.prisma.config.findMany(),
       this.prisma.roleAssignmentPattern.findMany(),
       this.prisma.scheduledJob.findMany(),
-      this.prisma.channel.findMany(),
-      this.prisma.message.findMany(),
     ]);
     return {
       exportedAt: new Date().toISOString(),
@@ -180,8 +178,6 @@ export class BackupService {
         Config: { count: configs.length, records: configs },
         RoleAssignmentPattern: { count: rolePatterns.length, records: rolePatterns },
         ScheduledJob: { count: scheduledJobs.length, records: scheduledJobs },
-        Channel: { count: channels.length, records: channels },
-        Message: { count: messages.length, records: messages },
       },
     };
   }

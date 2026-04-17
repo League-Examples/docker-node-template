@@ -9,14 +9,8 @@ import { Writable } from 'stream';
 import { healthRouter } from './routes/health';
 import { integrationsRouter } from './routes/integrations';
 import { authRouter } from './routes/auth';
-import { pike13Router } from './routes/pike13';
 import { githubRouter } from './routes/github';
 import { adminRouter } from './routes/admin';
-import { instructorRouter } from './routes/instructor';
-import { reviewsRouter } from './routes/reviews';
-import { templatesRouter } from './routes/templates';
-import { checkinsRouter } from './routes/checkins';
-import { feedbackRouter } from './routes/feedback';
 import { mcpTokenAuth } from './middleware/mcpAuth';
 import { createMcpHandler } from './mcp/handler';
 import { errorHandler } from './middleware/errorHandler';
@@ -77,13 +71,7 @@ passport.deserializeUser(async (id: number, done) => {
   try {
     const user = await prisma.user.findUnique({
       where: { id },
-      include: { instructors: { take: 1 } },
     });
-    if (user) {
-      const instructor = user.instructors[0];
-      (user as any).instructorId = instructor?.id ?? null;
-      (user as any).isActiveInstructor = instructor?.isActive ?? false;
-    }
     done(null, user);
   } catch (err) {
     done(err);
@@ -100,16 +88,8 @@ app.use(attachServices(registry));
 app.use('/api', healthRouter);
 app.use('/api', integrationsRouter);
 app.use('/api', authRouter);
-app.use('/api', pike13Router);
 app.use('/api', githubRouter);
 app.use('/api', adminRouter);
-
-// LEAGUEhub domain routes
-app.use('/api', instructorRouter);
-app.use('/api', reviewsRouter);
-app.use('/api', templatesRouter);
-app.use('/api', checkinsRouter);
-app.use('/api', feedbackRouter);
 
 // MCP endpoint — token-based auth, separate from session auth
 app.post('/api/mcp', mcpTokenAuth, createMcpHandler());
