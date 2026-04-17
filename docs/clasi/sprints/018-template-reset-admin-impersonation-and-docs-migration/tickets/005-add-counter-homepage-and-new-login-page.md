@@ -1,9 +1,15 @@
 ---
 id: '005'
 title: Add counter homepage and new login page
-status: todo
-use-cases: [SUC-001, SUC-002, SUC-003]
-depends-on: ['002', '003', '004']
+status: done
+use-cases:
+- SUC-001
+- SUC-002
+- SUC-003
+depends-on:
+- '002'
+- '003'
+- '004'
 github-issue: ''
 todo: plan-revert-template-app-to-simple-two-button-counter-demo.md
 ---
@@ -73,17 +79,17 @@ current content):
 
 ## Acceptance Criteria
 
-- [ ] `/login` renders a form with username and password inputs pre-filled with `user`/`pass`
-- [ ] Submitting `user`/`pass` redirects to `/` and displays two counters
-- [ ] Submitting `admin`/`admin` redirects to `/` (admin sidebar links appear after 006)
-- [ ] Submitting bad credentials shows an inline error (no redirect)
-- [ ] Home page displays `alpha` and `beta` counters with their current values
-- [ ] Clicking the `alpha` button increments `alpha`; value updates in the UI
-- [ ] Clicking the `beta` button increments `beta`; value updates in the UI
-- [ ] Counter values persist across page reload
-- [ ] `AuthUser` type has `impersonating` and `realAdmin` optional fields
-- [ ] `loginWithCredentials` helper available on AuthContext
-- [ ] TypeScript compiles without errors; `npm run test:client` passes
+- [x] `/login` renders a form with username and password inputs pre-filled with `user`/`pass`
+- [x] Submitting `user`/`pass` redirects to `/` and displays two counters
+- [x] Submitting `admin`/`admin` redirects to `/` (admin sidebar links appear after 006)
+- [x] Submitting bad credentials shows an inline error (no redirect)
+- [x] Home page displays `alpha` and `beta` counters with their current values
+- [x] Clicking the `alpha` button increments `alpha`; value updates in the UI
+- [x] Clicking the `beta` button increments `beta`; value updates in the UI
+- [x] Counter values persist across page reload
+- [x] `AuthUser` type has `impersonating` and `realAdmin` optional fields
+- [x] `loginWithCredentials` helper available on AuthContext
+- [x] TypeScript compiles without errors; `npm run test:client` passes
 
 ## Implementation Plan
 

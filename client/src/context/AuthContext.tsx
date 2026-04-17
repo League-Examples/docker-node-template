@@ -6,7 +6,7 @@ import {
   type ReactNode,
 } from 'react';
 
-/** Shape returned by GET /api/auth/me (mirrors Prisma User model + instructor fields). */
+/** Shape returned by GET /api/auth/me. */
 export interface AuthUser {
   id: number;
   email: string;
@@ -17,8 +17,9 @@ export interface AuthUser {
   providerId: string | null;
   createdAt: string;
   updatedAt: string;
-  instructorId?: number | null;
-  isActiveInstructor?: boolean;
+  // Impersonation fields (populated by Sprint 018 impersonation middleware)
+  impersonating?: boolean;
+  realAdmin?: { id: string; displayName: string } | null;
 }
 
 interface AuthContextValue {
@@ -26,6 +27,11 @@ interface AuthContextValue {
   loading: boolean;
   login: (user: AuthUser) => void;
   logout: () => Promise<void>;
+  loginWithCredentials: (
+    username: string,
+    password: string,
+  ) => Promise<{ ok: boolean; error?: string }>;
+  refresh: () => Promise<void>;
 }
 
 const AuthContext = createContext<AuthContextValue | undefined>(undefined);
@@ -34,19 +40,22 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<AuthUser | null>(null);
   const [loading, setLoading] = useState(true);
 
-  useEffect(() => {
-    fetch('/api/auth/me')
-      .then((res) => {
-        if (res.ok) return res.json();
-        return null;
-      })
-      .then((data: AuthUser | null) => {
+  async function fetchMe() {
+    try {
+      const res = await fetch('/api/auth/me');
+      if (res.ok) {
+        const data: AuthUser = await res.json();
         setUser(data);
-      })
-      .catch(() => {
+      } else {
         setUser(null);
-      })
-      .finally(() => setLoading(false));
+      }
+    } catch {
+      setUser(null);
+    }
+  }
+
+  useEffect(() => {
+    fetchMe().finally(() => setLoading(false));
   }, []);
 
   function login(authedUser: AuthUser) {
@@ -62,8 +71,33 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setUser(null);
   }
 
+  async function loginWithCredentials(
+    username: string,
+    password: string,
+  ): Promise<{ ok: boolean; error?: string }> {
+    try {
+      const res = await fetch('/api/auth/demo-login', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ username, password }),
+      });
+      if (res.ok) {
+        await fetchMe();
+        return { ok: true };
+      }
+      const body = await res.json().catch(() => ({}));
+      return { ok: false, error: (body as { error?: string }).error ?? 'Invalid credentials' };
+    } catch {
+      return { ok: false, error: 'Network error' };
+    }
+  }
+
+  async function refresh() {
+    await fetchMe();
+  }
+
   return (
-    <AuthContext.Provider value={{ user, loading, login, logout }}>
+    <AuthContext.Provider value={{ user, loading, login, logout, loginWithCredentials, refresh }}>
       {children}
     </AuthContext.Provider>
   );

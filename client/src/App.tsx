@@ -3,6 +3,7 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { AuthProvider } from './context/AuthContext';
 import AppLayout from './components/AppLayout';
 import HomePage from './pages/HomePage';
+import Login from './pages/Login';
 
 import About from './pages/About';
 import McpSetup from './pages/McpSetup';
@@ -30,6 +31,9 @@ function App() {
       <QueryClientProvider client={queryClient}>
         <AuthProvider>
           <Routes>
+            {/* Standalone pages (no AppLayout) */}
+            <Route path="/login" element={<Login />} />
+
             {/* Admin login (standalone, no layout) */}
             <Route path="/admin" element={<AdminLogin />} />
 

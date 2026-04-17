@@ -24,6 +24,8 @@ export default defineConfig({
       'react-router': path.resolve(clientNodeModules, 'react-router'),
       '@testing-library/react': path.resolve(clientNodeModules, '@testing-library/react'),
       '@testing-library/jest-dom': path.resolve(clientNodeModules, '@testing-library/jest-dom'),
+      '@tanstack/react-query': path.resolve(clientNodeModules, '@tanstack/react-query'),
+      '@testing-library/user-event': path.resolve(clientNodeModules, '@testing-library/user-event'),
     },
   },
   test: {
