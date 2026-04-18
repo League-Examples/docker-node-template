@@ -1,12 +1,81 @@
+import { useState } from 'react';
 import { useAuth } from '../context/AuthContext';
+import { useProviderStatus } from '../hooks/useProviderStatus';
 import { roleBadgeStyle, roleShortLabel } from '../lib/roles';
 
+const PROVIDER_LABELS: Record<string, string> = {
+  github: 'GitHub',
+  google: 'Google',
+  pike13: 'Pike 13',
+};
+
+function providerLabel(p: string): string {
+  return PROVIDER_LABELS[p] ?? p.charAt(0).toUpperCase() + p.slice(1);
+}
+
+function addButtonStyle(provider: string): React.CSSProperties {
+  if (provider === 'github') {
+    return {
+      ...styles.addButton,
+      background: '#24292e',
+      color: '#fff',
+      border: 'none',
+    };
+  }
+  if (provider === 'pike13') {
+    return {
+      ...styles.addButton,
+      background: '#f37121',
+      color: '#fff',
+      border: 'none',
+    };
+  }
+  // google (white with border)
+  return {
+    ...styles.addButton,
+    background: '#fff',
+    color: '#374151',
+    border: '1px solid #d1d5db',
+  };
+}
+
 export default function Account() {
-  const { user } = useAuth();
+  const { user, refresh } = useAuth();
+  const providerStatus = useProviderStatus();
+  const [unlinking, setUnlinking] = useState<string | null>(null);
+  const [unlinkError, setUnlinkError] = useState<string | null>(null);
+
   if (!user) return null;
 
   const displayName = user.displayName ?? 'User';
   const badge = roleBadgeStyle(user.role);
+
+  const linked = new Set(user.linkedProviders ?? []);
+  const configurableButUnlinked = (
+    Object.entries(providerStatus) as [string, boolean][]
+  )
+    .filter(([k, v]) => k !== 'loading' && v === true && !linked.has(k))
+    .map(([k]) => k);
+
+  async function handleUnlink(provider: string) {
+    setUnlinking(provider);
+    setUnlinkError(null);
+    try {
+      const res = await fetch(`/api/auth/unlink/${provider}`, { method: 'POST' });
+      if (!res.ok) {
+        const body = await res.json().catch(() => ({}));
+        setUnlinkError((body as { error?: string }).error ?? 'Failed to unlink provider');
+      } else {
+        await refresh();
+      }
+    } catch {
+      setUnlinkError('Network error');
+    } finally {
+      setUnlinking(null);
+    }
+  }
+
+  const linkedProviders = user.linkedProviders ?? [];
 
   return (
     <div style={styles.container}>
@@ -45,6 +114,44 @@ export default function Account() {
             {new Date(user.createdAt).toLocaleDateString()}
           </Field>
         </div>
+      </div>
+
+      <div style={{ ...styles.card, marginTop: '1rem' }}>
+        <h2 style={styles.sectionTitle}>Sign-in methods</h2>
+
+        {linkedProviders.length === 0 && (
+          <p style={styles.empty}>No OAuth providers linked.</p>
+        )}
+
+        {linkedProviders.map((provider) => (
+          <div key={provider} style={styles.providerRow}>
+            <span style={styles.providerName}>{providerLabel(provider)}</span>
+            <button
+              onClick={() => handleUnlink(provider)}
+              disabled={linkedProviders.length <= 1 || unlinking === provider}
+              style={styles.unlinkButton}
+              aria-label={`Unlink ${providerLabel(provider)}`}
+            >
+              {unlinking === provider ? 'Unlinking\u2026' : 'Unlink'}
+            </button>
+          </div>
+        ))}
+
+        {unlinkError && <p role="alert" style={styles.error}>{unlinkError}</p>}
+
+        {!providerStatus.loading && configurableButUnlinked.length > 0 && (
+          <div style={styles.addRow}>
+            {configurableButUnlinked.map((provider) => (
+              <a
+                key={provider}
+                href={`/api/auth/${provider}?link=1`}
+                style={addButtonStyle(provider)}
+              >
+                Add {providerLabel(provider)}
+              </a>
+            ))}
+          </div>
+        )}
       </div>
     </div>
   );
@@ -131,5 +238,58 @@ const styles: Record<string, React.CSSProperties> = {
     fontSize: '0.9rem',
     color: '#1e293b',
     fontWeight: 500,
+  },
+  // Sign-in methods section
+  sectionTitle: {
+    fontSize: '1rem',
+    fontWeight: 600,
+    color: '#1e293b',
+    marginBottom: '1rem',
+    marginTop: 0,
+  },
+  providerRow: {
+    display: 'flex',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: '0.5rem',
+  },
+  providerName: {
+    fontSize: '0.9rem',
+    color: '#1e293b',
+  },
+  unlinkButton: {
+    fontSize: '0.8rem',
+    padding: '4px 12px',
+    borderRadius: 6,
+    border: '1px solid #e2e8f0',
+    background: '#f8fafc',
+    color: '#64748b',
+    cursor: 'pointer',
+  },
+  addRow: {
+    display: 'flex',
+    gap: '0.5rem',
+    marginTop: '1rem',
+    flexWrap: 'wrap' as const,
+  },
+  addButton: {
+    display: 'inline-flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    padding: '6px 14px',
+    borderRadius: 8,
+    fontSize: '0.85rem',
+    fontWeight: 600,
+    textDecoration: 'none',
+    cursor: 'pointer',
+  },
+  empty: {
+    fontSize: '0.85rem',
+    color: '#64748b',
+  },
+  error: {
+    fontSize: '0.85rem',
+    color: '#dc2626',
+    marginTop: '0.5rem',
   },
 };
