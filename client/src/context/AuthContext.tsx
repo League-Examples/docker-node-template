@@ -20,6 +20,8 @@ export interface AuthUser {
   // Impersonation fields (populated by Sprint 018 impersonation middleware)
   impersonating?: boolean;
   realAdmin?: { id: string; displayName: string } | null;
+  // OAuth-linked providers (populated by /api/auth/me, Sprint 018 social login)
+  linkedProviders?: string[];
 }
 
 interface AuthContextValue {
