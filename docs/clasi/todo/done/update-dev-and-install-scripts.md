@@ -1,5 +1,5 @@
 ---
-status: pending
+status: done
 ---
 
 # Update Dev Script and Install Script for Template vs Project Workflows

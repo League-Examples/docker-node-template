@@ -110,38 +110,6 @@ if [ ${#MISSING_TOOLS[@]} -gt 0 ]; then
 fi
 
 # ---------------------------------------------------------------------------
-# 4. CLASI directory — auto-detect template vs application vs clone
-# ---------------------------------------------------------------------------
-header "Project Initialization"
-
-CLASI_DIR="docs/clasi"
-TEMPLATE_REMOTE="League-Examples/docker-node-template"
-
-origin_url=$(git remote get-url origin 2>/dev/null || true)
-
-if echo "$origin_url" | grep -q "$TEMPLATE_REMOTE"; then
-  # Developing the template itself — keep everything
-  success "CLASI retained (template development)"
-elif [ -f .template ]; then
-  # First instantiation from the template — clear history and consume marker
-  info "New project detected — clearing template development history..."
-  if [ -d "$CLASI_DIR" ]; then
-    rm -rf "$CLASI_DIR/sprints/done"/*
-    rm -rf "$CLASI_DIR/todo/done"/*
-    rm -rf "$CLASI_DIR/todo/for-later"/*
-    rm -f  "$CLASI_DIR/todo"/*.md
-    rm -rf "$CLASI_DIR/reflections"/*
-    rm -rf "$CLASI_DIR/architecture/done"/*
-    rm -f  .clasi.db
-  fi
-  rm -f .template
-  success "CLASI reset — ready for your project"
-else
-  # No marker, not the template repo — this is a clone of an instantiated project
-  success "CLASI directory unchanged"
-fi
-
-# ---------------------------------------------------------------------------
 # 4. Python Tools (CLASI, dotconfig, rundbat)
 # ---------------------------------------------------------------------------
 header "Python Tools"
@@ -200,6 +168,27 @@ if command -v rundbat &>/dev/null; then
   else
     warn "rundbat init returned an error — you may need to run it manually"
   fi
+fi
+
+# Wipe template SE history immediately before re-initialising CLASI.
+# install-dev.sh sets PRESERVE_CLASI=1 so template contributors keep
+# their sprint artifacts intact.
+CLASI_DIR="docs/clasi"
+if [ "${PRESERVE_CLASI:-0}" = "1" ]; then
+  info "CLASI retained (install-dev mode)"
+else
+  info "Clearing template development history..."
+  if [ -d "$CLASI_DIR" ]; then
+    rm -rf "$CLASI_DIR/sprints/done"/*        2>/dev/null || true
+    rm -rf "$CLASI_DIR/todo/done"/*            2>/dev/null || true
+    rm -rf "$CLASI_DIR/todo/for-later"/*       2>/dev/null || true
+    rm -f  "$CLASI_DIR/todo"/*.md              2>/dev/null || true
+    rm -rf "$CLASI_DIR/reflections"/*          2>/dev/null || true
+    rm -rf "$CLASI_DIR/architecture/done"/*    2>/dev/null || true
+    rm -f  "$CLASI_DIR/.clasi.db"              2>/dev/null || true
+  fi
+  rm -f .template
+  success "CLASI reset — ready for your project"
 fi
 
 # Run clasi init to create a fresh project database

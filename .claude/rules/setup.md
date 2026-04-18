@@ -31,26 +31,38 @@ development server.
 
 ## 1. Run the Install Script
 
+Two entry points, same setup steps, different CLASI handling:
+
 ```bash
+# Starting a new project from this template — wipes template SE history:
 ./scripts/install.sh
+
+# Contributing to the template — preserves CLASI (sprints, todos, .clasi.db):
+./scripts/install-dev.sh
 ```
 
-The script performs the following, in order:
+Both scripts perform, in order:
 
 1. **npm dependencies** — installs packages for root, server, and client
 2. **Docker context detection** — finds your local Docker daemon (OrbStack,
    Docker Desktop, or default). Skips gracefully if Docker is not installed.
-3. **Project initialization** — asks whether to delete `docs/clasi/` (the
-   template's SE process directory). Delete it unless you're contributing
-   to the template itself.
+3. **Encryption tools check** — verifies `age` and `sops` are available for
+   dotconfig
 4. **Python tools** — installs CLASI, dotconfig, and rundbat via pipx
-   (if pipx is available), then runs `clasi init`
-5. **`.env` generation** — assembles `.env` from `config/dev/public.env`
+   (if pipx is available)
+5. **CLASI history wipe** — `install.sh` clears `docs/clasi/` (sprints/done,
+   todos, reflections, `.clasi.db`) immediately before `clasi init`.
+   `install-dev.sh` skips this step via `PRESERVE_CLASI=1`.
+6. **Init tools** — runs `dotconfig init`, `rundbat init`, and `clasi init`
+7. **`.env` generation** — assembles `.env` from `config/dev/public.env`
    and appends secrets via dotconfig (or placeholders if dotconfig is not
    installed)
 
-Re-running the script is safe — if `.env` already exists, it asks whether
+Re-running either script is safe — if `.env` already exists, it asks whether
 to overwrite or keep it.
+
+`scripts/dev.sh` is a separate concern — it's the dev-server launcher
+invoked by `npm run dev`, not a setup script.
 
 ---
 
