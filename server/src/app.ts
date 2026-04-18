@@ -12,6 +12,7 @@ import { authRouter } from './routes/auth';
 import { githubRouter } from './routes/github';
 import { adminRouter } from './routes/admin';
 import { countersRouter } from './routes/counters';
+import { pike13Router } from './routes/pike13';
 import { impersonateMiddleware } from './middleware/impersonate';
 import { mcpTokenAuth } from './middleware/mcpAuth';
 import { createMcpHandler } from './mcp/handler';
@@ -92,6 +93,7 @@ app.use('/api', healthRouter);
 app.use('/api', integrationsRouter);
 app.use('/api', authRouter);
 app.use('/api', githubRouter);
+app.use('/api', pike13Router);
 app.use('/api', adminRouter);
 app.use('/api/counters', countersRouter);
 
