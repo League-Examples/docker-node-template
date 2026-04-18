@@ -1,3 +1,12 @@
+---
+name: secrets
+description: Secrets management — dotconfig/SOPS/age pipeline, file inventory, onboarding, and security rules
+paths:
+  - "config/**"
+  - ".env*"
+  - "docker/entrypoint.sh"
+  - "scripts/install.sh"
+---
 # Secrets Management
 
 > **Agents:** For full dotconfig usage instructions, run `dotconfig agent`.
@@ -78,7 +87,7 @@ Application code never reads files from `/run/secrets/` directly. The
 
 All OAuth secrets are optional. The app starts cleanly without them —
 unconfigured integrations return 501 with setup instructions. See
-[`docs/api-integrations.md`](api-integrations.md) for credential setup.
+`.claude/rules/api-integrations.md` for credential setup.
 
 ## Daily Development
 

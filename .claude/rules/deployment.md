@@ -1,3 +1,13 @@
+---
+name: deployment
+description: Production builds, Docker deployment, database management, and environment configuration
+paths:
+  - "Dockerfile"
+  - "docker/**"
+  - "scripts/deploy*"
+  - "config/rundbat.yaml"
+  - "docker-compose*.yml"
+---
 # Deployment Guide
 
 > **Agents:** Use the `rundbat` MCP tools for all database and deployment
@@ -47,7 +57,7 @@ Key rundbat MCP tools:
 
 ## Secrets & Configuration
 
-Secrets are managed by **dotconfig**. See [Secrets Management](secrets.md)
+Secrets are managed by **dotconfig**. See `.claude/rules/secrets.md`
 for the project-specific secrets inventory, and run `dotconfig agent` for
 full usage instructions.
 

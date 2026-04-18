@@ -1,3 +1,12 @@
+---
+name: setup
+description: First-time checkout, install script, dev server startup, and common development tasks
+paths:
+  - "package.json"
+  - "scripts/install*"
+  - "README.md"
+  - "scripts/dev.sh"
+---
 # Developer Setup
 
 This guide covers everything needed to go from a fresh checkout to a running
@@ -58,12 +67,12 @@ Key defaults:
 | `DEV_DOCKER_CONTEXT` | auto-detected | OrbStack, Docker Desktop, or default |
 
 To use PostgreSQL instead, change `DATABASE_URL` to a `postgresql://` URL
-and start a Postgres container (see [Deployment Guide](deployment.md)).
+and start a Postgres container (see `.claude/rules/deployment.md`).
 
 If the install script couldn't load secrets (dotconfig not installed or
 no key access), add them manually to `.env`. See
 `config/dev/secrets.env.example` for the required variables, and
-[Secrets Management](secrets.md) for key setup.
+`.claude/rules/secrets.md` for key setup.
 
 ---
 
@@ -127,7 +136,7 @@ Tests default to SQLite. No Docker or external database required.
 | Run Prisma migrations (PostgreSQL) | `cd server && npx prisma migrate dev` |
 | Push schema to SQLite | `cd server && ./prisma/sqlite-push.sh` |
 | Open Prisma Studio | `cd server && npx prisma studio` |
-| Deploy to production | See [Deployment Guide](deployment.md) |
+| Deploy to production | See `.claude/rules/deployment.md` |
 
 ---
 

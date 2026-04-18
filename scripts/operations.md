@@ -122,7 +122,7 @@ npx playwright test
 
 ## Deploy
 
-See `scripts/deploy.sh` and [docs/deployment.md](../docs/deployment.md).
+See `scripts/deploy.sh` and `.claude/rules/deployment.md`.
 
 ## Version
 

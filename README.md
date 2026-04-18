@@ -58,7 +58,7 @@ npm run test:e2e      # End-to-end (Playwright)
 
 | Guide | Contents |
 |-------|----------|
-| [docs/setup.md](docs/setup.md) | Detailed setup and troubleshooting |
-| [docs/deployment.md](docs/deployment.md) | Production deployment |
-| [docs/template-spec.md](docs/template-spec.md) | Architecture and conventions |
 | [docs/testing.md](docs/testing.md) | Test strategy and guidelines |
+| `.claude/rules/setup.md` | Detailed setup and troubleshooting |
+| `.claude/rules/deployment.md` | Production deployment |
+| `.claude/rules/template-spec.md` | Architecture and conventions |

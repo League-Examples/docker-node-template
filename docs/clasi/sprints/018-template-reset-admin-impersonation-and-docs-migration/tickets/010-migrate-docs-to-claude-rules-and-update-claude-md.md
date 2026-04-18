@@ -1,7 +1,7 @@
 ---
 id: '010'
 title: Migrate docs to .claude/rules and update CLAUDE.md
-status: todo
+status: done
 use-cases:
 - SUC-007
 depends-on:
@@ -92,14 +92,14 @@ Fix any remaining references (except CLAUDE.md which you just updated).
 
 ## Acceptance Criteria
 
-- [ ] `docs/api-integrations.md` deleted; `.claude/rules/api-integrations.md` exists with `paths:` front matter
-- [ ] `docs/deployment.md` deleted; `.claude/rules/deployment.md` exists with `paths:` front matter
-- [ ] `docs/secrets.md` deleted; secrets content merged/replaced/renamed appropriately in `.claude/rules/`
-- [ ] `docs/setup.md` deleted; `.claude/rules/setup.md` exists with `paths:` front matter
-- [ ] `docs/template-spec.md` deleted; `.claude/rules/template-spec.md` exists with `paths:` front matter and post-reset content
-- [ ] `CLAUDE.md` Documentation table updated — no stale `docs/` links for migrated files
-- [ ] `grep -r "docs/api-integrations\|docs/deployment\|docs/secrets\|docs/setup\|docs/template-spec"` returns zero hits outside CLAUDE.md update context
-- [ ] `docs/testing.md` is NOT migrated (it is a human-facing test guide, not agent context)
+- [x] `docs/api-integrations.md` deleted; `.claude/rules/api-integrations.md` exists with `paths:` front matter
+- [x] `docs/deployment.md` deleted; `.claude/rules/deployment.md` exists with `paths:` front matter
+- [x] `docs/secrets.md` deleted; secrets content merged/replaced/renamed appropriately in `.claude/rules/`
+- [x] `docs/setup.md` deleted; `.claude/rules/setup.md` exists with `paths:` front matter
+- [x] `docs/template-spec.md` deleted; `.claude/rules/template-spec.md` exists with `paths:` front matter and post-reset content
+- [x] `CLAUDE.md` Documentation table updated — no stale `docs/` links for migrated files
+- [x] `grep -r "docs/api-integrations\|docs/deployment\|docs/secrets\|docs/setup\|docs/template-spec"` returns zero hits outside CLAUDE.md update context
+- [x] `docs/testing.md` is NOT migrated (it is a human-facing test guide, not agent context)
 
 ## Implementation Plan
 

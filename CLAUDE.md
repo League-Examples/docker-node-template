@@ -28,19 +28,18 @@ with the tool instructions above — if they do, the tool instructions win.
 
 Human-facing docs live in `docs/`. Consult them for reference:
 
-- [docs/setup.md](docs/setup.md) — First-time checkout, install script, dev server
-- [docs/template-spec.md](docs/template-spec.md) — Technology decisions, project structure, conventions
-- [docs/deployment.md](docs/deployment.md) — Production builds, deployment
-- [docs/secrets.md](docs/secrets.md) — Secrets inventory and onboarding
-- [docs/api-integrations.md](docs/api-integrations.md) — GitHub, Google, Pike 13 OAuth setup
 - [docs/testing.md](docs/testing.md) — Full test strategy and patterns
 
 Agent behavioral rules are in `.claude/rules/` (auto-loaded):
 
 - `testing.md` — Test authentication, assertions, layer separation, SQLite
 - `architecture.md` — Service layer, API conventions, database philosophy, dual DB support
-- `secrets.md` — Secrets handling, security rules, config structure
+- `secrets.md` — Secrets handling, security rules, config structure, onboarding
 - `rundbat.md` — Database and deployment MCP tools
+- `api-integrations.md` — GitHub, Google OAuth setup and integration patterns
+- `deployment.md` — Production builds, deployment, database management
+- `setup.md` — First-time checkout, install script, dev server
+- `template-spec.md` — Technology decisions, project structure, conventions
 
 # CLASI Software Engineering Process
 
