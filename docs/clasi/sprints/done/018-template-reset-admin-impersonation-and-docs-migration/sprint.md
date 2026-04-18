@@ -1,14 +1,26 @@
 ---
-id: "018"
-title: "Template Reset, Admin Impersonation, and Docs Migration"
-status: planning
+id: 018
+title: Template Reset, Admin Impersonation, and Docs Migration
+status: done
 branch: sprint/018-template-reset-admin-impersonation-and-docs-migration
-use-cases: [SUC-001, SUC-002, SUC-003, SUC-004, SUC-005, SUC-006, SUC-007, SUC-008, SUC-009, SUC-010, SUC-011, SUC-012]
+use-cases:
+- SUC-001
+- SUC-002
+- SUC-003
+- SUC-004
+- SUC-005
+- SUC-006
+- SUC-007
+- SUC-008
+- SUC-009
+- SUC-010
+- SUC-011
+- SUC-012
 todos:
-  - docs/clasi/todo/plan-revert-template-app-to-simple-two-button-counter-demo.md
-  - docs/clasi/todo/plan-admin-user-impersonation.md
-  - docs/clasi/todo/migrate-docs-to-claude-instructions.md
-  - docs/clasi/todo/plan-social-login-account-linking-for-the-template-demo.md
+- docs/clasi/todo/plan-revert-template-app-to-simple-two-button-counter-demo.md
+- docs/clasi/todo/plan-admin-user-impersonation.md
+- docs/clasi/todo/migrate-docs-to-claude-instructions.md
+- docs/clasi/todo/plan-social-login-account-linking-for-the-template-demo.md
 ---
 <!-- CLASI: Before changing code or making plans, review the SE process in CLAUDE.md -->
 
