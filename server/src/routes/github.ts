@@ -16,7 +16,8 @@ githubRouter.get('/github/repos', async (req: Request, res: Response) => {
 
   // Check if user is authenticated via GitHub
   const user = req.user as any;
-  if (!user || user.provider !== 'github' || !user.accessToken) {
+  const githubToken = (req.session as any).githubAccessToken;
+  if (!user || user.provider !== 'github' || !githubToken) {
     return res.status(401).json({
       error: 'Not authenticated via GitHub',
       detail: 'Log in with GitHub first at /api/auth/github',
@@ -26,7 +27,7 @@ githubRouter.get('/github/repos', async (req: Request, res: Response) => {
   try {
     const response = await fetch('https://api.github.com/user/repos?sort=updated&per_page=30', {
       headers: {
-        Authorization: `token ${user.accessToken}`,
+        Authorization: `token ${githubToken}`,
         Accept: 'application/vnd.github.v3+json',
         'User-Agent': 'docker-nodeapp',
       },

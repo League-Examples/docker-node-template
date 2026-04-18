@@ -22,13 +22,23 @@ describe('Auth routes', () => {
     }
   });
 
-  it('GET /api/auth/github is not a route (404)', async () => {
+  it('GET /api/auth/github returns 501 when env vars not configured', async () => {
+    const saved = { id: process.env.GITHUB_CLIENT_ID, secret: process.env.GITHUB_CLIENT_SECRET };
+    delete process.env.GITHUB_CLIENT_ID;
+    delete process.env.GITHUB_CLIENT_SECRET;
     const res = await request(app).get('/api/auth/github');
-    expect(res.status).toBe(404);
+    if (saved.id) process.env.GITHUB_CLIENT_ID = saved.id;
+    if (saved.secret) process.env.GITHUB_CLIENT_SECRET = saved.secret;
+    expect(res.status).toBe(501);
   });
 
-  it('GET /api/auth/google is not a route (404)', async () => {
+  it('GET /api/auth/google returns 501 when env vars not configured', async () => {
+    const saved = { id: process.env.GOOGLE_CLIENT_ID, secret: process.env.GOOGLE_CLIENT_SECRET };
+    delete process.env.GOOGLE_CLIENT_ID;
+    delete process.env.GOOGLE_CLIENT_SECRET;
     const res = await request(app).get('/api/auth/google');
-    expect(res.status).toBe(404);
+    if (saved.id) process.env.GOOGLE_CLIENT_ID = saved.id;
+    if (saved.secret) process.env.GOOGLE_CLIENT_SECRET = saved.secret;
+    expect(res.status).toBe(501);
   });
 });
