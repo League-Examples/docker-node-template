@@ -206,6 +206,41 @@ const styles = {
     alignItems: 'center',
     gap: 8,
   } as const,
+
+  sidebarUserArea: {
+    position: 'relative' as const,
+    display: 'flex',
+    alignItems: 'center',
+    gap: 8,
+    cursor: 'pointer',
+    padding: '10px 16px',
+    borderTop: '1px solid #2a2a4e',
+    userSelect: 'none' as const,
+  } as const,
+
+  sidebarUserName: {
+    flex: 1,
+    fontSize: 14,
+    fontWeight: 500,
+    color: '#eee',
+    overflow: 'hidden',
+    textOverflow: 'ellipsis',
+    whiteSpace: 'nowrap' as const,
+  } as const,
+
+  sidebarDropdown: {
+    position: 'absolute' as const,
+    bottom: '100%',
+    left: 8,
+    right: 8,
+    marginBottom: 4,
+    background: '#fff',
+    border: '1px solid #e2e8f0',
+    borderRadius: 6,
+    boxShadow: '0 -4px 12px rgba(0,0,0,0.2)',
+    zIndex: 200,
+    overflow: 'hidden',
+  } as const,
 };
 
 /* ------------------------------------------------------------------ */
@@ -282,6 +317,7 @@ export default function AppLayout() {
   const role = user.role;
   const badge = roleBadgeStyle(role);
   const isAdmin = hasAdminAccess(role);
+  const avatarInitial = displayName.charAt(0).toUpperCase();
 
   function closeSidebarIfMobile() {
     if (isMobile) setSidebarOpen(false);
@@ -347,84 +383,24 @@ export default function AppLayout() {
         ))}
       </div>
 
-      {/* Bottom nav */}
-      <div style={{ borderTop: '1px solid #2a2a4e', paddingTop: 4, paddingBottom: 8 }}>
-        {BOTTOM_NAV.map((item) => (
-          <NavLink
-            key={item.to}
-            to={item.to}
-            onClick={closeSidebarIfMobile}
-            style={({ isActive }) => styles.navLink(isActive)}
-          >
-            {item.label}
-          </NavLink>
-        ))}
-        {isAdmin && !isAdminSection && (
-          <NavLink
-            to="/admin/config"
-            onClick={closeSidebarIfMobile}
-            style={({ isActive }) => styles.navLink(isActive)}
-          >
-            Configuration
-          </NavLink>
-        )}
-        {isAdmin && !isAdminSection && (
-          <NavLink
-            to="/admin/users"
-            onClick={closeSidebarIfMobile}
-            style={({ isActive }) => styles.navLink(isActive)}
-          >
-            Admin
-          </NavLink>
-        )}
-      </div>
-    </nav>
-  );
-
-  /* ---------- Topbar ---------- */
-
-  const topbarLeftOffset = isMobile ? 0 : SIDEBAR_WIDTH;
-
-  const avatarInitial = displayName.charAt(0).toUpperCase();
-
-  const topbar = (
-    <header style={{ ...styles.topbar, left: topbarLeftOffset }}>
-      {isMobile && (
-        <button
-          style={styles.hamburger}
-          onClick={() => setSidebarOpen((v) => !v)}
-          aria-label="Toggle sidebar"
-        >
-          &#9776;
-        </button>
-      )}
-
-      <div style={{ flex: 1 }} />
-
-      {/* User area — upper right */}
+      {/* User area — above MCP Setup */}
       <div
         ref={dropdownRef}
-        style={styles.userArea}
-        onMouseEnter={() => setDropdownOpen(true)}
-        onMouseLeave={() => setDropdownOpen(false)}
+        style={styles.sidebarUserArea}
+        onClick={() => setDropdownOpen((v) => !v)}
       >
         {user.avatarUrl ? (
           <img src={user.avatarUrl} alt={displayName} style={styles.avatar} />
         ) : (
           <div style={styles.avatarFallback}>{avatarInitial}</div>
         )}
-        <span
-          style={{ fontSize: 14, fontWeight: 500, color: '#4f46e5', cursor: 'pointer' }}
-          onClick={(e) => { e.stopPropagation(); navigate('/account'); }}
-        >
-          {displayName}
-        </span>
+        <span style={styles.sidebarUserName}>{displayName}</span>
         <span style={styles.roleBadge(badge.background, badge.color)}>
           {roleShortLabel(role)}
         </span>
 
         {dropdownOpen && (
-          <div style={styles.dropdown}>
+          <div style={styles.sidebarDropdown}>
             <button
               style={styles.dropdownItem}
               onClick={(e) => {
@@ -459,6 +435,48 @@ export default function AppLayout() {
           </div>
         )}
       </div>
+
+      {/* Bottom nav */}
+      <div style={{ borderTop: '1px solid #2a2a4e', paddingTop: 4, paddingBottom: 8 }}>
+        {BOTTOM_NAV.map((item) => (
+          <NavLink
+            key={item.to}
+            to={item.to}
+            onClick={closeSidebarIfMobile}
+            style={({ isActive }) => styles.navLink(isActive)}
+          >
+            {item.label}
+          </NavLink>
+        ))}
+        {isAdmin && !isAdminSection && (
+          <NavLink
+            to="/admin/users"
+            onClick={closeSidebarIfMobile}
+            style={({ isActive }) => styles.navLink(isActive)}
+          >
+            Admin
+          </NavLink>
+        )}
+      </div>
+    </nav>
+  );
+
+  /* ---------- Topbar ---------- */
+
+  const topbarLeftOffset = isMobile ? 0 : SIDEBAR_WIDTH;
+
+  const topbar = (
+    <header style={{ ...styles.topbar, left: topbarLeftOffset }}>
+      {isMobile && (
+        <button
+          style={styles.hamburger}
+          onClick={() => setSidebarOpen((v) => !v)}
+          aria-label="Toggle sidebar"
+        >
+          &#9776;
+        </button>
+      )}
+      <div style={{ flex: 1 }} />
     </header>
   );
 

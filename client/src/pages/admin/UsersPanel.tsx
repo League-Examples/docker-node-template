@@ -105,7 +105,7 @@ export default function UsersPanel() {
         const body = await res.json().catch(() => ({}));
         throw new Error((body as { error?: string }).error || `HTTP ${res.status}`);
       }
-      window.location.reload();
+      window.location.assign('/');
     } catch (err: any) {
       alert(err.message || 'Failed to impersonate user');
       setImpersonating(null);

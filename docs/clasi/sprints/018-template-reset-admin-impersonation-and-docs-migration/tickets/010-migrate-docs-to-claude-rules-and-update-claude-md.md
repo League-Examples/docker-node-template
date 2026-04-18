@@ -2,8 +2,11 @@
 id: '010'
 title: Migrate docs to .claude/rules and update CLAUDE.md
 status: todo
-use-cases: [SUC-007]
-depends-on: ['005', '006']
+use-cases:
+- SUC-007
+depends-on:
+- '005'
+- '006'
 github-issue: ''
 todo: migrate-docs-to-claude-instructions.md
 ---

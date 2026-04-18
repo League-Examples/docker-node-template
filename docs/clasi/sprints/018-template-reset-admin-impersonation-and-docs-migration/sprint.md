@@ -3,11 +3,12 @@ id: "018"
 title: "Template Reset, Admin Impersonation, and Docs Migration"
 status: planning
 branch: sprint/018-template-reset-admin-impersonation-and-docs-migration
-use-cases: [SUC-001, SUC-002, SUC-003, SUC-004, SUC-005, SUC-006, SUC-007]
+use-cases: [SUC-001, SUC-002, SUC-003, SUC-004, SUC-005, SUC-006, SUC-007, SUC-008, SUC-009, SUC-010, SUC-011, SUC-012]
 todos:
   - docs/clasi/todo/plan-revert-template-app-to-simple-two-button-counter-demo.md
   - docs/clasi/todo/plan-admin-user-impersonation.md
   - docs/clasi/todo/migrate-docs-to-claude-instructions.md
+  - docs/clasi/todo/plan-social-login-account-linking-for-the-template-demo.md
 ---
 <!-- CLASI: Before changing code or making plans, review the SE process in CLAUDE.md -->
 
@@ -21,6 +22,9 @@ todos:
    admin UI so admins can debug issues as other users.
 3. Migrate the five agent-context docs from `docs/` into `.claude/rules/` so they are
    auto-loaded by the rules system.
+4. Re-introduce GitHub, Google, and Pike 13 OAuth flows (stripped in goal 1) as
+   configuration-gated social login, with account linking and unlink support via the
+   Account page. (Added mid-sprint — see `architecture-update-social-login.md`.)
 
 ## Problem
 
@@ -175,6 +179,14 @@ Before tickets can be created, all of the following must be true:
 | 008 | Add impersonation API endpoints | 007 | 3 |
 | 009 | Add impersonation admin UI | 005, 008 | 4 |
 | 010 | Migrate docs to .claude/rules | 005, 006 | 4 |
+| 011 | Re-add GitHub + Google Passport strategies | — | 2 |
+| 012 | Recreate Pike 13 hand-rolled OAuth flow | 011 | 3 |
+| 013 | Extend auth/me with linkedProviders + unlink endpoint | 011 | 3 |
+| 014 | Add provider buttons to LoginPage | 011, 013 | 4 |
+| 015 | Add Sign-in methods section to Account page | 011, 012, 013, 014 | 5 |
 
 **Groups**: Tickets in the same group can execute in parallel.
 Groups execute sequentially (1 before 2, etc.).
+
+Note: Tickets 011-015 form an independent work stream that can proceed in parallel with
+ticket 010. They have no dependency on 010, and 010 has no dependency on them.
