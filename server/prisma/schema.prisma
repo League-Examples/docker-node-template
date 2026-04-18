@@ -46,17 +46,6 @@ model UserProvider {
   @@unique([provider, providerId])
 }
 
-model RoleAssignmentPattern {
-  id        Int      @id @default(autoincrement())
-  matchType String   // 'exact' or 'regex'
-  pattern   String   // email address or regex pattern
-  role      UserRole @default(USER)
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-
-  @@unique([matchType, pattern])
-}
-
 model ScheduledJob {
   id        Int       @id @default(autoincrement())
   name      String    @unique

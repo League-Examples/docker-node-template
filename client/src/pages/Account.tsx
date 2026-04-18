@@ -1,7 +1,8 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useAuth } from '../context/AuthContext';
 import { useProviderStatus } from '../hooks/useProviderStatus';
 import { roleBadgeStyle, roleShortLabel } from '../lib/roles';
+import { McpSetupContent } from './McpSetup';
 
 const PROVIDER_LABELS: Record<string, string> = {
   github: 'GitHub',
@@ -44,6 +45,14 @@ export default function Account() {
   const providerStatus = useProviderStatus();
   const [unlinking, setUnlinking] = useState<string | null>(null);
   const [unlinkError, setUnlinkError] = useState<string | null>(null);
+  const [mcpOpen, setMcpOpen] = useState(false);
+
+  useEffect(() => {
+    if (!mcpOpen) return;
+    function onKey(e: KeyboardEvent) { if (e.key === 'Escape') setMcpOpen(false); }
+    document.addEventListener('keydown', onKey);
+    return () => document.removeEventListener('keydown', onKey);
+  }, [mcpOpen]);
 
   if (!user) return null;
 
@@ -153,6 +162,47 @@ export default function Account() {
           </div>
         )}
       </div>
+
+      <div style={{ ...styles.card, marginTop: '1rem' }}>
+        <h2 style={styles.sectionTitle}>MCP Setup</h2>
+        <button
+          type="button"
+          onClick={() => setMcpOpen(true)}
+          style={styles.mcpLink}
+        >
+          Show MCP connection instructions
+        </button>
+      </div>
+
+      {mcpOpen && (
+        <div
+          role="dialog"
+          aria-modal="true"
+          aria-label="MCP Setup"
+          style={styles.modalBackdrop}
+          onClick={() => setMcpOpen(false)}
+        >
+          <div
+            style={styles.modalPanel}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div style={styles.modalHeader}>
+              <h2 style={{ margin: 0, fontSize: '1.25rem', color: '#1e293b' }}>MCP Setup</h2>
+              <button
+                type="button"
+                onClick={() => setMcpOpen(false)}
+                aria-label="Close"
+                style={styles.modalClose}
+              >
+                &times;
+              </button>
+            </div>
+            <div style={styles.modalBody}>
+              <McpSetupContent />
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
@@ -291,5 +341,52 @@ const styles: Record<string, React.CSSProperties> = {
     fontSize: '0.85rem',
     color: '#dc2626',
     marginTop: '0.5rem',
+  },
+  mcpLink: {
+    background: 'none',
+    border: 'none',
+    color: '#4f46e5',
+    padding: 0,
+    fontSize: '0.9rem',
+    cursor: 'pointer',
+    textDecoration: 'underline',
+  },
+  modalBackdrop: {
+    position: 'fixed' as const,
+    inset: 0,
+    background: 'rgba(15, 23, 42, 0.55)',
+    display: 'flex',
+    alignItems: 'flex-start',
+    justifyContent: 'center',
+    zIndex: 400,
+    padding: '40px 16px',
+    overflowY: 'auto' as const,
+  },
+  modalPanel: {
+    background: '#fff',
+    borderRadius: 12,
+    width: '100%',
+    maxWidth: 720,
+    boxShadow: '0 24px 60px rgba(0, 0, 0, 0.25)',
+    overflow: 'hidden',
+  },
+  modalHeader: {
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    padding: '1rem 1.25rem',
+    borderBottom: '1px solid #e2e8f0',
+  },
+  modalClose: {
+    background: 'none',
+    border: 'none',
+    fontSize: 28,
+    lineHeight: 1,
+    color: '#64748b',
+    cursor: 'pointer',
+    padding: '0 4px',
+  },
+  modalBody: {
+    padding: '1rem 1.25rem 1.25rem',
   },
 };

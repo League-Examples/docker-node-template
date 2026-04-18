@@ -19,19 +19,16 @@ const MAIN_NAV: NavItem[] = [
 
 const ADMIN_NAV: NavItem[] = [
   { to: '/admin/users', label: 'Users' },
-  { to: '/admin/dashboard', label: 'Dashboard' },
   { to: '/admin/env', label: 'Environment' },
   { to: '/admin/db', label: 'Database' },
   { to: '/admin/config', label: 'Configuration' },
   { to: '/admin/logs', label: 'Logs' },
   { to: '/admin/sessions', label: 'Sessions' },
-  { to: '/admin/permissions', label: 'Permissions' },
   { to: '/admin/scheduler', label: 'Scheduled Jobs' },
   { to: '/admin/import-export', label: 'Import/Export' },
 ];
 
 const BOTTOM_NAV: NavItem[] = [
-  { to: '/mcp-setup', label: 'MCP Setup' },
   { to: '/about', label: 'About' },
 ];
 

@@ -1,13 +1,8 @@
 import { Link } from 'react-router-dom';
 
-export default function McpSetup() {
+export function McpSetupContent() {
   return (
-    <div style={styles.container}>
-      <header style={styles.header}>
-        <h1 style={styles.title}>MCP Setup</h1>
-        <p style={styles.version}>Connect external MCP clients to the application</p>
-      </header>
-
+    <>
       <section style={styles.card}>
         <h2 style={styles.sectionTitle}>MCP Endpoint URL</h2>
         <p style={styles.text}>
@@ -102,6 +97,18 @@ export default function McpSetup() {
         </ul>
       </section>
 
+    </>
+  );
+}
+
+export default function McpSetup() {
+  return (
+    <div style={styles.container}>
+      <header style={styles.header}>
+        <h1 style={styles.title}>MCP Setup</h1>
+        <p style={styles.version}>Connect external MCP clients to the application</p>
+      </header>
+      <McpSetupContent />
       <footer style={styles.footer}>
         <Link to="/" style={styles.backLink}>
           &larr; Back to Home

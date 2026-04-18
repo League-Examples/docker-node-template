@@ -28,15 +28,6 @@ export async function cleanupTestDb() {
         where: { id: { in: userIds } },
       });
     }
-
-    // Clean up test role assignment patterns
-    await prisma.roleAssignmentPattern.deleteMany({
-      where: {
-        OR: testEmails.map(suffix => ({
-          pattern: { endsWith: suffix },
-        })),
-      },
-    });
   } catch {
     // Tables may not exist yet
   }

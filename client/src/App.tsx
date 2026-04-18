@@ -12,13 +12,11 @@ import Account from './pages/Account';
 
 import AdminLogin from './pages/admin/AdminLogin';
 import AdminLayout from './pages/admin/AdminLayout';
-import { AdminDashboardPanel } from './pages/admin/AdminDashboardPanel';
 import EnvironmentInfo from './pages/admin/EnvironmentInfo';
 import DatabaseViewer from './pages/admin/DatabaseViewer';
 import ConfigPanel from './pages/admin/ConfigPanel';
 import LogViewer from './pages/admin/LogViewer';
 import SessionViewer from './pages/admin/SessionViewer';
-import PermissionsPanel from './pages/admin/PermissionsPanel';
 import ScheduledJobsPanel from './pages/admin/ScheduledJobsPanel';
 import ImportExport from './pages/admin/ImportExport';
 import UsersPanel from './pages/admin/UsersPanel';
@@ -48,13 +46,11 @@ function App() {
               {/* Admin pages — auth-gated by AdminLayout */}
               <Route element={<AdminLayout />}>
                 <Route path="/admin/users" element={<UsersPanel />} />
-                <Route path="/admin/dashboard" element={<AdminDashboardPanel />} />
                 <Route path="/admin/env" element={<EnvironmentInfo />} />
                 <Route path="/admin/db" element={<DatabaseViewer />} />
                 <Route path="/admin/config" element={<ConfigPanel />} />
                 <Route path="/admin/logs" element={<LogViewer />} />
                 <Route path="/admin/sessions" element={<SessionViewer />} />
-                <Route path="/admin/permissions" element={<PermissionsPanel />} />
                 <Route path="/admin/scheduler" element={<ScheduledJobsPanel />} />
                 <Route path="/admin/import-export" element={<ImportExport />} />
               </Route>
