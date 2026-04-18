@@ -182,6 +182,9 @@ pike13Router.get('/auth/pike13', (req: Request, res: Response) => {
   }
 
   if (req.query.link === '1') {
+    if (!req.user) {
+      return res.status(401).json({ error: 'Authentication required to link an account' });
+    }
     (req.session as any).oauthLinkMode = true;
   }
 

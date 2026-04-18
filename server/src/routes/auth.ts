@@ -3,6 +3,7 @@ import passport from 'passport';
 import { Strategy as GitHubStrategy } from 'passport-github2';
 import { Strategy as GoogleStrategy } from 'passport-google-oauth20';
 import { prisma } from '../services/prisma';
+import { requireAuth } from '../middleware/requireAuth';
 
 export const authRouter = Router();
 
@@ -249,12 +250,22 @@ authRouter.post('/auth/test-login', async (req: Request, res: Response) => {
 // ---------------------------------------------------------------------------
 
 // Get current user
-authRouter.get('/auth/me', (req: Request, res: Response) => {
+authRouter.get('/auth/me', async (req: Request, res: Response) => {
   if (!req.user) {
     return res.status(401).json({ error: 'Not authenticated' });
   }
   const user = req.user as any;
   const realAdmin = (req as any).realAdmin as any | undefined;
+
+  // Build the deduplicated linkedProviders list:
+  // union of User.provider (primary) and all UserProvider rows.
+  const providerRows = await prisma.userProvider.findMany({
+    where: { userId: user.id },
+    select: { provider: true },
+  });
+  const linked = new Set<string>(providerRows.map((r: { provider: string }) => r.provider));
+  if (user.provider) linked.add(user.provider);
+
   res.json({
     id: user.id,
     email: user.email,
@@ -269,6 +280,7 @@ authRouter.get('/auth/me', (req: Request, res: Response) => {
     realAdmin: realAdmin
       ? { id: realAdmin.id, displayName: realAdmin.displayName ?? null }
       : null,
+    linkedProviders: [...linked],
   });
 });
 
@@ -284,6 +296,82 @@ authRouter.post('/auth/logout', (req: Request, res: Response, next: NextFunction
 });
 
 // ---------------------------------------------------------------------------
+// Unlink OAuth provider
+// ---------------------------------------------------------------------------
+
+/**
+ * POST /api/auth/unlink/:provider
+ *
+ * Removes the specified OAuth provider from the authenticated user's account.
+ * Guardrail: if this is the user's only remaining login method, returns 400.
+ *
+ * Login method count: UserProvider rows + 1 if User.provider is non-null.
+ * If User.provider is the same provider as a UserProvider row, they are
+ * deduplicated (the row covers both).
+ *
+ * Returns 404 if the provider is not linked to this user.
+ * Returns 400 if unlinking would leave zero login methods.
+ * Returns 200 { success: true, linkedProviders: string[] } on success.
+ */
+authRouter.post('/auth/unlink/:provider', requireAuth, async (req: Request, res: Response) => {
+  const user = req.user as any;
+  const { provider } = req.params;
+
+  // Load all UserProvider rows for this user
+  const providerRows = await prisma.userProvider.findMany({
+    where: { userId: user.id },
+  });
+
+  const isPrimary = user.provider === provider;
+  const hasProviderRow = providerRows.some((r: any) => r.provider === provider);
+
+  // 404 if not linked at all
+  if (!hasProviderRow && !isPrimary) {
+    return res.status(404).json({ error: 'Provider not linked to this account' });
+  }
+
+  // Count effective login methods (deduplicated):
+  // If User.provider is the same as a UserProvider row, don't double-count.
+  const primaryAlsoHasRow = isPrimary && hasProviderRow;
+  const effectiveMethods = primaryAlsoHasRow
+    ? providerRows.length               // primary is already counted in the rows
+    : providerRows.length + (user.provider ? 1 : 0);
+
+  // Guardrail: must leave at least one method
+  if (effectiveMethods <= 1) {
+    return res.status(400).json({
+      error: 'Cannot unlink: this is your only remaining login method',
+    });
+  }
+
+  // Delete the UserProvider row if it exists
+  if (hasProviderRow) {
+    await prisma.userProvider.deleteMany({
+      where: { userId: user.id, provider },
+    });
+  }
+
+  // Clear primary provider fields if this was the primary
+  if (isPrimary) {
+    await prisma.user.update({
+      where: { id: user.id },
+      data: { provider: null, providerId: null },
+    });
+  }
+
+  // Return updated linkedProviders
+  const remaining = await prisma.userProvider.findMany({
+    where: { userId: user.id },
+    select: { provider: true },
+  });
+  const updatedUser = await prisma.user.findUnique({ where: { id: user.id } });
+  const updatedLinked = new Set<string>(remaining.map((r: { provider: string }) => r.provider));
+  if (updatedUser?.provider) updatedLinked.add(updatedUser.provider);
+
+  return res.json({ success: true, linkedProviders: [...updatedLinked] });
+});
+
+// ---------------------------------------------------------------------------
 // GitHub OAuth routes
 // ---------------------------------------------------------------------------
 
@@ -295,6 +383,9 @@ authRouter.get('/auth/github', (req: Request, res: Response, next: NextFunction)
     });
   }
   if (req.query.link === '1') {
+    if (!req.user) {
+      return res.status(401).json({ error: 'Authentication required to link an account' });
+    }
     (req.session as any).oauthLinkMode = true;
   }
   passport.authenticate('github')(req, res, next);
@@ -323,6 +414,9 @@ authRouter.get('/auth/google', (req: Request, res: Response, next: NextFunction)
     });
   }
   if (req.query.link === '1') {
+    if (!req.user) {
+      return res.status(401).json({ error: 'Authentication required to link an account' });
+    }
     (req.session as any).oauthLinkMode = true;
   }
   passport.authenticate('google', { scope: ['profile', 'email'] })(req, res, next);
