@@ -148,7 +148,7 @@ describe('AppLayout', () => {
     renderLayout();
     // hover over user area to open dropdown
     const userArea = screen.getByText('Jane Student').closest('div[style]')!;
-    fireEvent.mouseEnter(userArea);
+    fireEvent.click(userArea);
     expect(screen.getByText('Log out')).toBeInTheDocument();
     expect(screen.queryByText('Stop impersonating')).not.toBeInTheDocument();
   });
@@ -166,7 +166,7 @@ describe('AppLayout', () => {
 
     renderLayout();
     const userArea = screen.getByText('Target User').closest('div[style]')!;
-    fireEvent.mouseEnter(userArea);
+    fireEvent.click(userArea);
     expect(screen.getByText('Stop impersonating')).toBeInTheDocument();
     expect(screen.queryByText('Log out')).not.toBeInTheDocument();
   });
@@ -192,7 +192,7 @@ describe('AppLayout', () => {
 
     renderLayout();
     const userArea = screen.getByText('Target User').closest('div[style]')!;
-    fireEvent.mouseEnter(userArea);
+    fireEvent.click(userArea);
 
     const stopBtn = screen.getByText('Stop impersonating');
     fireEvent.click(stopBtn);

@@ -131,10 +131,10 @@ describe('UsersPanel', () => {
     });
   });
 
-  it('calls impersonate endpoint and reloads page on button click', async () => {
-    const mockReload = vi.fn();
+  it('calls impersonate endpoint and redirects to home on button click', async () => {
+    const mockAssign = vi.fn();
     Object.defineProperty(window, 'location', {
-      value: { ...window.location, reload: mockReload },
+      value: { ...window.location, assign: mockAssign },
       writable: true,
     });
 
@@ -156,7 +156,7 @@ describe('UsersPanel', () => {
         '/api/admin/users/2/impersonate',
         { method: 'POST' },
       );
-      expect(mockReload).toHaveBeenCalled();
+      expect(mockAssign).toHaveBeenCalledWith('/');
     });
   });
 
