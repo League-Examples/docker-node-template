@@ -3,10 +3,8 @@ set -euo pipefail
 
 cd "$(dirname "$0")/.."
 
-# Load environment
-set -a
-. ./.env 2>/dev/null || true
-set +a
+# Prisma, tsx, and Vite each load .env themselves — no shell sourcing needed.
+# (Sourcing is fragile when values contain spaces or shell metacharacters.)
 
 # SQLite mode — no Docker needed
 exec npx concurrently -n server,client -c green,magenta \
