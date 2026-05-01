@@ -54,6 +54,10 @@ export class UserService {
   }
 
   async create(data: { email: string; displayName?: string; role?: 'USER' | 'ADMIN' }) {
+    // First user in the system gets ADMIN unless an explicit role was supplied.
+    if (!data.role && (await this.prisma.user.count()) === 0) {
+      return this.prisma.user.create({ data: { ...data, role: 'ADMIN' } });
+    }
     return this.prisma.user.create({ data });
   }
 

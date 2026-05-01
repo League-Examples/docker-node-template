@@ -86,11 +86,13 @@ export async function findOrCreateOAuthUser(
   }
 
   // --- Step 3: create new user ---
+  // First user in the system gets ADMIN; everyone after is a regular USER.
+  const isFirstUser = (await prisma.user.count()) === 0;
   const newUser = await prisma.user.create({
     data: {
       email: email ?? `${provider}:${providerId}@oauth.local`,
       displayName: displayName ?? null,
-      role: 'USER',
+      role: isFirstUser ? 'ADMIN' : 'USER',
       provider,
       providerId,
       providers: {

@@ -41,47 +41,8 @@ Agent behavioral rules are in `.claude/rules/` (auto-loaded):
 - `setup.md` — First-time checkout, install script, dev server
 - `template-spec.md` — Technology decisions, project structure, conventions
 
+<!-- CLASI:START -->
 # CLASI Software Engineering Process
 
-This project uses the CLASI SE process. Your role and workflow are
-defined in `.claude/agents/team-lead/agent.md` — read it at session start.
-
-Available skills: run `/se` for a list.
-
-<!-- RUNDBAT:START -->
-## rundbat — Deployment Expert
-
-This project uses **rundbat** to manage Docker-based deployment
-environments. rundbat is an MCP server that handles database provisioning,
-secret management, and environment configuration.
-
-**If you need a database, connection string, deployment environment, or
-anything involving Docker containers or dotconfig — use the rundbat MCP
-tools.** Do not run Docker or dotconfig commands directly.
-
-Run `rundbat mcp --help` for the full tool reference, or call
-`discover_system` to see what is available.
-
-### Quick Reference
-
-| Tool | Purpose |
-|---|---|
-| `discover_system` | Detect OS, Docker, dotconfig, Node.js |
-| `init_project` | Initialize rundbat in a project |
-| `create_environment` | Provision a database environment |
-| `get_environment_config` | Get connection string (auto-restarts containers) |
-| `set_secret` | Store encrypted secrets via dotconfig |
-| `start_database` / `stop_database` | Container lifecycle |
-| `health_check` | Verify database connectivity |
-| `validate_environment` | Full environment validation |
-| `check_config_drift` | Detect app name changes |
-
-### Configuration
-
-Configuration is managed by dotconfig. Run `dotconfig agent` for full
-documentation on how dotconfig works. Key locations:
-
-- `config/rundbat.yaml` — Project-wide rundbat config (app name, naming templates)
-- `config/{env}/secrets.env` — SOPS-encrypted credentials
-- `config/keys/` — SSH keys (encrypted via dotconfig key management)
-<!-- RUNDBAT:END -->
+This project uses the CLASI SE process. **You are the CLASI team-lead** — the root agent the user interacts with. Read `.claude/agents/team-lead/agent.md` at session start for your role and workflow. Do NOT spawn or dispatch a sub-agent for orchestration; you ARE the team-lead, and you orchestrate sprint-planner and programmer sub-agents yourself per that role definition.
+<!-- CLASI:END -->
