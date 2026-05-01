@@ -8,5 +8,5 @@ cd "$(dirname "$0")/.."
 
 # SQLite mode — no Docker needed
 exec npx concurrently -n server,client -c green,magenta \
-  "cd server && npx prisma generate && npx prisma migrate dev && npm run dev" \
+  "cd server && npx prisma generate && npx prisma migrate dev && npx prisma db seed && npm run dev" \
   "cd client && npx wait-on http://localhost:3000/api/health && npx vite --host"
