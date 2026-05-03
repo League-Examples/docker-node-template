@@ -1,0 +1,20 @@
+services:
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: ${APP_SLUG:-docker-nodeapp}:${APP_TAG:-latest}
+    ports:
+    - "${APP_PORT:-3000}:${PORT:-3000}"
+    env_file:
+    - .env
+    environment:
+      NODE_ENV: ${NODE_ENV:-production}
+      PORT: ${PORT:-3000}
+      DATABASE_URL: file:/app/data/app.db
+    volumes:
+    - app-data:/app/data
+    restart: unless-stopped
+
+volumes:
+  app-data:

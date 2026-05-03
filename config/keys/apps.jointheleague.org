@@ -1,0 +1,18 @@
+{
+	"data": "ENC[AES256_GCM,data:sCGjlRRr7HurcOWr6chtqmbyJd3HQrzNgZCBdvdhhnLfE4hEs4CP3V4qmPKrffRF8uKayZilFaawoeZAzHqcexby3wKqz21jzLyhkFCWGtOk1Jss7XMLo2pdHB9S6zzxmTGzpGcBQtkv7DpsrvmepywRJ0gdtLr3u/VzknUOqzfgc+renudqlvuHaaNx9YZtdhGFUmSxDl49GGwl27BByZi0ZkwxRjIvMvTdaLiGbO/l4PDgzLGNTtMYXXlnTgM/NeTdvyZrsz1Iace0cOaPqOM1/3xPy+gZWojbsyhNNEd9pknPje++iu+2RTA7uT67ziU7MatKiLDjK6OmjFaKMALlOUUh3SUGnEgY/pvXVDbjep0bgfrxERFPXnGprB3ptxBSgSvm8riVlSEpL1G3dOS1DtIzBw87ApYZ9r/8IZ2z+xi/7bsZNqVYFv9VTZR9gd0Qm+x0fMjyQDxGvUpRP3llVmnCdbFVN/3hNzA3Q7P0WvWEEtPdDeKOnhQv5jRMTsnt00SyBOA9LF4+hXQKL5Yj0ya0AEaABQWO2uHCeQIYaXc=,iv:oeqtzBIpznahmz4JufUTPiQQZD/DFqT6P+hsiav9kyQ=,tag:DmB3zZQ788/4bxuT6Svdvg==,type:str]",
+	"sops": {
+		"age": [
+			{
+				"recipient": "age1v3f2rncavwjzsvlhdn6v4wxkfsm2da8sl5snl5wa3mw7zqlvhyyqmx8q0d",
+				"enc": "-----BEGIN AGE ENCRYPTED FILE-----\nYWdlLWVuY3J5cHRpb24ub3JnL3YxCi0+IFgyNTUxOSA4SUdtL3ZnWkdhc1EzMWVO\nb2VoZ2lCbW9qQzIzcFFZYnNQQnlYZ3N2cWtvClNLdmV6aUF5VFNWWHFadlhtT2RM\nVUw4ZTMxRk8vdzZuUXArNzl1TUxaNVUKLS0tIEdCaU5Ld09VWHRGMEREWHBVcjNC\na1REa0R1OFlBbVFBMVdFcmE4d3VTSlUKQT1XPXUfZWwwCpKsqVq3DuK1dNeHTUUj\nn/T6D+ulh0XVXEZTDfkebce/RBUDiuwFhg+bvO9Ca59fxqE6YkSQ+Q==\n-----END AGE ENCRYPTED FILE-----\n"
+			},
+			{
+				"recipient": "age1h02a69gmu8hlhv4rz4u5vvqzuldk82zsgryye4ql6jq3glpwpugsu3qmvd",
+				"enc": "-----BEGIN AGE ENCRYPTED FILE-----\nYWdlLWVuY3J5cHRpb24ub3JnL3YxCi0+IFgyNTUxOSBOeFdTc0ZzazU2OWFDOUc0\nem9zczdMbXROdE9DZUJuTk1uVDNDdDhNYTBvCk5EdG9wWkJUMTA5UkZSd0ZHQjNq\nYTRXaXA0UEtxaTNaYnliTW5maUd2VnMKLS0tIHpHU1BMbEU2djM1VEJmaVFhcTkx\nMTBJNDZxT08wL3EvQ3dxN0NkNWtHQk0KsEQ40esPIobRj1gURMQSW1ncM7HLvdWF\ngoJzFD11CAj4uV+rhj9PINIMmgJ0k5evKrXiylCbP0adDJN3vQeD7Q==\n-----END AGE ENCRYPTED FILE-----\n"
+			}
+		],
+		"lastmodified": "2026-05-03T16:38:56Z",
+		"mac": "ENC[AES256_GCM,data:UNYYkw+/lue0NRfxOANDbQFk4vr0GQLNraDxAbh1XHq49+HYyHu7l4YAM6uA/nyqi7dC6Es4F288pwdIJ4ugeC+2FK7qHLUNXnckUhMNuspwPPQBQFVKoTP5rBcM0s9n4gmtXkETOVgd8WjsUMFB6d5wlBRpelZzHRtG6WaMqvM=,iv:Ps9TwLTR7xIDWQmQGZXqieLTBvVJqyWFed6UmKADIrs=,tag:WUT6jE14ySp6/C3sAsJjPg==,type:str]",
+		"version": "3.11.0"
+	}
+}

@@ -3,8 +3,10 @@ server/node_modules
 server/dist
 client/node_modules
 client/dist
+config
 .env
-*.agekey
 .git
+.agents
+.claude
 docs
 tests

@@ -1,5 +1,5 @@
 ---
-status: pending
+status: done
 ---
 
 # Add icons to all login buttons
