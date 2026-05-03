@@ -23,6 +23,16 @@ That's it. The app starts with SQLite — no Docker, no database setup required.
 - Frontend: http://localhost:5173
 - Backend API: http://localhost:3000/api
 
+## Contributing
+
+`master` is auto-generated and read-only. All work happens on `development`:
+
+```bash
+git checkout development
+```
+
+PRs target `development`. On merge, a GitHub Action strips internal scaffolding (`.claude/`, `.agents/`, `docs/clasi/`, `CLAUDE.md`, `AGENTS.md`, `.template`) and force-pushes the result to `master`.
+
 ## Stack
 
 | Layer | Technology |

@@ -145,9 +145,28 @@ if ! command -v pipx &>/dev/null; then
   echo ""
   detail "Then re-run this script."
 else
-  pipx_install clasi     "git+https://github.com/ericbusboom/claude-agent-skills.git" "CLASI"
   pipx_install dotconfig "git+https://github.com/ericbusboom/dotconfig.git"           "dotconfig"
   pipx_install rundbat   "git+https://github.com/ericbusboom/rundbat.git"             "rundbat"
+
+  # CLASI is optional — only template contributors need it. Ask before installing.
+  if command -v clasi &>/dev/null; then
+    success "CLASI already installed"
+  elif [ -t 0 ]; then
+    echo ""
+    detail "CLASI manages the SE process used to develop this template."
+    detail "End users building apps from the template don't need it."
+    read -rp "  ${BOLD}Install CLASI? [y/N]:${RESET} " clasi_choice
+    case "$clasi_choice" in
+      [yY]|[yY][eE][sS])
+        pipx_install clasi "git+https://github.com/ericbusboom/claude-agent-skills.git" "CLASI"
+        ;;
+      *)
+        detail "Skipping CLASI. Install later with: pipx install git+https://github.com/ericbusboom/claude-agent-skills.git"
+        ;;
+    esac
+  else
+    detail "CLASI not installed (non-interactive). Install with: pipx install git+https://github.com/ericbusboom/claude-agent-skills.git"
+  fi
 fi
 
 # Run dotconfig init to set up age key and SOPS config
@@ -170,29 +189,10 @@ if command -v rundbat &>/dev/null; then
   fi
 fi
 
-# Wipe template SE history immediately before re-initialising CLASI.
-# install-dev.sh sets PRESERVE_CLASI=1 so template contributors keep
-# their sprint artifacts intact.
-CLASI_DIR="docs/clasi"
-if [ "${PRESERVE_CLASI:-0}" = "1" ]; then
-  info "CLASI retained (install-dev mode)"
-else
-  info "Clearing template development history..."
-  if [ -d "$CLASI_DIR" ]; then
-    rm -rf "$CLASI_DIR/sprints/done"/*        2>/dev/null || true
-    rm -rf "$CLASI_DIR/todo/done"/*            2>/dev/null || true
-    rm -rf "$CLASI_DIR/todo/for-later"/*       2>/dev/null || true
-    rm -f  "$CLASI_DIR/todo"/*.md              2>/dev/null || true
-    rm -rf "$CLASI_DIR/reflections"/*          2>/dev/null || true
-    rm -rf "$CLASI_DIR/architecture/done"/*    2>/dev/null || true
-    rm -f  "$CLASI_DIR/.clasi.db"              2>/dev/null || true
-  fi
-  rm -f .template
-  success "CLASI reset — ready for your project"
-fi
-
-# Run clasi init to create a fresh project database
-if command -v clasi &>/dev/null; then
+# Initialize CLASI project only when this checkout has the SE scaffolding
+# (i.e. the development branch). Master is auto-stripped, so docs/clasi/
+# won't exist there and there's nothing to initialize.
+if command -v clasi &>/dev/null && [ -d "docs/clasi" ]; then
   info "Initializing CLASI project..."
   if clasi init 2>/dev/null; then
     success "CLASI initialized"

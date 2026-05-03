@@ -1,0 +1,47 @@
+name: Promote development to master
+
+on:
+  push:
+    branches: [development]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: promote-to-master
+  cancel-in-progress: false
+
+jobs:
+  promote:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout development
+        uses: actions/checkout@v4
+        with:
+          ref: development
+          fetch-depth: 0
+
+      - name: Strip internal paths
+        run: |
+          rm -rf .claude .agents docs/clasi
+          rm -f CLAUDE.md AGENTS.md .template
+
+      - name: Configure git identity
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+      - name: Build master from stripped tree
+        run: |
+          git checkout -B master
+          git add -A
+          if git diff --cached --quiet; then
+            echo "No changes to promote."
+            exit 0
+          fi
+          SHORT_SHA="${GITHUB_SHA::7}"
+          git commit -m "Promote ${SHORT_SHA} from development"
+
+      - name: Force-push master
+        run: git push origin master --force
