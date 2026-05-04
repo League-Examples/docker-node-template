@@ -1,16 +1,16 @@
 ---
-id: "020"
-title: "User Registration with Real Password Auth"
-status: planning
+id: '020'
+title: User Registration with Real Password Auth
+status: done
 branch: sprint/020-user-registration-with-real-password-auth
 use-cases:
-  - SUC-001
-  - SUC-002
-  - SUC-003
-  - SUC-004
-  - SUC-005
+- SUC-001
+- SUC-002
+- SUC-003
+- SUC-004
+- SUC-005
 todo:
-  - add-user-registration-with-real-password-auth.md
+- add-user-registration-with-real-password-auth.md
 ---
 <!-- CLASI: Before changing code or making plans, review the SE process in CLAUDE.md -->
 
