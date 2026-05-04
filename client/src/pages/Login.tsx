@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { useProviderStatus } from '../hooks/useProviderStatus';
 
@@ -141,6 +141,15 @@ export default function Login() {
             </div>
           </>
         )}
+
+        {/* To swap to a full button: replace the <p> below with a <Link> styled as block w-full text-center */}
+        <hr className="my-4 border-slate-200" />
+        <p className="text-xs text-center text-slate-500">
+          No account yet?{' '}
+          <Link to="/register" className="font-medium text-indigo-600 hover:underline">
+            Register
+          </Link>
+        </p>
       </div>
     </div>
   );

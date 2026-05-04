@@ -1,14 +1,14 @@
 ---
-id: "006"
-title: "Register page and /register route"
-status: todo
-sprint: "020"
+id: '006'
+title: Register page and /register route
+status: done
+sprint: '020'
 use-cases:
-  - SUC-001
-  - SUC-004
-  - SUC-005
+- SUC-001
+- SUC-004
+- SUC-005
 depends-on:
-  - "005"
+- '005'
 ---
 
 # Register page and /register route
@@ -25,36 +25,36 @@ on success.
 ## Acceptance Criteria
 
 **Register page (`client/src/pages/Register.tsx`):**
-- [ ] Page renders four fields: `username`, `email`, `password`, `confirmPassword`
-- [ ] Tailwind styling matches `Login.tsx` (same card layout, same input style, same button style)
-- [ ] Client-side check: if `password !== confirmPassword`, submit is blocked and an inline
+- [x] Page renders four fields: `username`, `email`, `password`, `confirmPassword`
+- [x] Tailwind styling matches `Login.tsx` (same card layout, same input style, same button style)
+- [x] Client-side check: if `password !== confirmPassword`, submit is blocked and an inline
   error is shown under `confirmPassword` without hitting the server
-- [ ] On submit, calls `AuthContext.register({ username, email, password })`
-- [ ] On `{ ok: true }` response, navigates to `/`
-- [ ] On `{ ok: false, field: 'username' }`, shows "Pick another username." under the username
+- [x] On submit, calls `AuthContext.register({ username, email, password })`
+- [x] On `{ ok: true }` response, navigates to `/`
+- [x] On `{ ok: false, field: 'username' }`, shows "Pick another username." under the username
   field
-- [ ] On `{ ok: false, field: 'email' }`, shows "This email has been registered. Try to sign in."
+- [x] On `{ ok: false, field: 'email' }`, shows "This email has been registered. Try to sign in."
   under the email field, with a `<Link to="/login">` wrapping "sign in"
-- [ ] On `{ ok: false, field: 'password' }`, shows the password rule under the password field
+- [x] On `{ ok: false, field: 'password' }`, shows the password rule under the password field
   (e.g., "Password must be at least 6 characters and contain at least 2 of: lowercase,
   uppercase, digit, symbol.")
-- [ ] On generic error, shows a fallback error message
-- [ ] Submit button is disabled (or shows loading state) while the request is in flight
-- [ ] Page title / heading is "Create account" (or similar — match the Login page heading style)
+- [x] On generic error, shows a fallback error message
+- [x] Submit button is disabled (or shows loading state) while the request is in flight
+- [x] Page title / heading is "Create account" (or similar — match the Login page heading style)
 
 **Login page (`client/src/pages/Login.tsx`):**
-- [ ] Below the form (after the OAuth buttons), renders a small text block:
+- [x] Below the form (after the OAuth buttons), renders a small text block:
   "No account yet? [Register]" where [Register] is a `<Link to="/register">` styled as
   `font-medium text-indigo-600 hover:underline`
-- [ ] Existing login form behaviour is unchanged
+- [x] Existing login form behaviour is unchanged
 
 **Routing (`client/src/App.tsx`):**
-- [ ] `<Route path="/register" element={<RegisterPage />} />` added alongside `/login`
-- [ ] All existing routes unchanged
+- [x] `<Route path="/register" element={<RegisterPage />} />` added alongside `/login`
+- [x] All existing routes unchanged
 
 **General:**
-- [ ] `tsc --noEmit` passes in `client/`
-- [ ] `npm run test:client` has no regressions
+- [x] `tsc --noEmit` passes in `client/`
+- [x] `npm run test:client` has no regressions
 
 ## Implementation Plan
 

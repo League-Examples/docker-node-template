@@ -4,6 +4,7 @@ import { AuthProvider } from './context/AuthContext';
 import AppLayout from './components/AppLayout';
 import HomePage from './pages/HomePage';
 import Login from './pages/Login';
+import Register from './pages/Register';
 
 import About from './pages/About';
 import McpSetup from './pages/McpSetup';
@@ -31,6 +32,7 @@ function App() {
           <Routes>
             {/* Standalone pages (no AppLayout) */}
             <Route path="/login" element={<Login />} />
+            <Route path="/register" element={<Register />} />
 
             {/* Admin login (standalone, no layout) */}
             <Route path="/admin" element={<AdminLogin />} />
