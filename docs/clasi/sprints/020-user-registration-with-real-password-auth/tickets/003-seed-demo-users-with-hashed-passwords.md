@@ -1,12 +1,12 @@
 ---
-id: "003"
-title: "Seed demo users with hashed passwords"
-status: todo
-sprint: "020"
+id: '003'
+title: Seed demo users with hashed passwords
+status: done
+sprint: '020'
 use-cases:
-  - SUC-003
+- SUC-003
 depends-on:
-  - "001"
+- '001'
 ---
 
 # Seed demo users with hashed passwords
@@ -24,20 +24,20 @@ as long as both land before ticket 004 (routes).
 
 ## Acceptance Criteria
 
-- [ ] `server/prisma/seed.ts` upserts a User row for `user` (username) with:
+- [x] `server/prisma/seed.ts` upserts a User row for `user` (username) with:
   - `email: 'user@demo.local'`
   - `displayName: 'Demo User'`
   - `role: 'USER'`
   - `passwordHash`: bcrypt hash of `'pass'` at cost 10
-- [ ] `server/prisma/seed.ts` upserts a User row for `admin` (username) with:
+- [x] `server/prisma/seed.ts` upserts a User row for `admin` (username) with:
   - `email: 'admin@demo.local'`
   - `displayName: 'Demo Admin'`
   - `role: 'ADMIN'`
   - `passwordHash`: bcrypt hash of `'admin'` at cost 10
-- [ ] Upsert is keyed on `username` — re-running seed does not create duplicate rows
-- [ ] Existing counter seed (alpha, beta) is unchanged and still runs
-- [ ] `npx prisma db seed` completes without error
-- [ ] `npm run test:server` has no regressions
+- [x] Upsert is keyed on `username` — re-running seed does not create duplicate rows
+- [x] Existing counter seed (alpha, beta) is unchanged and still runs
+- [x] `npx prisma db seed` completes without error
+- [x] `npm run test:server` has no regressions
 
 ## Implementation Plan
 

@@ -1,8 +1,14 @@
+import bcrypt from 'bcryptjs';
 import { PrismaClient } from '../src/generated/prisma/client.js';
 import { PrismaBetterSqlite3 } from '@prisma/adapter-better-sqlite3';
 
 const adapter = new PrismaBetterSqlite3({ url: process.env.DATABASE_URL! });
 const prisma = new PrismaClient({ adapter });
+
+const DEMO_USERS = [
+  { username: 'user',  plain: 'pass',  email: 'user@demo.local',  displayName: 'Demo User',  role: 'USER'  as const },
+  { username: 'admin', plain: 'admin', email: 'admin@demo.local', displayName: 'Demo Admin', role: 'ADMIN' as const },
+];
 
 async function main() {
   // Seed counter rows for alpha and beta — idempotent via upsert.
@@ -14,6 +20,23 @@ async function main() {
     });
   }
   console.log('Seed: counter rows upserted (alpha, beta)');
+
+  // Seed demo users with bcrypt-hashed passwords — idempotent via upsert on username.
+  for (const u of DEMO_USERS) {
+    const passwordHash = await bcrypt.hash(u.plain, 10);
+    await prisma.user.upsert({
+      where: { username: u.username },
+      update: { passwordHash, email: u.email, role: u.role },
+      create: {
+        username: u.username,
+        email: u.email,
+        displayName: u.displayName,
+        role: u.role,
+        passwordHash,
+      },
+    });
+  }
+  console.log('Seed: demo users upserted (user, admin)');
 }
 
 main()
