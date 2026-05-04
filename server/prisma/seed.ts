@@ -21,12 +21,14 @@ async function main() {
   }
   console.log('Seed: counter rows upserted (alpha, beta)');
 
-  // Seed demo users with bcrypt-hashed passwords — idempotent via upsert on username.
+  // Seed demo users with bcrypt-hashed passwords — idempotent via upsert on
+  // email (the stable identity). Pre-existing rows from the old demo-login
+  // flow have null username, so keying on email lets us backfill them.
   for (const u of DEMO_USERS) {
     const passwordHash = await bcrypt.hash(u.plain, 10);
     await prisma.user.upsert({
-      where: { username: u.username },
-      update: { passwordHash, email: u.email, role: u.role },
+      where: { email: u.email },
+      update: { username: u.username, passwordHash, role: u.role },
       create: {
         username: u.username,
         email: u.email,
