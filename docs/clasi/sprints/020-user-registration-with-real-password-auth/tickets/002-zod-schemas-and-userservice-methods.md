@@ -1,13 +1,13 @@
 ---
-id: "002"
-title: "Zod schemas and UserService methods"
-status: todo
-sprint: "020"
+id: '002'
+title: Zod schemas and UserService methods
+status: done
+sprint: '020'
 use-cases:
-  - SUC-001
-  - SUC-002
+- SUC-001
+- SUC-002
 depends-on:
-  - "001"
+- '001'
 ---
 
 # Zod schemas and UserService methods
@@ -23,23 +23,23 @@ ticket 004 assembles into routes.
 
 ## Acceptance Criteria
 
-- [ ] `server/src/auth/schemas.ts` exists and exports `registerSchema` and `loginSchema`
-- [ ] `registerSchema` validates:
+- [x] `server/src/auth/schemas.ts` exists and exports `registerSchema` and `loginSchema`
+- [x] `registerSchema` validates:
   - `username`: string, 3–30 chars, matches `^[a-zA-Z0-9_]+$`
   - `email`: valid email (`z.email()` or `z.string().email()` depending on Zod v4 API)
   - `password`: string with custom `.refine()` calling `validatePassword` from `password.ts`;
     returns `'invalid_password'` as the error message on failure
-- [ ] `loginSchema` validates:
+- [x] `loginSchema` validates:
   - `username`: non-empty string
   - `password`: non-empty string
-- [ ] `UserService.findByUsername(username: string)` returns the User row or null
-- [ ] `UserService.createPasswordUser({ username, email, passwordHash, displayName?, role? })`
+- [x] `UserService.findByUsername(username: string)` returns the User row or null
+- [x] `UserService.createPasswordUser({ username, email, passwordHash, displayName?, role? })`
   creates a User row with those fields set
-- [ ] `createPasswordUser` applies first-user ADMIN promotion: if `role` is not supplied and
+- [x] `createPasswordUser` applies first-user ADMIN promotion: if `role` is not supplied and
   `user.count() === 0`, the created user gets `ADMIN` role
-- [ ] All existing `UserService` methods remain unchanged and their tests pass
-- [ ] `tsc --noEmit` passes in `server/`
-- [ ] `npm run test:server` has no regressions
+- [x] All existing `UserService` methods remain unchanged and their tests pass
+- [x] `tsc --noEmit` passes in `server/`
+- [x] `npm run test:server` has no regressions
 
 ## Implementation Plan
 
