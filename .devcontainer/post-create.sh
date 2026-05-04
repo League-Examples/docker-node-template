@@ -57,7 +57,23 @@ if ! command -v pipx >/dev/null 2>&1; then
 else
   log "pipx: ok ($(command -v pipx))"
 
-  log "==> Installing dotconfig via pipx"
+  # The devcontainer's pipx is installed system-wide (e.g. /opt/pipx) and
+  # not writable by the non-root user. Force a user-local pipx home so
+  # `pipx install` works without sudo.
+  export PIPX_HOME="$HOME/.local/pipx"
+  export PIPX_BIN_DIR="$HOME/.local/bin"
+  mkdir -p "$PIPX_HOME" "$PIPX_BIN_DIR"
+  case ":$PATH:" in
+    *":$PIPX_BIN_DIR:"*) ;;
+    *) export PATH="$PIPX_BIN_DIR:$PATH" ;;
+  esac
+  grep -q 'PIPX_BIN_DIR' ~/.bashrc 2>/dev/null || cat >> ~/.bashrc <<'EOF'
+export PIPX_HOME="$HOME/.local/pipx"
+export PIPX_BIN_DIR="$HOME/.local/bin"
+export PATH="$PIPX_BIN_DIR:$PATH"
+EOF
+
+  log "==> Installing dotconfig via pipx (PIPX_HOME=$PIPX_HOME)"
   if command -v dotconfig >/dev/null 2>&1; then
     log "dotconfig: already installed"
   else
