@@ -35,14 +35,19 @@ export class BackupService {
 
   constructor(prisma: any) {
     this.prisma = prisma;
-    this.backupDir = process.env.BACKUP_DIR || path.resolve(process.cwd(), 'data/backups');
+    this.backupDir = process.env.BACKUP_DIR || path.resolve(process.cwd(), 'data/backup');
     this.s3 = buildS3Client();
     this.bucket = process.env.DO_SPACES_BUCKET || '';
     this.s3Prefix = `${process.env.APP_SLUG || 'app'}/backups/`;
   }
 
+  // Create the backup directory's leaf only — the parent must already exist.
   private async ensureDir() {
-    await fs.mkdir(this.backupDir, { recursive: true });
+    try {
+      await fs.mkdir(this.backupDir);
+    } catch (err: any) {
+      if (err.code !== 'EEXIST') throw err;
+    }
   }
 
   private validateFilename(filename: string) {
