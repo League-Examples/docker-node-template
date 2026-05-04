@@ -33,6 +33,11 @@ interface AuthContextValue {
     username: string,
     password: string,
   ) => Promise<{ ok: boolean; error?: string }>;
+  register: (params: {
+    username: string;
+    email: string;
+    password: string;
+  }) => Promise<{ ok: boolean; error?: string; field?: 'username' | 'email' | 'password' }>;
   refresh: () => Promise<void>;
 }
 
@@ -78,7 +83,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     password: string,
   ): Promise<{ ok: boolean; error?: string }> {
     try {
-      const res = await fetch('/api/auth/demo-login', {
+      const res = await fetch('/api/auth/login', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ username, password }),
@@ -94,12 +99,40 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
   }
 
+  async function register({
+    username,
+    email,
+    password,
+  }: {
+    username: string;
+    email: string;
+    password: string;
+  }): Promise<{ ok: boolean; error?: string; field?: 'username' | 'email' | 'password' }> {
+    const res = await fetch('/api/auth/register', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ username, email, password }),
+    });
+    if (res.status === 201) {
+      await fetchMe();
+      return { ok: true };
+    }
+    const body = await res.json().catch(() => ({}));
+    const error = (body as { error?: string }).error ?? 'unknown_error';
+    const fieldMap: Record<string, 'username' | 'email' | 'password'> = {
+      username_taken: 'username',
+      email_taken: 'email',
+      invalid_password: 'password',
+    };
+    return { ok: false, error, field: fieldMap[error] };
+  }
+
   async function refresh() {
     await fetchMe();
   }
 
   return (
-    <AuthContext.Provider value={{ user, loading, login, logout, loginWithCredentials, refresh }}>
+    <AuthContext.Provider value={{ user, loading, login, logout, loginWithCredentials, register, refresh }}>
       {children}
     </AuthContext.Provider>
   );

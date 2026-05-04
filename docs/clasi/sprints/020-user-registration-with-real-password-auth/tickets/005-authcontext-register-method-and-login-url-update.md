@@ -1,13 +1,13 @@
 ---
-id: "005"
-title: "AuthContext register method and login URL update"
-status: todo
-sprint: "020"
+id: '005'
+title: AuthContext register method and login URL update
+status: done
+sprint: '020'
 use-cases:
-  - SUC-001
-  - SUC-002
+- SUC-001
+- SUC-002
 depends-on:
-  - "004"
+- '004'
 ---
 
 # AuthContext register method and login URL update
@@ -26,23 +26,23 @@ the login page will stop working.
 
 ## Acceptance Criteria
 
-- [ ] `loginWithCredentials` in `AuthContext` POSTs to `/api/auth/login`
-- [ ] `loginWithCredentials` behaviour is otherwise unchanged (same return type, same error
+- [x] `loginWithCredentials` in `AuthContext` POSTs to `/api/auth/login`
+- [x] `loginWithCredentials` behaviour is otherwise unchanged (same return type, same error
   handling)
-- [ ] `AuthContext` exports a `register({ username, email, password })` function
-- [ ] `register` POSTs to `POST /api/auth/register`
-- [ ] `register` returns `{ ok: true }` on 201 response
-- [ ] `register` returns `{ ok: false, error: string, field?: 'username' | 'email' | 'password' }`
+- [x] `AuthContext` exports a `register({ username, email, password })` function
+- [x] `register` POSTs to `POST /api/auth/register`
+- [x] `register` returns `{ ok: true }` on 201 response
+- [x] `register` returns `{ ok: false, error: string, field?: 'username' | 'email' | 'password' }`
   on error responses, mapping:
   - `username_taken` → `{ ok: false, error: 'username_taken', field: 'username' }`
   - `email_taken` → `{ ok: false, error: 'email_taken', field: 'email' }`
   - `invalid_password` → `{ ok: false, error: 'invalid_password', field: 'password' }`
   - Other errors → `{ ok: false, error: <server error string> }`
-- [ ] `register` re-fetches `/api/auth/me` on success (to refresh AuthContext user state)
-- [ ] `AuthContext` type exports are updated so the `register` method is typed in the context
+- [x] `register` re-fetches `/api/auth/me` on success (to refresh AuthContext user state)
+- [x] `AuthContext` type exports are updated so the `register` method is typed in the context
   value
-- [ ] `tsc --noEmit` passes in `client/`
-- [ ] `npm run test:client` has no regressions
+- [x] `tsc --noEmit` passes in `client/`
+- [x] `npm run test:client` has no regressions
 
 ## Implementation Plan
 
