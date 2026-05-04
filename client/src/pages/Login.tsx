@@ -142,14 +142,14 @@ export default function Login() {
           </>
         )}
 
-        {/* To swap to a full button: replace the <p> below with a <Link> styled as block w-full text-center */}
         <hr className="my-4 border-slate-200" />
-        <p className="text-xs text-center text-slate-500">
-          No account yet?{' '}
-          <Link to="/register" className="font-medium text-indigo-600 hover:underline">
-            Register
-          </Link>
-        </p>
+        <p className="text-xs text-center text-slate-500 mb-2">No account yet?</p>
+        <Link
+          to="/register"
+          className="block w-full text-center bg-white hover:bg-slate-50 border border-slate-300 text-slate-700 font-semibold rounded-lg px-4 py-2 text-sm transition-colors"
+        >
+          Register
+        </Link>
       </div>
     </div>
   );
