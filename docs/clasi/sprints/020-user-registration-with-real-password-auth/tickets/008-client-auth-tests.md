@@ -1,14 +1,14 @@
 ---
-id: "008"
-title: "Client auth tests (Register page + Login page update)"
-status: todo
-sprint: "020"
+id: 008
+title: Client auth tests (Register page + Login page update)
+status: done
+sprint: '020'
 use-cases:
-  - SUC-001
-  - SUC-004
-  - SUC-005
+- SUC-001
+- SUC-004
+- SUC-005
 depends-on:
-  - "006"
+- '006'
 ---
 
 # Client auth tests (Register page + Login page update)
@@ -22,25 +22,25 @@ the new "No account yet? Register" link. The test pattern follows
 ## Acceptance Criteria
 
 **`tests/client/RegisterPage.test.tsx`** (new):
-- [ ] Mismatched passwords block submit and show an inline error under confirmPassword (no
+- [x] Mismatched passwords block submit and show an inline error under confirmPassword (no
   network request made)
-- [ ] `username_taken` from the mocked `AuthContext.register` renders "Pick another username."
+- [x] `username_taken` from the mocked `AuthContext.register` renders "Pick another username."
   adjacent to the username field
-- [ ] `email_taken` from the mocked `AuthContext.register` renders "This email has been
+- [x] `email_taken` from the mocked `AuthContext.register` renders "This email has been
   registered. Try to sign in." adjacent to the email field
-- [ ] The "sign in" text in the email error is a link to `/login`
-- [ ] `invalid_password` from the mocked `AuthContext.register` renders the password rule
+- [x] The "sign in" text in the email error is a link to `/login`
+- [x] `invalid_password` from the mocked `AuthContext.register` renders the password rule
   message adjacent to the password field
-- [ ] Successful register (mock returns `{ ok: true }`) calls `AuthContext.register` with the
+- [x] Successful register (mock returns `{ ok: true }`) calls `AuthContext.register` with the
   correct `{ username, email, password }` payload
-- [ ] After successful register, `navigate('/')` is called (or the route changes to `/`)
+- [x] After successful register, `navigate('/')` is called (or the route changes to `/`)
 
 **`tests/client/LoginPage.test.tsx`** (update):
-- [ ] Existing tests continue to pass
-- [ ] New assertion: the login page renders a link with text "Register" pointing to `/register`
+- [x] Existing tests continue to pass
+- [x] New assertion: the login page renders a link with text "Register" pointing to `/register`
 
 **General:**
-- [ ] `npm run test:client` passes with all new/updated tests green and no regressions
+- [x] `npm run test:client` passes with all new/updated tests green and no regressions
 
 ## Implementation Plan
 

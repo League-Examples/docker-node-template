@@ -126,6 +126,13 @@ describe('Login', () => {
     expect(mockNavigate).not.toHaveBeenCalled();
   });
 
+  it('renders a Register link pointing to /register', () => {
+    renderLogin();
+    const registerLink = screen.getByRole('link', { name: /register/i });
+    expect(registerLink).toBeInTheDocument();
+    expect(registerLink).toHaveAttribute('href', '/register');
+  });
+
   it('calls loginWithCredentials with typed credentials', async () => {
     mockLoginWithCredentials.mockResolvedValue({ ok: true });
     const user = userEvent.setup();
