@@ -6,6 +6,21 @@ The default home page is a counter demo: two named counters (`alpha` and `beta`)
 
 ## Getting Started
 
+For Codespace users, start the codespace on this repo, then ... wait ... it will
+take a while. When it finishes:
+
+```bash
+# 1. Start the dev server
+npm run dev
+```
+
+
+
+Then, look at your "Ports" tab and open the proxy for port 5137
+
+
+For desktop VSCode: 
+
 ```bash
 # 1. Clone the template
 git clone <your-repo-url> my-app
