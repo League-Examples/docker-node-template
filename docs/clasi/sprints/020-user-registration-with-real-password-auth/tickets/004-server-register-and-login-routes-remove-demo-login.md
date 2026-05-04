@@ -1,15 +1,15 @@
 ---
-id: "004"
-title: "Server register and login routes; remove demo-login"
-status: todo
-sprint: "020"
+id: '004'
+title: Server register and login routes; remove demo-login
+status: done
+sprint: '020'
 use-cases:
-  - SUC-001
-  - SUC-002
-  - SUC-003
+- SUC-001
+- SUC-002
+- SUC-003
 depends-on:
-  - "002"
-  - "003"
+- '002'
+- '003'
 ---
 
 # Server register and login routes; remove demo-login
@@ -27,28 +27,28 @@ accounts work because the seed (ticket 003) has already created them as real DB 
 
 ## Acceptance Criteria
 
-- [ ] `POST /api/auth/register` is present in `routes/auth.ts`
-  - [ ] Parses body with `registerSchema`; returns 400 with Zod error details on invalid input
-  - [ ] Returns 409 `{ error: 'username_taken' }` when username already exists
-  - [ ] Returns 409 `{ error: 'email_taken' }` when email already exists
-  - [ ] Returns 400 `{ error: 'invalid_password' }` when password fails the rule (via Zod refine)
-  - [ ] Hashes password with `hashPassword` from `password.ts`
-  - [ ] Creates user via `UserService.createPasswordUser`
-  - [ ] Establishes session via `req.login()`
-  - [ ] Returns 201 `{ user: { id, email, displayName, role } }` on success
-- [ ] `POST /api/auth/login` is present in `routes/auth.ts`
-  - [ ] Parses body with `loginSchema`
-  - [ ] Returns 401 `{ error: 'invalid_credentials' }` for unknown username
-  - [ ] Returns 401 `{ error: 'invalid_credentials' }` for null passwordHash (OAuth-only user)
-  - [ ] Returns 401 `{ error: 'invalid_credentials' }` for wrong password
-  - [ ] Establishes session via `req.login()` on success
-  - [ ] Returns 200 `{ user: { id, email, displayName, role } }` on success
-- [ ] `POST /api/auth/demo-login` is removed (returns 404 or route does not exist)
-- [ ] `DEMO_CREDENTIALS` constant is removed from `routes/auth.ts`
-- [ ] `POST /api/auth/test-login` is unchanged
-- [ ] All other routes in `auth.ts` (OAuth, `/me`, `/logout`) are unchanged
-- [ ] `tsc --noEmit` passes in `server/`
-- [ ] `npm run test:server` has no regressions (existing tests that relied on `demo-login` will
+- [x] `POST /api/auth/register` is present in `routes/auth.ts`
+  - [x] Parses body with `registerSchema`; returns 400 with Zod error details on invalid input
+  - [x] Returns 409 `{ error: 'username_taken' }` when username already exists
+  - [x] Returns 409 `{ error: 'email_taken' }` when email already exists
+  - [x] Returns 400 `{ error: 'invalid_password' }` when password fails the rule (via Zod refine)
+  - [x] Hashes password with `hashPassword` from `password.ts`
+  - [x] Creates user via `UserService.createPasswordUser`
+  - [x] Establishes session via `req.login()`
+  - [x] Returns 201 `{ user: { id, email, displayName, role } }` on success
+- [x] `POST /api/auth/login` is present in `routes/auth.ts`
+  - [x] Parses body with `loginSchema`
+  - [x] Returns 401 `{ error: 'invalid_credentials' }` for unknown username
+  - [x] Returns 401 `{ error: 'invalid_credentials' }` for null passwordHash (OAuth-only user)
+  - [x] Returns 401 `{ error: 'invalid_credentials' }` for wrong password
+  - [x] Establishes session via `req.login()` on success
+  - [x] Returns 200 `{ user: { id, email, displayName, role } }` on success
+- [x] `POST /api/auth/demo-login` is removed (returns 404 or route does not exist)
+- [x] `DEMO_CREDENTIALS` constant is removed from `routes/auth.ts`
+- [x] `POST /api/auth/test-login` is unchanged
+- [x] All other routes in `auth.ts` (OAuth, `/me`, `/logout`) are unchanged
+- [x] `tsc --noEmit` passes in `server/`
+- [x] `npm run test:server` has no regressions (existing tests that relied on `demo-login` will
   be deleted in ticket 007)
 
 ## Implementation Plan

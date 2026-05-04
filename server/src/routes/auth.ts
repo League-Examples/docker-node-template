@@ -4,8 +4,13 @@ import { Strategy as GitHubStrategy } from 'passport-github2';
 import { Strategy as GoogleStrategy } from 'passport-google-oauth20';
 import { prisma } from '../services/prisma';
 import { requireAuth } from '../middleware/requireAuth';
+import { hashPassword, verifyPassword } from '../auth/password.js';
+import { registerSchema, loginSchema } from '../auth/schemas.js';
+import { UserService } from '../services/user.service.js';
 
 export const authRouter = Router();
+
+const userService = new UserService(prisma);
 
 // ---------------------------------------------------------------------------
 // find-or-create helper
@@ -167,56 +172,70 @@ if (process.env.GOOGLE_CLIENT_ID && process.env.GOOGLE_CLIENT_SECRET) {
 }
 
 // ---------------------------------------------------------------------------
-// Demo login credentials
+// Password-based registration
 // ---------------------------------------------------------------------------
-// These are intentionally hardcoded for template demonstration purposes.
-const DEMO_CREDENTIALS = [
-  { username: 'user',  password: 'pass',  email: 'user@demo.local',  displayName: 'Demo User',  role: 'USER'  as const },
-  { username: 'admin', password: 'admin', email: 'admin@demo.local', displayName: 'Demo Admin', role: 'ADMIN' as const },
-];
 
-// POST /api/auth/demo-login
-// Authenticates against hardcoded credential pairs; finds or creates the User record.
-authRouter.post('/auth/demo-login', async (req: Request, res: Response) => {
-  const { username, password } = req.body ?? {};
+// POST /api/auth/register
+authRouter.post('/auth/register', async (req: Request, res: Response) => {
+  const parse = registerSchema.safeParse(req.body);
+  if (!parse.success) {
+    const pwErr = parse.error.issues.find((i) => i.message === 'invalid_password');
+    if (pwErr) return res.status(400).json({ error: 'invalid_password' });
+    return res.status(400).json({ error: 'validation_error', details: parse.error.issues });
+  }
+  const { username, email, password } = parse.data;
 
-  if (!username || !password) {
-    return res.status(400).json({ error: 'username and password are required' });
+  if (await userService.findByUsername(username)) {
+    return res.status(409).json({ error: 'username_taken' });
+  }
+  if (await userService.getByEmail(email)) {
+    return res.status(409).json({ error: 'email_taken' });
   }
 
-  const match = DEMO_CREDENTIALS.find(
-    (c) => c.username === username && c.password === password,
-  );
+  const passwordHash = await hashPassword(password);
+  const user = await userService.createPasswordUser({ username, email, passwordHash });
 
-  if (!match) {
-    return res.status(401).json({ error: 'Invalid credentials' });
-  }
-
-  try {
-    const user = await prisma.user.upsert({
-      where: { email: match.email },
-      update: { role: match.role },
-      create: {
-        email: match.email,
-        displayName: match.displayName,
-        role: match.role,
+  req.login(user, (err) => {
+    if (err) return res.status(500).json({ error: 'Login failed' });
+    res.status(201).json({
+      user: {
+        id: user.id,
+        email: user.email,
+        displayName: user.displayName,
+        role: user.role,
       },
     });
+  });
+});
 
-    req.login(user, (err) => {
-      if (err) return res.status(500).json({ error: 'Login failed' });
-      res.json({
-        user: {
-          id: user.id,
-          email: user.email,
-          displayName: user.displayName,
-          role: user.role,
-        },
-      });
-    });
-  } catch (err) {
-    res.status(500).json({ error: 'Login failed' });
+// ---------------------------------------------------------------------------
+// Password-based login
+// ---------------------------------------------------------------------------
+
+// POST /api/auth/login
+authRouter.post('/auth/login', async (req: Request, res: Response) => {
+  const parse = loginSchema.safeParse(req.body);
+  if (!parse.success) return res.status(400).json({ error: 'validation_error' });
+  const { username, password } = parse.data;
+
+  const user = await userService.findByUsername(username);
+  if (!user || !user.passwordHash) {
+    return res.status(401).json({ error: 'invalid_credentials' });
   }
+  const ok = await verifyPassword(password, user.passwordHash);
+  if (!ok) return res.status(401).json({ error: 'invalid_credentials' });
+
+  req.login(user, (err) => {
+    if (err) return res.status(500).json({ error: 'Login failed' });
+    res.json({
+      user: {
+        id: user.id,
+        email: user.email,
+        displayName: user.displayName,
+        role: user.role,
+      },
+    });
+  });
 });
 
 // --- Test login (non-production only) ---
