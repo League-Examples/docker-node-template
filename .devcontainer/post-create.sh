@@ -88,4 +88,17 @@ if command -v dotconfig >/dev/null 2>&1; then
   dotconfig init || log "dotconfig init returned non-zero (continuing)"
 fi
 
+# ---------------------------------------------------------------------------
+# Seed .env from the template (Codespaces ships without secrets)
+# ---------------------------------------------------------------------------
+log "==> Generating .env"
+if [ -f .env ]; then
+  log ".env already exists — leaving it alone"
+elif [ -f config/env.template ]; then
+  cp config/env.template .env
+  log ".env created from config/env.template"
+else
+  log "config/env.template missing — cannot create .env"
+fi
+
 log "==> Done"

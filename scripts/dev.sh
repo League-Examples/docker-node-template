@@ -7,6 +7,6 @@ cd "$(dirname "$0")/.."
 # (Sourcing is fragile when values contain spaces or shell metacharacters.)
 
 # SQLite mode — no Docker needed
-exec npx concurrently -n server,client -c green,magenta \
+exec npx concurrently --kill-others-on-fail -n server,client -c green,magenta \
   "cd server && npx prisma generate && npx prisma migrate dev && npx prisma db seed && npm run dev" \
   "cd client && npx wait-on http://localhost:3000/api/health && npx vite --host"
