@@ -1,15 +1,15 @@
 ---
-id: "007"
-title: "Server auth tests (register + login)"
-status: todo
-sprint: "020"
+id: '007'
+title: Server auth tests (register + login)
+status: done
+sprint: '020'
 use-cases:
-  - SUC-001
-  - SUC-002
-  - SUC-003
-  - SUC-005
+- SUC-001
+- SUC-002
+- SUC-003
+- SUC-005
 depends-on:
-  - "004"
+- '004'
 ---
 
 # Server auth tests (register + login)
@@ -23,32 +23,32 @@ existing `tests/server/auth-demo-login.test.ts` (vitest + supertest).
 ## Acceptance Criteria
 
 **`tests/server/auth-register.test.ts`** (new):
-- [ ] 201 on valid registration; response body contains `{ user }` with id, email, displayName, role
-- [ ] Session cookie is set on 201 response
-- [ ] `GET /api/auth/me` after register returns the new user (session works)
-- [ ] 409 `username_taken` when registering with an already-taken username
-- [ ] 409 `email_taken` when registering with an already-registered email
-- [ ] 400 `invalid_password` on a password with fewer than 6 characters
-- [ ] 400 `invalid_password` on a password with only one character class (e.g., all lowercase)
-- [ ] First registered user in an empty DB receives ADMIN role
-- [ ] Second registered user receives USER role
-- [ ] 400 on missing required fields (username, email, or password absent)
+- [x] 201 on valid registration; response body contains `{ user }` with id, email, displayName, role
+- [x] Session cookie is set on 201 response
+- [x] `GET /api/auth/me` after register returns the new user (session works)
+- [x] 409 `username_taken` when registering with an already-taken username
+- [x] 409 `email_taken` when registering with an already-registered email
+- [x] 400 `invalid_password` on a password with fewer than 6 characters
+- [x] 400 `invalid_password` on a password with only one character class (e.g., all lowercase)
+- [x] First registered user in an empty DB receives ADMIN role
+- [x] Second registered user receives USER role
+- [x] 400 on missing required fields (username, email, or password absent)
 
 **`tests/server/auth-login.test.ts`** (new):
-- [ ] 200 with `{ user }` on valid credentials
-- [ ] Session cookie is set on success
-- [ ] `GET /api/auth/me` after login returns the correct user
-- [ ] 401 `invalid_credentials` on wrong password
-- [ ] 401 `invalid_credentials` on unknown username
-- [ ] 401 `invalid_credentials` when user exists but `passwordHash` is null (OAuth-only user)
-- [ ] Demo-seeded `user/pass` logs in successfully (requires seed step to have run in test setup)
-- [ ] Demo-seeded `admin/admin` logs in with ADMIN role
+- [x] 200 with `{ user }` on valid credentials
+- [x] Session cookie is set on success
+- [x] `GET /api/auth/me` after login returns the correct user
+- [x] 401 `invalid_credentials` on wrong password
+- [x] 401 `invalid_credentials` on unknown username
+- [x] 401 `invalid_credentials` when user exists but `passwordHash` is null (OAuth-only user)
+- [x] Demo-seeded `user/pass` logs in successfully (requires seed step to have run in test setup)
+- [x] Demo-seeded `admin/admin` logs in with ADMIN role
 
 **`tests/server/auth-demo-login.test.ts`** (remove):
-- [ ] File deleted from `tests/server/`
+- [x] File deleted from `tests/server/` (file did not exist on this branch)
 
 **General:**
-- [ ] `npm run test:server` passes with all new tests green and no regressions
+- [x] `npm run test:server` passes with all new tests green and no regressions
 
 ## Implementation Plan
 
