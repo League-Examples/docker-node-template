@@ -1,1 +1,0 @@
-/Users/eric/proj/league/examples/docker-node-template/.agents/skills/oop/SKILL.md
