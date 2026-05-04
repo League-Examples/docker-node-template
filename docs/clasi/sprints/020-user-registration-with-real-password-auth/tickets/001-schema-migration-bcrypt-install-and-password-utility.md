@@ -1,16 +1,16 @@
 ---
-id: "001"
-title: "Schema migration, bcrypt install, and password utility"
-status: todo
-sprint: "020"
+id: '001'
+title: Schema migration, bcrypt install, and password utility
+status: done
+sprint: '020'
 use-cases:
-  - SUC-001
-  - SUC-002
-  - SUC-005
-  - SUC-006
+- SUC-001
+- SUC-002
+- SUC-005
+- SUC-006
 depends-on: []
 todo:
-  - add-user-registration-with-real-password-auth.md
+- add-user-registration-with-real-password-auth.md
 ---
 
 # Schema migration, bcrypt install, and password utility
@@ -26,20 +26,20 @@ user rows without any backfill.
 
 ## Acceptance Criteria
 
-- [ ] `server/prisma/schema.prisma` has `username String? @unique` on the User model
-- [ ] `server/prisma/schema.prisma` has `passwordHash String?` on the User model
-- [ ] Migration file `add-username-password` created and applies cleanly: `npx prisma migrate dev --name add-username-password`
-- [ ] `bcryptjs` added to `server/package.json` dependencies
-- [ ] `@types/bcryptjs` added to `server/package.json` devDependencies
-- [ ] `server/src/auth/password.ts` exists and exports `hashPassword`, `verifyPassword`, `validatePassword`
-- [ ] `hashPassword(plain)` returns a bcrypt hash at cost factor 10
-- [ ] `verifyPassword(plain, hash)` returns `true` for a matching pair, `false` otherwise
-- [ ] `validatePassword(plain)` returns `null` when valid; returns an error string when:
+- [x] `server/prisma/schema.prisma` has `username String? @unique` on the User model
+- [x] `server/prisma/schema.prisma` has `passwordHash String?` on the User model
+- [x] Migration file `add-username-password` created and applies cleanly: `npx prisma migrate dev --name add-username-password`
+- [x] `bcryptjs` added to `server/package.json` dependencies
+- [x] `@types/bcryptjs` added to `server/package.json` devDependencies
+- [x] `server/src/auth/password.ts` exists and exports `hashPassword`, `verifyPassword`, `validatePassword`
+- [x] `hashPassword(plain)` returns a bcrypt hash at cost factor 10
+- [x] `verifyPassword(plain, hash)` returns `true` for a matching pair, `false` otherwise
+- [x] `validatePassword(plain)` returns `null` when valid; returns an error string when:
   - Password is shorter than 6 characters
   - Password contains fewer than 2 of: {lowercase letter, uppercase letter, digit, symbol}
-- [ ] `server/src/auth/` directory is created (may be created by this ticket or ticket 002)
-- [ ] `tsc --noEmit` passes in `server/`
-- [ ] `npm run test:server` has no regressions
+- [x] `server/src/auth/` directory is created (may be created by this ticket or ticket 002)
+- [x] `tsc --noEmit` passes in `server/`
+- [x] `npm run test:server` has no regressions
 
 ## Implementation Plan
 
