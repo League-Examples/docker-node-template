@@ -20,18 +20,20 @@ enum UserRole {
 }
 
 model User {
-  id           Int       @id @default(autoincrement())
-  email        String    @unique
-  username     String?   @unique
-  passwordHash String?
-  displayName  String?
-  role         UserRole  @default(USER)
-  avatarUrl    String?
-  provider     String?
-  providerId   String?
-  createdAt    DateTime  @default(now())
-  updatedAt    DateTime  @updatedAt
-  providers    UserProvider[]
+  id                   Int                   @id @default(autoincrement())
+  email                String                @unique
+  username             String?               @unique
+  passwordHash         String?
+  displayName          String?
+  role                 UserRole              @default(USER)
+  avatarUrl            String?
+  provider             String?
+  providerId           String?
+  createdAt            DateTime              @default(now())
+  updatedAt            DateTime              @updatedAt
+  providers            UserProvider[]
+  projects             Project[]             @relation("ProjectOwner")
+  knowledgeCorrections KnowledgeCorrection[] @relation("KnowledgeCorrectionProposer")
 
   @@unique([provider, providerId])
 }
@@ -43,7 +45,7 @@ model UserProvider {
   providerId String
   createdAt  DateTime @default(now())
 
-  user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@unique([provider, providerId])
 }
@@ -51,20 +53,13 @@ model UserProvider {
 model ScheduledJob {
   id        Int       @id @default(autoincrement())
   name      String    @unique
-  frequency String    // 'daily', 'weekly', 'hourly'
+  frequency String // 'daily', 'weekly', 'hourly'
   enabled   Boolean   @default(true)
   lastRun   DateTime?
   nextRun   DateTime?
   lastError String?
   createdAt DateTime  @default(now())
   updatedAt DateTime  @updatedAt
-}
-
-model Counter {
-  id        String   @id @default(uuid())
-  name      String   @unique
-  value     Int      @default(0)
-  updatedAt DateTime @updatedAt
 }
 
 // Express session store (PrismaSessionStore).
@@ -75,4 +70,182 @@ model Session {
 
   @@index([expire])
   @@map("session")
+}
+
+// ---------------------------------------------------------------------------
+// Domain models — Catalog & Knowledge Store (architecture-001 §Data Model).
+// Field-for-field implementation of that document's ERD; see
+// docs/architecture/architecture-001.md and this sprint's
+// architecture-update.md for design rationale. `Lock` has no ERD entry (it
+// is described only in prose under Locking/Concurrency Model) — its fields
+// are derived directly from that description: keyed by
+// (resourceType, resourceKey), unique together so a conflicting acquisition
+// is rejected by the database itself.
+// ---------------------------------------------------------------------------
+
+model Project {
+  id              Int       @id @default(autoincrement())
+  parentProjectId Int?
+  parentProject   Project?  @relation("ProjectSubprojects", fields: [parentProjectId], references: [id])
+  subprojects     Project[] @relation("ProjectSubprojects")
+  ownerUserId     Int
+  owner           User      @relation("ProjectOwner", fields: [ownerUserId], references: [id])
+  title           String
+  detailsHeader   Json?
+  status          String    @default("active") // e.g. 'active' | 'archived'
+  version         Int       @default(1) // optimistic lock
+
+  iterations         Iteration[]
+  chatMessages       ChatMessage[]
+  references         Reference[]
+  contextCorrections KnowledgeCorrection[] @relation("KnowledgeCorrectionContext")
+}
+
+model Iteration {
+  id          Int      @id @default(autoincrement())
+  projectId   Int
+  project     Project  @relation(fields: [projectId], references: [id])
+  seq         Int
+  imagePath   String
+  promptUsed  String
+  modelParams Json?
+  createdAt   DateTime @default(now())
+
+  sourcedAssets Asset[]
+
+  @@index([projectId])
+}
+
+model ChatMessage {
+  id        Int      @id @default(autoincrement())
+  projectId Int
+  project   Project  @relation(fields: [projectId], references: [id])
+  role      String
+  content   String
+  toolCalls Json?
+  createdAt DateTime @default(now())
+
+  @@index([projectId])
+}
+
+model Reference {
+  id        Int     @id @default(autoincrement())
+  projectId Int
+  project   Project @relation(fields: [projectId], references: [id])
+  assetId   Int
+  asset     Asset   @relation(fields: [assetId], references: [id])
+  role      String // 'style' | 'composition' | 'template'
+
+  @@index([projectId])
+  @@index([assetId])
+}
+
+model Collection {
+  id          Int                @id @default(autoincrement())
+  directoryId Int
+  directory   WorkspaceDirectory @relation(fields: [directoryId], references: [id])
+  name        String
+  kind        String
+
+  assets Asset[]
+
+  @@index([directoryId])
+}
+
+model Asset {
+  id                Int        @id @default(autoincrement())
+  collectionId      Int
+  collection        Collection @relation(fields: [collectionId], references: [id])
+  sourceIterationId Int?
+  sourceIteration   Iteration? @relation(fields: [sourceIterationId], references: [id])
+  path              String
+  hash              String
+  mtime             DateTime
+
+  description AssetDescription?
+  references  Reference[]
+
+  @@index([collectionId])
+}
+
+model AssetDescription {
+  assetId      Int     @id
+  asset        Asset   @relation(fields: [assetId], references: [id])
+  isPhotograph Boolean
+  isLogo       Boolean
+  style        String?
+  peopleReal   String? // 'real' | 'ai' | 'none' | 'unknown'
+  description  String
+  tags         Json?
+}
+
+model KnowledgeEntry {
+  id               Int                @id @default(autoincrement())
+  directoryId      Int
+  directory        WorkspaceDirectory @relation(fields: [directoryId], references: [id])
+  kind             String // 'style' | 'palette' | 'composition' | 'layout' | 'rule' | 'guardrail'
+  name             String
+  bodyText         String
+  structuredFields Json?
+  version          Int                @default(1) // optimistic lock
+  updatedAt        DateTime           @updatedAt
+
+  corrections KnowledgeCorrection[]
+
+  @@index([directoryId])
+}
+
+model KnowledgeCorrection {
+  id               Int            @id @default(autoincrement())
+  entryId          Int
+  entry            KnowledgeEntry @relation(fields: [entryId], references: [id])
+  proposedByUserId Int
+  proposedBy       User           @relation("KnowledgeCorrectionProposer", fields: [proposedByUserId], references: [id])
+  contextProjectId Int?
+  contextProject   Project?       @relation("KnowledgeCorrectionContext", fields: [contextProjectId], references: [id])
+  diff             String // unified diff vs. current bodyText
+  status           String         @default("pending") // 'pending' | 'accepted' | 'rejected'
+  createdAt        DateTime       @default(now())
+  resolvedAt       DateTime?
+
+  @@index([entryId])
+}
+
+model Embedding {
+  id        Int      @id @default(autoincrement())
+  ownerType String // 'asset' | 'knowledge_entry'
+  ownerId   Int
+  vector    Bytes
+  model     String
+  createdAt DateTime @default(now())
+
+  @@index([ownerType, ownerId])
+}
+
+model WorkspaceDirectory {
+  id             Int                  @id @default(autoincrement())
+  parentId       Int?
+  parent         WorkspaceDirectory?  @relation("WorkspaceDirectoryChildren", fields: [parentId], references: [id])
+  children       WorkspaceDirectory[] @relation("WorkspaceDirectoryChildren")
+  path           String               @unique
+  kind           String // 'collection' | 'knowledge-category'
+  descriptorJson Json?
+
+  collections      Collection[]
+  knowledgeEntries KnowledgeEntry[]
+}
+
+// Workspace MCP Server write lock — keyed by (resourceType, resourceKey), e.g.
+// a directory path, or a project id for the per-project turn lock (see
+// architecture-001 §Locking/Concurrency Model). The unique constraint below
+// is what makes a conflicting acquisition attempt fail rather than queue.
+model Lock {
+  id           Int       @id @default(autoincrement())
+  resourceType String
+  resourceKey  String
+  holder       String?
+  acquiredAt   DateTime  @default(now())
+  expiresAt    DateTime?
+
+  @@unique([resourceType, resourceKey])
 }
