@@ -239,6 +239,11 @@ Responding to `specification.md` §16:
   full-width.)
 - Home page: no counter demo; after login the user lands on something
   useful — links to the wireframes (later, the real app).
+- Postcard editor, revision (2026-07-14, later): go with the front/back
+  **tabs** version after all — show just either the front or the back
+  (side-by-side is out). And the page should also have the **chat box**,
+  since the user will have instructions that are not for the text — the
+  user can instruct about almost anything.
 
 ---
 

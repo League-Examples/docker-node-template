@@ -8,7 +8,7 @@ describe('MockupPostcardEdit', () => {
     vi.restoreAllMocks();
   });
 
-  it('renders at least 3 labeled region inputs pre-filled with stub text', () => {
+  it('renders at least 3 labeled region inputs pre-filled with stub text on the default (back) side', () => {
     render(<MockupPostcardEdit />);
 
     const headline = screen.getByLabelText(/headline/i) as HTMLInputElement;
@@ -21,18 +21,6 @@ describe('MockupPostcardEdit', () => {
     expect(datetime.value).toMatch(/saturday, july 11/i);
     expect(body).toBeInTheDocument();
     expect(body.value).toMatch(/you build the robot/i);
-  });
-
-  it('shows both front and back previews at once (no toggle)', () => {
-    render(<MockupPostcardEdit />);
-
-    expect(screen.getByTestId('postcard-preview-front')).toBeInTheDocument();
-    expect(screen.getByTestId('postcard-preview-back')).toBeInTheDocument();
-    // The front is image-only in the stub data.
-    expect(screen.getByText(/front image only/i)).toBeInTheDocument();
-    // No side toggle remains.
-    expect(screen.queryByRole('button', { name: /^front$/i })).not.toBeInTheDocument();
-    expect(screen.queryByRole('button', { name: /^back$/i })).not.toBeInTheDocument();
   });
 
   it('typing into one region updates that region in the preview and leaves another unchanged', async () => {
@@ -49,6 +37,20 @@ describe('MockupPostcardEdit', () => {
     );
   });
 
+  it('switches to the front side on tab click, and back again', async () => {
+    const user = userEvent.setup();
+    render(<MockupPostcardEdit />);
+
+    expect(screen.getByLabelText(/headline/i)).toBeInTheDocument();
+
+    await user.click(screen.getByRole('button', { name: /^front$/i }));
+    expect(screen.queryByLabelText(/headline/i)).not.toBeInTheDocument();
+    expect(screen.getByText(/no text regions on the front side/i)).toBeInTheDocument();
+
+    await user.click(screen.getByRole('button', { name: /^back$/i }));
+    expect(screen.getByLabelText(/headline/i)).toBeInTheDocument();
+  });
+
   it('renders the QR/extra_html placeholder box on the back side, distinguishable from text regions', () => {
     render(<MockupPostcardEdit />);
 
@@ -56,9 +58,16 @@ describe('MockupPostcardEdit', () => {
     expect(overlay).toBeInTheDocument();
     expect(within(overlay).getByText(/qr code overlay/i)).toBeInTheDocument();
 
-    const back = screen.getByTestId('postcard-preview-back');
-    expect(within(back).getByTestId('postcard-region-box-back_headline')).toBeInTheDocument();
-    expect(overlay).not.toBe(within(back).getByTestId('postcard-region-box-back_headline'));
+    const preview = screen.getByTestId('postcard-preview');
+    expect(within(preview).getByTestId('postcard-region-box-back_headline')).toBeInTheDocument();
+    expect(overlay).not.toBe(within(preview).getByTestId('postcard-region-box-back_headline'));
+  });
+
+  it('shows the chat box with the postcard exchange', () => {
+    render(<MockupPostcardEdit />);
+
+    expect(screen.getByPlaceholderText(/message claude/i)).toBeInTheDocument();
+    expect(screen.getByText(/move the qr code down/i)).toBeInTheDocument();
   });
 
   it('Generate PDF opens a print window containing both sides and the edited text', async () => {

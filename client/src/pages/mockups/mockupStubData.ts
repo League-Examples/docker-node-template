@@ -210,3 +210,24 @@ export const STUB_NEW_PROJECT_CHAT_MESSAGES: ChatMessage[] = [
       'postcard — and what are you trying to achieve?',
   },
 ];
+
+/**
+ * Stub exchange for the /mockups/postcard-edit chat panel: the chat is not
+ * limited to text-region edits — the user can instruct about almost
+ * anything on this surface (spec §11; stakeholder, 2026-07-14).
+ */
+export const STUB_POSTCARD_CHAT_MESSAGES: ChatMessage[] = [
+  {
+    id: 'postcard-msg-1',
+    from: 'user',
+    text: 'Move the QR code down a bit and make the headline punchier.',
+  },
+  {
+    id: 'postcard-msg-2',
+    from: 'assistant',
+    text:
+      "Done — QR overlay nudged toward the bottom margin, and I've drafted " +
+      'a bolder headline in the Headline field. Anything else — layout, ' +
+      'regions, fonts, or a new back-side image?',
+  },
+];
