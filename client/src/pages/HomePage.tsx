@@ -8,6 +8,12 @@ import { Link } from 'react-router-dom';
 
 const WIREFRAMES = [
   {
+    to: '/mockups/projects',
+    title: 'Project list (home)',
+    description:
+      'All projects with hero images — the post-login landing concept.',
+  },
+  {
     to: '/mockups/main',
     title: 'Main two-pane layout',
     description:

@@ -259,7 +259,21 @@ Responding to `specification.md` §16:
   browser is an occasional-use surface: click to open it, and it can
   obscure the screen — expanding over ~7/8 of the iterations list and
   chat window — then collapse it again. When you **double-click an item
-  to add it to the project, it closes automatically**.
+  to add it to the project, it closes automatically**. (Follow-up: open it
+  with a **vertical pull-out tab** that slides over, not a button.)
+- Round 6 (2026-07-14): the **home page is a list of all the projects**.
+  Each project shows a **hero image** = whatever was most recently
+  **accepted** — usually the last one. For a postcard it's the **front**,
+  not the back.
+  - Postcards make two images, so iterations get a control (little
+    button or **pull-down**) marking **front or back**. Pulling down to
+    set something as the front **unselects whatever was previously the
+    front** — make a new revision, and if you like it, mark it the front;
+    that clears the previous one.
+  - Iterations have an **"accepted" checkbox** — that's the one you're
+    working with. Updates always work off the accepted one; **if nothing
+    is accepted, work off the last one**, unless the user explicitly says
+    to work off a different version.
 
 ---
 

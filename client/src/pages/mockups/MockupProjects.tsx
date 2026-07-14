@@ -1,0 +1,57 @@
+import { Link } from 'react-router-dom';
+import { STUB_PROJECT_CARDS } from './mockupStubData';
+
+/**
+ * /mockups/projects — the project-list wireframe: the concept for the
+ * post-login HOME page (stakeholder, 2026-07-14). Every project appears
+ * as a card whose hero image is the most recently ACCEPTED iteration
+ * (usually the last one); for postcards the hero is the FRONT of the
+ * postcard, never the back. Front/back marking and the accepted flag
+ * live on the iterations themselves — see /mockups/main.
+ */
+export default function MockupProjects() {
+  return (
+    <div className="min-h-screen bg-slate-50 p-8 text-slate-800">
+      <div className="mx-auto max-w-4xl">
+        <div className="mb-6 flex items-center justify-between">
+          <div>
+            <h1 className="text-2xl font-semibold text-slate-800">Projects</h1>
+            <p className="text-sm text-slate-500">
+              Hero image = most recently accepted iteration; postcards show
+              their front.
+            </p>
+          </div>
+          <button
+            type="button"
+            disabled
+            className="rounded bg-indigo-600 px-4 py-2 text-sm font-semibold text-white disabled:opacity-60"
+          >
+            New project
+          </button>
+        </div>
+
+        <ul className="grid grid-cols-2 gap-4">
+          {STUB_PROJECT_CARDS.map((project) => (
+            <li key={project.id}>
+              <Link
+                to="/mockups/main"
+                className="block rounded-lg border border-slate-200 bg-white p-3 hover:border-indigo-400"
+              >
+                <div
+                  aria-hidden="true"
+                  className="mb-3 flex aspect-[3/2] w-full items-center justify-center rounded bg-slate-200 text-xs text-slate-500"
+                >
+                  {project.hero}
+                </div>
+                <p className="font-semibold text-slate-800">{project.name}</p>
+                <p className="text-sm text-slate-500">
+                  {project.kind} · updated {project.updated}
+                </p>
+              </Link>
+            </li>
+          ))}
+        </ul>
+      </div>
+    </div>
+  );
+}

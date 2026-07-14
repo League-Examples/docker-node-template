@@ -22,6 +22,7 @@ describe('HomePage', () => {
     const hrefs = screen.getAllByRole('link').map((a) => a.getAttribute('href'));
     expect(hrefs).toEqual(
       expect.arrayContaining([
+        '/mockups/projects',
         '/mockups/main',
         '/mockups/new-project',
         '/mockups/postcard-edit',

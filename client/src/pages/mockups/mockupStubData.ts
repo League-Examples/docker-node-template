@@ -231,3 +231,49 @@ export const STUB_POSTCARD_CHAT_MESSAGES: ChatMessage[] = [
       'regions, fonts, or a new back-side image?',
   },
 ];
+
+/**
+ * Project cards for the /mockups/projects list — the post-login home
+ * concept (stakeholder, 2026-07-14): every project, each showing a HERO
+ * image = the most recently accepted iteration (usually the last one);
+ * for postcards the hero is the FRONT, never the back.
+ */
+export interface ProjectCard {
+  id: string;
+  name: string;
+  kind: string;
+  /** Which image is the hero and why — wireframe stand-in for the image. */
+  hero: string;
+  updated: string;
+}
+
+export const STUB_PROJECT_CARDS: ProjectCard[] = [
+  {
+    id: 'proj-open-house',
+    name: 'Spring Open House Postcard',
+    kind: 'Postcard · Pop Art',
+    hero: 'Front — Iteration 2 (accepted)',
+    updated: 'today',
+  },
+  {
+    id: 'proj-robot-riot',
+    name: 'Robot Riot Postcard',
+    kind: 'Postcard · Comic Book',
+    hero: 'Front — Iteration 5 (accepted)',
+    updated: 'yesterday',
+  },
+  {
+    id: 'proj-summer-poster',
+    name: 'Summer Reading Program Poster',
+    kind: 'Flyer · Flat Poster',
+    hero: 'Iteration 3 (last — nothing accepted)',
+    updated: '3 days ago',
+  },
+  {
+    id: 'proj-fb-camp',
+    name: 'Coding Camp Facebook Post',
+    kind: 'Facebook image · Manga',
+    hero: 'Iteration 7 (accepted)',
+    updated: 'last week',
+  },
+];

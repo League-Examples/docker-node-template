@@ -10,6 +10,13 @@ interface MockupLink {
 
 const MOCKUP_LINKS: MockupLink[] = [
   {
+    to: '/mockups/projects',
+    label: 'Project list (home)',
+    description: 'All projects as cards; hero = most recently accepted iteration (postcards: the front).',
+    ticket: 'oop',
+    available: true,
+  },
+  {
     to: '/mockups/main',
     label: 'Two-pane main layout',
     description: 'Left asset/style/project browser; right project output view and chat.',

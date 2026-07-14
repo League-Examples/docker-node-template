@@ -69,6 +69,34 @@ describe('MockupMain', () => {
     expect(screen.getByText('current')).toBeInTheDocument();
   });
 
+  it('works from the last iteration until one is accepted; accepting is exclusive', () => {
+    render(<MockupMain />);
+    expect(screen.getByTestId('working-from')).toHaveTextContent(
+      /iteration 3 \(last — nothing accepted\)/i,
+    );
+
+    fireEvent.click(screen.getByRole('checkbox', { name: /iteration 1 accepted/i }));
+    expect(screen.getByTestId('working-from')).toHaveTextContent(/iteration 1 \(accepted\)/i);
+
+    fireEvent.click(screen.getByRole('checkbox', { name: /iteration 2 accepted/i }));
+    expect(screen.getByRole('checkbox', { name: /iteration 1 accepted/i })).not.toBeChecked();
+    expect(screen.getByTestId('working-from')).toHaveTextContent(/iteration 2 \(accepted\)/i);
+  });
+
+  it('marking a new iteration as front releases the previous front', () => {
+    render(<MockupMain />);
+    // Stub starts with iteration 2 as the front.
+    expect(screen.getByTestId('role-badge-iter-002')).toHaveTextContent(/front/i);
+
+    fireEvent.change(screen.getByRole('combobox', { name: /iteration 3 side/i }), {
+      target: { value: 'front' },
+    });
+
+    expect(screen.getByTestId('role-badge-iter-003')).toHaveTextContent(/front/i);
+    expect(screen.queryByTestId('role-badge-iter-002')).not.toBeInTheDocument();
+    expect(screen.getByRole('combobox', { name: /iteration 2 side/i })).toHaveValue('none');
+  });
+
   it('renders the chat panel below the output area', () => {
     render(<MockupMain />);
     expect(screen.getByPlaceholderText(/message claude/i)).toBeInTheDocument();
