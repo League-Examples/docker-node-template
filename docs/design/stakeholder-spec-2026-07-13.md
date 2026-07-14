@@ -244,6 +244,10 @@ Responding to `specification.md` §16:
   (side-by-side is out). And the page should also have the **chat box**,
   since the user will have instructions that are not for the text — the
   user can instruct about almost anything.
+- Postcard editor, revision 3 (2026-07-14): vertical stack — the screen
+  has the postcard with the tabs for the front and back; below that a
+  **scrollable box with the text fields** in it; below that the chat
+  session.
 
 ---
 

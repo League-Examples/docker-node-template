@@ -108,6 +108,9 @@ ${printPageHtml('back', regionText)}
  *   full-width, agent-authored editing surface.
  * - Front/back are tabs: only one side's preview and region fields show
  *   at a time.
+ * - Vertical stack (stakeholder, 2026-07-14, round 3): postcard with its
+ *   front/back tabs on top; below it a scrollable box holding the text
+ *   fields; below that the chat session.
  * - The chat box is present at the bottom: instructions here are not
  *   limited to the text regions — the user can instruct about almost
  *   anything (layout, fonts, images, the QR overlay...).
@@ -130,11 +133,12 @@ export default function MockupPostcardEdit() {
 
   return (
     <div className="flex h-screen flex-col bg-slate-50 text-slate-800">
-      <div className="min-h-0 flex-1 overflow-y-auto p-8">
+      {/* Top: title row, then the postcard with its front/back tabs. */}
+      <div className="flex-shrink-0 px-8 pt-6">
         <div className="mx-auto max-w-5xl">
-          <div className="mb-6 flex items-start justify-between gap-4">
+          <div className="mb-4 flex items-start justify-between gap-4">
             <div>
-              <h1 className="mb-1 text-2xl font-semibold text-slate-800">
+              <h1 className="text-xl font-semibold text-slate-800">
                 Postcard text-region edit form
               </h1>
               <p className="text-sm text-slate-500">
@@ -154,7 +158,7 @@ export default function MockupPostcardEdit() {
           <div
             role="group"
             aria-label="Postcard side"
-            className="mb-6 inline-flex overflow-hidden rounded border border-slate-300"
+            className="mb-3 inline-flex overflow-hidden rounded border border-slate-300"
           >
             {SIDES.map((option) => (
               <button
@@ -173,16 +177,11 @@ export default function MockupPostcardEdit() {
             ))}
           </div>
 
-          <div className="grid gap-8 lg:grid-cols-2">
-            <div>
-              <h2 className="mb-2 text-sm font-semibold uppercase tracking-wide text-slate-500">
-                Preview — {side}
-              </h2>
-              <div
-                data-testid="postcard-preview"
-                className="relative mx-auto border-2 border-slate-300 bg-white shadow-sm"
-                style={{ width: '6in', height: '4in' }}
-              >
+          <div
+            data-testid="postcard-preview"
+            className="relative mx-auto mb-4 border-2 border-slate-300 bg-white shadow-sm"
+            style={{ width: '6in', height: '4in' }}
+          >
                 {regions.length === 0 && (
                   <p className="absolute inset-0 flex items-center justify-center text-sm text-slate-300">
                     {side} image only — no text regions
@@ -226,48 +225,49 @@ export default function MockupPostcardEdit() {
                     {overlay.label}
                   </div>
                 )}
-              </div>
-            </div>
-
-            <div>
-              <h2 className="mb-2 text-sm font-semibold uppercase tracking-wide text-slate-500">
-                Regions — {side}
-              </h2>
-              {regions.length === 0 ? (
-                <p className="text-sm text-slate-400">
-                  No text regions on the {side} side.
-                </p>
-              ) : (
-                <ul className="space-y-4">
-                  {regions.map((region) => (
-                    <li
-                      key={region.name}
-                      className="rounded-lg border border-slate-200 bg-white p-4"
-                    >
-                      <label
-                        htmlFor={`region-input-${region.name}`}
-                        className="block text-sm font-semibold text-slate-700"
-                      >
-                        {region.label}
-                      </label>
-                      <p className="mb-2 mt-0.5 text-xs text-slate-500">
-                        {summarizePositionAndFont(region)}
-                      </p>
-                      <input
-                        id={`region-input-${region.name}`}
-                        type="text"
-                        value={regionText[region.name] ?? ''}
-                        onChange={(event) =>
-                          handleRegionTextChange(region.name, event.target.value)
-                        }
-                        className="w-full rounded border border-slate-300 px-3 py-2 text-sm text-slate-800"
-                      />
-                    </li>
-                  ))}
-                </ul>
-              )}
-            </div>
           </div>
+        </div>
+      </div>
+
+      {/* Middle: scrollable box holding the text fields. */}
+      <div className="min-h-0 flex-1 overflow-y-auto border-t border-slate-200 px-8 py-4">
+        <div className="mx-auto max-w-5xl">
+          <h2 className="mb-2 text-sm font-semibold uppercase tracking-wide text-slate-500">
+            Regions — {side}
+          </h2>
+          {regions.length === 0 ? (
+            <p className="text-sm text-slate-400">
+              No text regions on the {side} side.
+            </p>
+          ) : (
+            <ul className="space-y-4">
+              {regions.map((region) => (
+                <li
+                  key={region.name}
+                  className="rounded-lg border border-slate-200 bg-white p-4"
+                >
+                  <label
+                    htmlFor={`region-input-${region.name}`}
+                    className="block text-sm font-semibold text-slate-700"
+                  >
+                    {region.label}
+                  </label>
+                  <p className="mb-2 mt-0.5 text-xs text-slate-500">
+                    {summarizePositionAndFont(region)}
+                  </p>
+                  <input
+                    id={`region-input-${region.name}`}
+                    type="text"
+                    value={regionText[region.name] ?? ''}
+                    onChange={(event) =>
+                      handleRegionTextChange(region.name, event.target.value)
+                    }
+                    className="w-full rounded border border-slate-300 px-3 py-2 text-sm text-slate-800"
+                  />
+                </li>
+              ))}
+            </ul>
+          )}
         </div>
       </div>
 
