@@ -74,6 +74,7 @@ DATABASE_URL=postgresql://app:devpassword@localhost:5433/app
 ## Testing
 
 ```bash
+npm test              # Combined gate: server + client (Vitest)
 npm run test:server   # Backend API (Vitest)
 npm run test:client   # Frontend components (Vitest)
 npm run test:e2e      # End-to-end (Playwright)

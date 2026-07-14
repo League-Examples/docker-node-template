@@ -1,8 +1,9 @@
 ---
 id: '001'
 title: Add combined npm test script
-status: open
-use-cases: [SUC-006]
+status: done
+use-cases:
+- SUC-006
 depends-on: []
 github-issue: ''
 issue: add-combined-npm-test-script.md
@@ -25,18 +26,18 @@ itself — see ticket 002 for the known flaky test.
 
 ## Acceptance Criteria
 
-- [ ] Root `package.json` has a `"test"` script that runs both
+- [x] Root `package.json` has a `"test"` script that runs both
       `test:server` and `test:client` and fails (non-zero exit) if either
       suite fails.
-- [ ] `npm test` is a single token safely passable as `close_sprint`'s
+- [x] `npm test` is a single token safely passable as `close_sprint`'s
       `test_command` argument — no `&&`, no shell quoting, no `-c`
       wrapper required by the caller.
-- [ ] Running `npm test` on a clean checkout (after `npm install` in both
+- [x] Running `npm test` on a clean checkout (after `npm install` in both
       `client/` and `server/` as applicable) exits 0.
-- [ ] Deliberately breaking one server test and one client test (locally,
+- [x] Deliberately breaking one server test and one client test (locally,
       not committed) confirms `npm test` exits non-zero in both cases,
       then the breakage is reverted before commit.
-- [ ] README or root-level tooling docs (wherever `test:server`/
+- [x] README or root-level tooling docs (wherever `test:server`/
       `test:client` are currently documented, if anywhere) mention the
       new combined `test` script.
 
@@ -82,3 +83,28 @@ gate.
 - **New tests to write**: none (tooling ticket) — verify via the
   deliberate-breakage check described above.
 - **Verification command**: `npm test`
+
+### Notes
+
+- Added `"test": "npm run test:server && npm run test:client"` to root
+  `package.json`, placed alongside the existing `test:server`/
+  `test:client` entries.
+- Standalone baseline confirmed before chaining: `npm run test:server`
+  exited 0 (22 files / 178 tests passed), `npm run test:client` exited 0
+  (13 files / 98 tests passed).
+- `npm test` (combined) exited 0 with the same 178+98 totals.
+- Deliberate-breakage check performed locally, not committed:
+  - Changed `tests/server/app.test.ts` health-check assertion to expect
+    `999` instead of `200` — `npm test` exited 1, failing on the server
+    leg and short-circuiting before the client suite ran (`&&` semantics
+    confirmed correct for a single-token gate). Reverted.
+  - Changed `tests/client/About.test.tsx` heading assertion to expect
+    the wrong app name — `npm test` exited 1, with the server leg passing
+    (22/22 files) and the client leg failing (1 file). Reverted.
+  - `git diff` on both files confirmed clean (no residual changes) before
+    committing.
+- Updated `docs/testing.md` (§ intro code block and § 8.2 Agent
+  Guidelines) and `README.md` (Testing section) to document `npm test`
+  as the canonical combined single-command gate for CI / `close_sprint`.
+- Final verification re-run after revert: `npm test` exit 0, server
+  178/178, client 98/98.

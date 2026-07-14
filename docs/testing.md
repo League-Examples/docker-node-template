@@ -15,7 +15,7 @@
 | **E2E** | `tests/e2e/` | Playwright | Yes (dev DB) | Full user flows through a real browser |
 
 ```bash
-npm test              # Shows available suites
+npm test              # Combined gate: server + client (exits non-zero if either fails)
 npm run test:db       # Database layer
 npm run test:server   # Backend API layer
 npm run test:client   # Frontend components
@@ -301,6 +301,8 @@ afterAll(async () => {
 
 - Run `npm run test:server` after any backend change.
 - Run `npm run test:client` after any frontend change.
+- Run `npm test` (root) to run both suites as a single combined gate —
+  this is the canonical single-token command for CI and `close_sprint`.
 - Run `npm run test:e2e` before marking a ticket as done (if E2E tests
   exist for that feature).
 - All tests must pass before a ticket can be marked done.
