@@ -78,10 +78,18 @@ export default function MockupLeftBrowser({ onClose, onItemAdd }: MockupLeftBrow
               onDoubleClick={() => onItemAdd?.(item)}
               className="w-full rounded border border-slate-200 p-2 text-left hover:border-indigo-400"
             >
-              <div
-                aria-hidden="true"
-                className="mb-2 aspect-video w-full rounded bg-slate-200"
-              />
+              {item.image ? (
+                <img
+                  src={item.image}
+                  alt=""
+                  className="mb-2 aspect-video w-full rounded bg-slate-100 object-cover"
+                />
+              ) : (
+                <div
+                  aria-hidden="true"
+                  className="mb-2 aspect-video w-full rounded bg-slate-200"
+                />
+              )}
               <p className="truncate text-sm text-slate-800">{item.label}</p>
               <p className="truncate text-xs text-slate-400">{item.detail}</p>
             </button>

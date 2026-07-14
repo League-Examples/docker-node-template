@@ -283,6 +283,14 @@ Responding to `specification.md` §16:
     for a name; the name shows in the box just like existing ones.
   - **Click a created text box** → a **delete button** off to the side
     (in its popup) removes it.
+- Round 8 (2026-07-14): use **real images** from the marketing repo in the
+  mockups. A drawn text area takes up **precisely the area drawn** — it
+  must not collapse to the text size; overflowing text is **clipped, not
+  shown**. Put **grab squares on the bottom-left and top-right corners** to
+  move a box around. References added to a project aren't just lozenges —
+  they show a **small image with an X** (upper corner) to remove them. The
+  postcard text-entry view needs a **back button** to the iterations view,
+  and the iterations view a back button to the projects list.
 
 ---
 

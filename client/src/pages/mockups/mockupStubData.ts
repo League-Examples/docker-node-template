@@ -14,6 +14,9 @@ export interface LibraryItem {
   label: string;
   /** One-line stand-in for the description/prompt text an item can carry. */
   detail: string;
+  /** Real sample art from the predecessor marketing repo (downscaled into
+   * client/public/mockup-assets). */
+  image?: string;
 }
 
 export const LIBRARY_CATEGORY_LABELS: Record<LibraryCategory, string> = {
@@ -25,26 +28,30 @@ export const LIBRARY_CATEGORY_LABELS: Record<LibraryCategory, string> = {
 
 export const LIBRARY_ITEMS: Record<LibraryCategory, LibraryItem[]> = {
   assets: [
-    { id: 'asset-1', label: 'League robot logo (primary)', detail: 'logo · svg' },
-    { id: 'asset-2', label: 'Robotics team photo — regional 2025', detail: 'photo · prior-art' },
-    { id: 'asset-3', label: 'Stock: confetti burst', detail: 'stock image' },
-    { id: 'asset-4', label: 'Stock: classroom crowd', detail: 'stock image' },
+    { id: 'asset-1', label: 'League robot logo (primary)', detail: 'logo · png', image: '/mockup-assets/logo-robot.png' },
+    { id: 'asset-2', label: 'League bolt mark', detail: 'logo · png', image: '/mockup-assets/logo-bolt.png' },
+    { id: 'asset-3', label: 'Flag sunburst logo', detail: 'logo · png', image: '/mockup-assets/logo-flag-sunburst.png' },
+    { id: 'asset-4', label: 'Robotics students — pair programming', detail: 'photo · prior-art', image: '/mockup-assets/photo-students.jpg' },
+    { id: 'asset-5', label: 'Focused on the robot', detail: 'photo', image: '/mockup-assets/photo-focused-robot.jpg' },
+    { id: 'asset-6', label: 'Robot Riot at the Gateway', detail: 'photo · event', image: '/mockup-assets/photo-gateway.jpg' },
+    { id: 'asset-7', label: 'Stock: greatest invention', detail: 'stock image', image: '/mockup-assets/stock-greatest-invention.jpg' },
   ],
   examples: [
-    { id: 'example-1', label: 'Pop-art scene — hero pose', detail: 'example image' },
-    { id: 'example-2', label: 'Comic panel — action layout', detail: 'example image' },
-    { id: 'example-3', label: 'Flat poster — event announcement', detail: 'example image' },
+    { id: 'example-1', label: 'Pop-art scene — hero pose', detail: 'example image', image: '/mockup-assets/robot-riot-iter-001.jpg' },
+    { id: 'example-2', label: 'Graphic novel — ink panel', detail: 'example image', image: '/mockup-assets/example-graphic-novel.jpg' },
+    { id: 'example-3', label: 'Ink portrait — style reference', detail: 'example image', image: '/mockup-assets/example-ink-head.jpg' },
+    { id: 'example-4', label: 'Flat poster — event announcement', detail: 'example image', image: '/mockup-assets/engineers-anywhere.jpg' },
   ],
   styles: [
-    { id: 'style-pop-art', label: 'Pop Art', detail: 'Ben-Day dots, flat primary palette' },
-    { id: 'style-comic-book', label: 'Comic Book', detail: 'bold ink lines, halftone shading' },
-    { id: 'style-manga', label: 'Manga', detail: 'screentone, dynamic panel energy' },
-    { id: 'style-flat-poster', label: 'Flat Poster', detail: 'solid shapes, minimal palette' },
+    { id: 'style-pop-art', label: 'Pop Art', detail: 'Ben-Day dots, flat primary palette', image: '/mockup-assets/robot-riot-iter-002.jpg' },
+    { id: 'style-comic-book', label: 'Comic Book', detail: 'bold ink lines, halftone shading', image: '/mockup-assets/example-graphic-novel.jpg' },
+    { id: 'style-manga', label: 'Manga', detail: 'screentone, dynamic panel energy', image: '/mockup-assets/example-ink-head.jpg' },
+    { id: 'style-flat-poster', label: 'Flat Poster', detail: 'solid shapes, minimal palette', image: '/mockup-assets/engineers-anywhere.jpg' },
   ],
   projects: [
-    { id: 'project-1', label: 'Spring Open House Flyer', detail: 'postcard · pop art' },
-    { id: 'project-2', label: 'Robotics Regionals Postcard', detail: 'postcard · comic book' },
-    { id: 'project-3', label: 'Summer Reading Program Poster', detail: 'flyer · flat poster' },
+    { id: 'project-1', label: 'Spring Open House Flyer', detail: 'postcard · pop art', image: '/mockup-assets/hello-world-postcard.jpg' },
+    { id: 'project-2', label: 'Robotics Regionals Postcard', detail: 'postcard · comic book', image: '/mockup-assets/robot-riot-iter-002.jpg' },
+    { id: 'project-3', label: 'Summer Reading Program Poster', detail: 'flyer · flat poster', image: '/mockup-assets/engineers-anywhere.jpg' },
   ],
 };
 
@@ -52,12 +59,14 @@ export interface OutputIteration {
   id: string;
   label: string;
   isCurrent?: boolean;
+  /** Real iteration art from the predecessor's Robot-Riot postcard. */
+  image?: string;
 }
 
 export const STUB_OUTPUT_ITERATIONS: OutputIteration[] = [
-  { id: 'iter-001', label: 'Iteration 1' },
-  { id: 'iter-002', label: 'Iteration 2' },
-  { id: 'iter-003', label: 'Iteration 3', isCurrent: true },
+  { id: 'iter-001', label: 'Iteration 1', image: '/mockup-assets/robot-riot-iter-001.jpg' },
+  { id: 'iter-002', label: 'Iteration 2', image: '/mockup-assets/robot-riot-iter-002.jpg' },
+  { id: 'iter-003', label: 'Iteration 3', isCurrent: true, image: '/mockup-assets/robot-riot-iter-003.jpg' },
 ];
 
 export interface ChatMessage {
@@ -100,6 +109,9 @@ export interface PostcardRegionPosition {
   left?: string;
   right?: string;
   width: string;
+  /** Drawn boxes keep their exact drawn height; content is clipped, not
+   * overflowed (stakeholder, 2026-07-14). Stub regions auto-size. */
+  height?: string;
 }
 
 export interface PostcardRegionFont {
@@ -242,9 +254,11 @@ export interface ProjectCard {
   id: string;
   name: string;
   kind: string;
-  /** Which image is the hero and why — wireframe stand-in for the image. */
+  /** Which image is the hero and why. */
   hero: string;
   updated: string;
+  /** Real hero art from the predecessor marketing repo. */
+  image?: string;
 }
 
 export const STUB_PROJECT_CARDS: ProjectCard[] = [
@@ -254,6 +268,7 @@ export const STUB_PROJECT_CARDS: ProjectCard[] = [
     kind: 'Postcard · Pop Art',
     hero: 'Front — Iteration 2 (accepted)',
     updated: 'today',
+    image: '/mockup-assets/hello-world-postcard.jpg',
   },
   {
     id: 'proj-robot-riot',
@@ -261,6 +276,7 @@ export const STUB_PROJECT_CARDS: ProjectCard[] = [
     kind: 'Postcard · Comic Book',
     hero: 'Front — Iteration 5 (accepted)',
     updated: 'yesterday',
+    image: '/mockup-assets/robot-riot-iter-002.jpg',
   },
   {
     id: 'proj-summer-poster',
@@ -268,6 +284,7 @@ export const STUB_PROJECT_CARDS: ProjectCard[] = [
     kind: 'Flyer · Flat Poster',
     hero: 'Iteration 3 (last — nothing accepted)',
     updated: '3 days ago',
+    image: '/mockup-assets/engineers-anywhere.jpg',
   },
   {
     id: 'proj-fb-camp',
@@ -275,5 +292,14 @@ export const STUB_PROJECT_CARDS: ProjectCard[] = [
     kind: 'Facebook image · Manga',
     hero: 'Iteration 7 (accepted)',
     updated: 'last week',
+    image: '/mockup-assets/robot-riot-banner.jpg',
+  },
+  {
+    id: 'proj-league-logo',
+    name: 'League Logo (angled)',
+    kind: 'Logo · Flat',
+    hero: 'Iteration 10 (accepted)',
+    updated: '2 weeks ago',
+    image: '/mockup-assets/league-logo-angled.jpg',
   },
 ];

@@ -85,9 +85,28 @@ export default function MockupMain() {
             {references.map((item) => (
               <span
                 key={item.id}
-                className="rounded-full border border-indigo-200 bg-indigo-50 px-3 py-0.5 text-xs text-indigo-700"
+                className="relative flex items-center gap-2 rounded border border-indigo-200 bg-indigo-50 py-1 pl-1 pr-2 text-xs text-indigo-700"
               >
+                {item.image ? (
+                  <img
+                    src={item.image}
+                    alt=""
+                    className="h-8 w-12 rounded-sm object-cover"
+                  />
+                ) : (
+                  <span className="h-8 w-12 rounded-sm bg-slate-200" aria-hidden="true" />
+                )}
                 {item.label}
+                <button
+                  type="button"
+                  aria-label={`Remove ${item.label}`}
+                  onClick={() =>
+                    setReferences((prev) => prev.filter((r) => r.id !== item.id))
+                  }
+                  className="absolute -right-1.5 -top-1.5 flex h-4 w-4 items-center justify-center rounded-full bg-slate-600 text-[10px] leading-none text-white hover:bg-red-600"
+                >
+                  ×
+                </button>
               </span>
             ))}
           </div>

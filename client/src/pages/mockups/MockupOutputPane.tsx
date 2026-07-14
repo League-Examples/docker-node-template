@@ -131,19 +131,32 @@ export default function MockupOutputPane() {
             key={iteration.id}
             className="rounded border border-slate-200 bg-slate-100"
           >
-            <div className="flex aspect-[3/2] w-full flex-col items-center justify-center text-sm text-slate-500">
-              <span>{iteration.label}</span>
-              {iteration.isCurrent && (
-                <span className="mt-1 text-xs font-semibold text-indigo-600">current</span>
+            <div className="relative aspect-[3/2] w-full overflow-hidden">
+              {iteration.image && (
+                <img
+                  src={iteration.image}
+                  alt={iteration.label}
+                  className="absolute inset-0 h-full w-full object-cover"
+                />
               )}
-              {roleOf(iteration.id) !== 'none' && (
-                <span
-                  data-testid={`role-badge-${iteration.id}`}
-                  className="mt-1 rounded-full bg-amber-100 px-2 py-0.5 text-xs font-semibold uppercase text-amber-700"
-                >
-                  {roleOf(iteration.id)}
+              <div className="absolute left-2 top-2 flex items-center gap-2">
+                <span className="rounded bg-white/85 px-2 py-0.5 text-sm text-slate-700">
+                  {iteration.label}
                 </span>
-              )}
+                {iteration.isCurrent && (
+                  <span className="rounded bg-indigo-600/90 px-2 py-0.5 text-xs font-semibold text-white">
+                    current
+                  </span>
+                )}
+                {roleOf(iteration.id) !== 'none' && (
+                  <span
+                    data-testid={`role-badge-${iteration.id}`}
+                    className="rounded-full bg-amber-100 px-2 py-0.5 text-xs font-semibold uppercase text-amber-700"
+                  >
+                    {roleOf(iteration.id)}
+                  </span>
+                )}
+              </div>
             </div>
             <div className="flex items-center gap-4 border-t border-slate-200 bg-white px-3 py-2 text-sm">
               <label className="flex items-center gap-1.5 text-slate-600">

@@ -1,4 +1,5 @@
 import { useRef, useState } from 'react';
+import { Link } from 'react-router-dom';
 import MockupChatPanel from './MockupChatPanel';
 import {
   STUB_POSTCARD_REGIONS,
@@ -160,6 +161,15 @@ export default function MockupPostcardEdit() {
   const [drawRect, setDrawRect] = useState<DrawRect | null>(null);
   const [namingRect, setNamingRect] = useState<DrawRect | null>(null);
   const [draftName, setDraftName] = useState('');
+  // Move-a-box state: which region is being dragged by a corner handle.
+  const [moving, setMoving] = useState<{
+    name: string;
+    startX: number;
+    startY: number;
+    startLeft: number;
+    startTop: number;
+  } | null>(null);
+  const movedRef = useRef(false);
 
   const regions = regionsBySide[side];
   const overlay = STUB_POSTCARD_EXTRA_OVERLAY[side];
@@ -197,6 +207,26 @@ export default function MockupPostcardEdit() {
     return { x: event.clientX - (rect?.left ?? 0), y: event.clientY - (rect?.top ?? 0) };
   }
 
+  // Preview is 6in wide; jsdom reports zero width, so fall back to 96dpi.
+  function pxPerInch(): number {
+    const measured = previewRef.current?.getBoundingClientRect().width ?? 0;
+    return measured > 0 ? measured / 6 : 96;
+  }
+
+  function handleMoveStart(event: React.MouseEvent, regionName: string) {
+    event.stopPropagation();
+    const box = (event.currentTarget as HTMLElement).parentElement;
+    if (!box) return;
+    const p = previewPoint(event);
+    setMoving({
+      name: regionName,
+      startX: p.x,
+      startY: p.y,
+      startLeft: box.offsetLeft,
+      startTop: box.offsetTop,
+    });
+  }
+
   function handlePreviewMouseDown(event: React.MouseEvent) {
     if (event.target !== event.currentTarget) return; // ignore drags on regions
     setDrawAnchor(previewPoint(event));
@@ -204,6 +234,30 @@ export default function MockupPostcardEdit() {
   }
 
   function handlePreviewMouseMove(event: React.MouseEvent) {
+    if (moving) {
+      const p = previewPoint(event);
+      const ppi = pxPerInch();
+      const left = (moving.startLeft + (p.x - moving.startX)) / ppi;
+      const top = (moving.startTop + (p.y - moving.startY)) / ppi;
+      movedRef.current = true;
+      setRegionsBySide((prev) => ({
+        ...prev,
+        [side]: prev[side].map((r) =>
+          r.name === moving.name
+            ? {
+                ...r,
+                position: {
+                  ...r.position,
+                  right: undefined,
+                  left: `${Math.max(left, 0).toFixed(2)}in`,
+                  top: `${Math.max(top, 0).toFixed(2)}in`,
+                },
+              }
+            : r,
+        ),
+      }));
+      return;
+    }
     if (!drawAnchor) return;
     const p = previewPoint(event);
     setDrawRect({
@@ -215,6 +269,10 @@ export default function MockupPostcardEdit() {
   }
 
   function handlePreviewMouseUp() {
+    if (moving) {
+      setMoving(null);
+      return;
+    }
     if (drawAnchor && drawRect && (drawRect.w > 10 || drawRect.h > 10)) {
       setNamingRect(drawRect);
       setDraftName('');
@@ -225,8 +283,7 @@ export default function MockupPostcardEdit() {
 
   function createRegionFromRect(rect: DrawRect, label: string) {
     // Preview is 6in wide; jsdom reports zero width, so fall back to 96dpi.
-    const measured = previewRef.current?.getBoundingClientRect().width ?? 0;
-    const pxPerInch = measured > 0 ? measured / 6 : 96;
+    const ppi = pxPerInch();
     const taken = new Set(SIDES.flatMap((s) => regionsBySide[s].map((r) => r.name)));
     const name = makeRegionName(side, label, taken);
     const region: PostcardRegion = {
@@ -234,10 +291,12 @@ export default function MockupPostcardEdit() {
       label,
       style: 'custom',
       text: '',
+      // The drawn box IS the box: exact drawn size, content clipped.
       position: {
-        top: `${(rect.y / pxPerInch).toFixed(2)}in`,
-        left: `${(rect.x / pxPerInch).toFixed(2)}in`,
-        width: `${Math.max(rect.w / pxPerInch, 0.5).toFixed(2)}in`,
+        top: `${(rect.y / ppi).toFixed(2)}in`,
+        left: `${(rect.x / ppi).toFixed(2)}in`,
+        width: `${Math.max(rect.w / ppi, 0.3).toFixed(2)}in`,
+        height: `${Math.max(rect.h / ppi, 0.2).toFixed(2)}in`,
       },
       font: { family: 'Arial, sans-serif', size: '14px' },
     };
@@ -252,14 +311,23 @@ export default function MockupPostcardEdit() {
       <div className="flex-shrink-0 px-8 pt-6">
         <div className="mx-auto max-w-5xl">
           <div className="mb-4 flex items-start justify-between gap-4">
-            <div>
+            <div className="flex items-start gap-3">
+              <Link
+                to="/mockups/main"
+                aria-label="Back to iterations"
+                className="mt-0.5 rounded border border-slate-300 px-2.5 py-1 text-sm text-slate-600 hover:bg-slate-50"
+              >
+                ←
+              </Link>
+              <div>
               <h1 className="text-xl font-semibold text-slate-800">
                 Postcard text entry
               </h1>
               <p className="text-sm text-slate-500">
                 Drag on the postcard to draw a new text box. Click a box to
-                edit or delete it.
+                edit or delete it; drag a corner handle to move it.
               </p>
+              </div>
             </div>
             <button
               type="button"
@@ -298,8 +366,15 @@ export default function MockupPostcardEdit() {
             onMouseDown={handlePreviewMouseDown}
             onMouseMove={handlePreviewMouseMove}
             onMouseUp={handlePreviewMouseUp}
-            className="relative mx-auto mb-4 cursor-crosshair border-2 border-slate-300 bg-white shadow-sm"
-            style={{ width: '6in', height: '4in' }}
+            className="relative mx-auto mb-4 cursor-crosshair border-2 border-slate-300 bg-white bg-cover bg-center shadow-sm"
+            style={{
+              width: '6in',
+              height: '4in',
+              backgroundImage:
+                side === 'front'
+                  ? "url('/mockup-assets/robot-riot-iter-002.jpg')"
+                  : "url('/mockup-assets/robot-riot-iter-004.jpg')",
+            }}
           >
             {regions.length === 0 && (
               <p className="pointer-events-none absolute inset-0 flex items-center justify-center text-sm text-slate-300">
@@ -312,19 +387,37 @@ export default function MockupPostcardEdit() {
                 type="button"
                 data-testid={`postcard-region-box-${region.name}`}
                 aria-label={`Edit ${region.label}`}
-                onClick={() => openRegionEditor(region)}
+                onClick={() => {
+                  if (movedRef.current) {
+                    movedRef.current = false;
+                    return; // a corner-handle drag just ended; not a click
+                  }
+                  openRegionEditor(region);
+                }}
                 className="absolute cursor-pointer overflow-hidden border border-dashed border-indigo-400 bg-indigo-50/60 p-1 text-left text-[9px] leading-tight hover:bg-indigo-100"
                 style={{
                   top: region.position.top,
                   left: region.position.left,
                   right: region.position.right,
                   width: region.position.width,
+                  height: region.position.height,
                 }}
               >
                 <span className="block font-semibold text-indigo-700">{region.label}</span>
                 <span data-testid={`postcard-region-text-${region.name}`}>
                   {regionText[region.name]}
                 </span>
+                {/* Corner grab squares: drag to move the box. */}
+                <span
+                  data-testid={`move-handle-bl-${region.name}`}
+                  onMouseDown={(event) => handleMoveStart(event, region.name)}
+                  className="absolute -bottom-1 -left-1 h-2.5 w-2.5 cursor-move rounded-sm border border-white bg-indigo-600"
+                />
+                <span
+                  data-testid={`move-handle-tr-${region.name}`}
+                  onMouseDown={(event) => handleMoveStart(event, region.name)}
+                  className="absolute -right-1 -top-1 h-2.5 w-2.5 cursor-move rounded-sm border border-white bg-indigo-600"
+                />
               </button>
             ))}
 

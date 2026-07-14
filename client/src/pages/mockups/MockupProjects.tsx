@@ -37,12 +37,19 @@ export default function MockupProjects() {
                 to="/mockups/main"
                 className="block rounded-lg border border-slate-200 bg-white p-3 hover:border-indigo-400"
               >
-                <div
-                  aria-hidden="true"
-                  className="mb-3 flex aspect-[3/2] w-full items-center justify-center rounded bg-slate-200 text-xs text-slate-500"
-                >
-                  {project.hero}
-                </div>
+                {project.image ? (
+                  <img
+                    src={project.image}
+                    alt=""
+                    className="mb-1 aspect-[3/2] w-full rounded object-cover"
+                  />
+                ) : (
+                  <div
+                    aria-hidden="true"
+                    className="mb-1 flex aspect-[3/2] w-full items-center justify-center rounded bg-slate-200 text-xs text-slate-500"
+                  />
+                )}
+                <p className="mb-2 text-[11px] text-slate-400">{project.hero}</p>
                 <p className="font-semibold text-slate-800">{project.name}</p>
                 <p className="text-sm text-slate-500">
                   {project.kind} · updated {project.updated}

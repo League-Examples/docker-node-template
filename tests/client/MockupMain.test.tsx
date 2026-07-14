@@ -70,6 +70,16 @@ describe('MockupMain', () => {
     expect(chips).toHaveTextContent(/league robot logo/i);
   });
 
+  it('a reference thumbnail can be removed with its X button', () => {
+    renderMain();
+    openLibrary();
+    fireEvent.doubleClick(screen.getByText(/league robot logo/i));
+    expect(screen.getByTestId('project-references')).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole('button', { name: /remove league robot logo/i }));
+    expect(screen.queryByTestId('project-references')).not.toBeInTheDocument();
+  });
+
   it('renders the project output area with iteration placeholders', () => {
     renderMain();
     expect(screen.getByRole('heading', { name: /spring open house flyer/i })).toBeInTheDocument();
