@@ -7,6 +7,7 @@ import Login from './pages/Login';
 
 import MockupsIndex from './pages/mockups/MockupsIndex';
 import MockupMain from './pages/mockups/MockupMain';
+import MockupNewProject from './pages/mockups/MockupNewProject';
 
 import About from './pages/About';
 import McpSetup from './pages/McpSetup';
@@ -42,6 +43,7 @@ function App() {
                 see architecture-update.md sprint 001, Decision 4) */}
             <Route path="/mockups" element={<MockupsIndex />} />
             <Route path="/mockups/main" element={<MockupMain />} />
+            <Route path="/mockups/new-project" element={<MockupNewProject />} />
 
             {/* All authenticated routes share AppLayout (sidebar + topbar) */}
             <Route element={<AppLayout />}>

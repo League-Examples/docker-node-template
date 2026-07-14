@@ -1,4 +1,10 @@
 import { STUB_CHAT_MESSAGES } from './mockupStubData';
+import type { ChatMessage } from './mockupStubData';
+
+interface MockupChatPanelProps {
+  /** Defaults to STUB_CHAT_MESSAGES so /mockups/main is unaffected. */
+  messages?: ChatMessage[];
+}
 
 /**
  * Bottom quarter of the right pane: the chat window (spec §2). Most of the
@@ -6,11 +12,11 @@ import { STUB_CHAT_MESSAGES } from './mockupStubData';
  * than buttons (spec §11) — the mockup only needs to establish the
  * structural slot, not working chat behavior.
  */
-export default function MockupChatPanel() {
+export default function MockupChatPanel({ messages = STUB_CHAT_MESSAGES }: MockupChatPanelProps) {
   return (
     <section className="flex flex-1 min-h-0 flex-col bg-white">
       <div className="flex-1 overflow-y-auto p-4 space-y-3">
-        {STUB_CHAT_MESSAGES.map((message) => (
+        {messages.map((message) => (
           <div
             key={message.id}
             className={message.from === 'user' ? 'text-right' : 'text-left'}

@@ -21,7 +21,7 @@ const MOCKUP_LINKS: MockupLink[] = [
     label: 'New-project flow',
     description: 'Project-details header, empty output area, chat box at the bottom.',
     ticket: '004',
-    available: false,
+    available: true,
   },
   {
     to: '/mockups/postcard-edit',

@@ -25,13 +25,21 @@ describe('MockupsIndex', () => {
     expect(link).toHaveAttribute('href', '/mockups/main');
   });
 
+  it('links to the new-project flow mockup', () => {
+    renderPage();
+    const link = screen.getByRole('link', { name: /new-project flow/i });
+    expect(link).toHaveAttribute('href', '/mockups/new-project');
+  });
+
   it('shows not-yet-built mockups as non-navigable placeholders', () => {
     renderPage();
-    expect(screen.getByText(/new-project flow/i)).toBeInTheDocument();
-    expect(
-      screen.queryByRole('link', { name: /new-project flow/i }),
-    ).not.toBeInTheDocument();
     expect(screen.getByText(/postcard text-region edit form/i)).toBeInTheDocument();
+    expect(
+      screen.queryByRole('link', { name: /postcard text-region edit form/i }),
+    ).not.toBeInTheDocument();
     expect(screen.getByText(/google-only login/i)).toBeInTheDocument();
+    expect(
+      screen.queryByRole('link', { name: /google-only login/i }),
+    ).not.toBeInTheDocument();
   });
 });

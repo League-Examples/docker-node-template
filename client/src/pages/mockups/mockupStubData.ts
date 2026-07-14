@@ -86,3 +86,20 @@ export const STUB_CHAT_MESSAGES: ChatMessage[] = [
 
 export const STUB_PROJECT_NAME = 'Spring Open House Flyer';
 export const STUB_PROJECT_META = 'Postcard · Pop Art style';
+
+/**
+ * Opening exchange for the /mockups/new-project chat panel (spec §7): the
+ * assistant asks the same guideline questions the blank project-details
+ * header above it carries — style, output type, and goal — before any
+ * project details are filled in.
+ */
+export const STUB_NEW_PROJECT_CHAT_MESSAGES: ChatMessage[] = [
+  {
+    id: 'new-project-msg-1',
+    from: 'assistant',
+    text:
+      "Let's start your new project. What style are you going for, what " +
+      'kind of output do you need — a Facebook image, a logo, or a ' +
+      'postcard — and what are you trying to achieve?',
+  },
+];
