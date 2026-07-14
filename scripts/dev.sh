@@ -11,9 +11,12 @@ cd "$(dirname "$0")/.."
 # full sourcing stays off for the fragility reasons above.
 PORT=$(grep -E '^PORT=' .env 2>/dev/null | tail -1 | cut -d= -f2- || true)
 CLIENT_PORT=$(grep -E '^CLIENT_PORT=' .env 2>/dev/null | tail -1 | cut -d= -f2- || true)
-export PORT="${PORT:-3100}"
-export CLIENT_PORT="${CLIENT_PORT:-5210}"
+export PORT="${PORT:-3000}"
+export CLIENT_PORT="${CLIENT_PORT:-5173}"
 export VITE_API_URL="${VITE_API_URL:-http://localhost:$PORT}"
+
+# Clear anything squatting on the dev ports so `npm run dev` always works.
+./scripts/nuke3000.sh "$PORT" "$CLIENT_PORT"
 
 # SQLite mode — no Docker needed
 exec npx concurrently --kill-others-on-fail -n server,client -c green,magenta \
