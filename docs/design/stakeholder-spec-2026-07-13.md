@@ -254,6 +254,12 @@ Responding to `specification.md` §16:
   all the text** (the fields themselves are short, but the pop-up should
   expand). And the **QR code box**: clicking it prompts for a **URL** that
   sets what the QR code encodes.
+- Round 5 (2026-07-14): make the **asset browser collapsible**. The
+  template's sidebar menu moves to a **top menu or hamburger**. The asset
+  browser is an occasional-use surface: click to open it, and it can
+  obscure the screen — expanding over ~7/8 of the iterations list and
+  chat window — then collapse it again. When you **double-click an item
+  to add it to the project, it closes automatically**.
 
 ---
 
