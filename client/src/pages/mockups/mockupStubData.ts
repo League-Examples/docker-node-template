@@ -259,6 +259,11 @@ export interface ProjectCard {
   updated: string;
   /** Real hero art from the predecessor marketing repo. */
   image?: string;
+  /** Google-account owner (users log in with their email addresses). */
+  owner: string;
+  /** 'mine' shows under My projects; everything unarchived under All. */
+  mine?: boolean;
+  archived?: boolean;
 }
 
 export const STUB_PROJECT_CARDS: ProjectCard[] = [
@@ -269,6 +274,8 @@ export const STUB_PROJECT_CARDS: ProjectCard[] = [
     hero: 'Front — Iteration 2 (accepted)',
     updated: 'today',
     image: '/mockup-assets/hello-world-postcard.jpg',
+    owner: 'eric.busboom@jointheleague.org',
+    mine: true,
   },
   {
     id: 'proj-robot-riot',
@@ -277,6 +284,7 @@ export const STUB_PROJECT_CARDS: ProjectCard[] = [
     hero: 'Front — Iteration 5 (accepted)',
     updated: 'yesterday',
     image: '/mockup-assets/robot-riot-iter-002.jpg',
+    owner: 'marketing@jointheleague.org',
   },
   {
     id: 'proj-summer-poster',
@@ -285,6 +293,8 @@ export const STUB_PROJECT_CARDS: ProjectCard[] = [
     hero: 'Iteration 3 (last — nothing accepted)',
     updated: '3 days ago',
     image: '/mockup-assets/engineers-anywhere.jpg',
+    owner: 'eric.busboom@jointheleague.org',
+    mine: true,
   },
   {
     id: 'proj-fb-camp',
@@ -293,6 +303,7 @@ export const STUB_PROJECT_CARDS: ProjectCard[] = [
     hero: 'Iteration 7 (accepted)',
     updated: 'last week',
     image: '/mockup-assets/robot-riot-banner.jpg',
+    owner: 'marketing@jointheleague.org',
   },
   {
     id: 'proj-league-logo',
@@ -301,5 +312,18 @@ export const STUB_PROJECT_CARDS: ProjectCard[] = [
     hero: 'Iteration 10 (accepted)',
     updated: '2 weeks ago',
     image: '/mockup-assets/league-logo-angled.jpg',
+    owner: 'eric.busboom@jointheleague.org',
+    mine: true,
+  },
+  {
+    id: 'proj-old-flyer',
+    name: 'Fall 2025 Enrollment Flyer',
+    kind: 'Flyer · Comic Book',
+    hero: 'Iteration 12 (accepted)',
+    updated: 'Nov 2025',
+    image: '/mockup-assets/example-graphic-novel.jpg',
+    owner: 'eric.busboom@jointheleague.org',
+    mine: true,
+    archived: true,
   },
 ];

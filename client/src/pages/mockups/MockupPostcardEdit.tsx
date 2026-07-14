@@ -130,9 +130,10 @@ function makeRegionName(side: PostcardSide, label: string, taken: Set<string>): 
  * design decisions (stakeholder, 2026-07-14, rounds 2-7):
  * - No left-pane asset browser here — full-width, agent-authored surface.
  * - Front/back are tabs: one side's preview and fields at a time.
- * - Vertical stack: postcard + tabs on top, scrollable text-field box
- *   below, chat session at the bottom (instructions in chat are not
- *   limited to the text regions).
+ * - Vertical stack: postcard + tabs on top, chat session below. The
+ *   separate text-field list was removed (round 10) — text is edited by
+ *   clicking the boxes on the postcard itself; chat instructions are not
+ *   limited to the text regions.
  * - Regions are clickable: popup editor, Return applies, popup sized to
  *   fit the text; the popup also carries the DELETE button that removes
  *   the box.
@@ -321,7 +322,7 @@ export default function MockupPostcardEdit() {
               </Link>
               <div>
               <h1 className="text-xl font-semibold text-slate-800">
-                Postcard text entry
+                Text editor
               </h1>
               <p className="text-sm text-slate-500">
                 Drag on the postcard to draw a new text box. Click a box to
@@ -465,50 +466,8 @@ export default function MockupPostcardEdit() {
         </div>
       </div>
 
-      {/* Middle: scrollable box holding the text fields. */}
-      <div className="min-h-0 flex-1 overflow-y-auto border-t border-slate-200 px-8 py-4">
-        <div className="mx-auto max-w-5xl">
-          <h2 className="mb-2 text-sm font-semibold uppercase tracking-wide text-slate-500">
-            Regions — {side}
-          </h2>
-          {regions.length === 0 ? (
-            <p className="text-sm text-slate-400">
-              No text regions on the {side} side.
-            </p>
-          ) : (
-            <ul className="space-y-4">
-              {regions.map((region) => (
-                <li
-                  key={region.name}
-                  className="rounded-lg border border-slate-200 bg-white p-4"
-                >
-                  <label
-                    htmlFor={`region-input-${region.name}`}
-                    className="block text-sm font-semibold text-slate-700"
-                  >
-                    {region.label}
-                  </label>
-                  <p className="mb-2 mt-0.5 text-xs text-slate-500">
-                    {summarizePositionAndFont(region)}
-                  </p>
-                  <input
-                    id={`region-input-${region.name}`}
-                    type="text"
-                    value={regionText[region.name] ?? ''}
-                    onChange={(event) =>
-                      handleRegionTextChange(region.name, event.target.value)
-                    }
-                    className="w-full rounded border border-slate-300 px-3 py-2 text-sm text-slate-800"
-                  />
-                </li>
-              ))}
-            </ul>
-          )}
-        </div>
-      </div>
-
       {/* Chat: instructions here are not limited to the text regions. */}
-      <div className="flex h-64 flex-shrink-0 flex-col border-t border-slate-200">
+      <div className="flex min-h-0 flex-1 flex-col border-t border-slate-200">
         <MockupChatPanel messages={STUB_POSTCARD_CHAT_MESSAGES} />
       </div>
 

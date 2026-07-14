@@ -17,47 +17,32 @@ describe('MockupPostcardEdit', () => {
     vi.restoreAllMocks();
   });
 
-  it('renders at least 3 labeled region inputs pre-filled with stub text on the default (back) side', () => {
+  it('renders the stub regions on the postcard with their text', () => {
     renderPage();
 
-    const headline = screen.getByLabelText(/headline/i, { selector: 'input' }) as HTMLInputElement;
-    const datetime = screen.getByLabelText(/date & location/i, { selector: 'input' }) as HTMLInputElement;
-    const body = screen.getByLabelText(/body copy/i, { selector: 'input' }) as HTMLInputElement;
-
-    expect(headline).toBeInTheDocument();
-    expect(headline.value).toMatch(/robot riot/i);
-    expect(datetime).toBeInTheDocument();
-    expect(datetime.value).toMatch(/saturday, july 11/i);
-    expect(body).toBeInTheDocument();
-    expect(body.value).toMatch(/you build the robot/i);
-  });
-
-  it('typing into one region updates that region in the preview and leaves another unchanged', async () => {
-    const user = userEvent.setup();
-    renderPage();
-
-    const headlineInput = screen.getByLabelText(/headline/i, { selector: 'input' });
-    await user.clear(headlineInput);
-    await user.type(headlineInput, 'GO TEAM');
-
-    expect(screen.getByTestId('postcard-region-text-back_headline')).toHaveTextContent('GO TEAM');
+    expect(screen.getByTestId('postcard-region-box-back_headline')).toBeInTheDocument();
+    expect(screen.getByTestId('postcard-region-text-back_headline')).toHaveTextContent(
+      /robot riot/i,
+    );
     expect(screen.getByTestId('postcard-region-text-back_datetime')).toHaveTextContent(
       /saturday, july 11/i,
     );
+    // The separate text-field list below the postcard is gone (round 10).
+    expect(screen.queryByText(/regions —/i)).not.toBeInTheDocument();
   });
 
   it('switches to the front side on tab click, and back again', async () => {
     const user = userEvent.setup();
     renderPage();
 
-    expect(screen.getByLabelText(/headline/i, { selector: 'input' })).toBeInTheDocument();
+    expect(screen.getByTestId('postcard-region-box-back_headline')).toBeInTheDocument();
 
     await user.click(screen.getByRole('button', { name: /^front$/i }));
-    expect(screen.queryByLabelText(/headline/i, { selector: 'input' })).not.toBeInTheDocument();
-    expect(screen.getByText(/no text regions on the front side/i)).toBeInTheDocument();
+    expect(screen.queryByTestId('postcard-region-box-back_headline')).not.toBeInTheDocument();
+    expect(screen.getByText(/front image only/i)).toBeInTheDocument();
 
     await user.click(screen.getByRole('button', { name: /^back$/i }));
-    expect(screen.getByLabelText(/headline/i, { selector: 'input' })).toBeInTheDocument();
+    expect(screen.getByTestId('postcard-region-box-back_headline')).toBeInTheDocument();
   });
 
   it('renders the QR/extra_html placeholder box on the back side, distinguishable from text regions', () => {
@@ -87,10 +72,6 @@ describe('MockupPostcardEdit', () => {
 
     expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
     expect(screen.getByTestId('postcard-region-text-back_headline')).toHaveTextContent(
-      'CLICKED AND EDITED',
-    );
-    // The form field below stays in sync (same underlying state).
-    expect((screen.getByLabelText(/^headline$/i) as HTMLInputElement).value).toBe(
       'CLICKED AND EDITED',
     );
   });
@@ -128,7 +109,7 @@ describe('MockupPostcardEdit', () => {
     );
   });
 
-  it('dragging on the postcard draws a box; naming it creates a region', async () => {
+  it('dragging on the postcard draws a box; naming it creates a region at the exact drawn size', async () => {
     const user = userEvent.setup();
     renderPage();
 
@@ -144,17 +125,13 @@ describe('MockupPostcardEdit', () => {
 
     expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
     const box = screen.getByTestId('postcard-region-box-back_tagline');
-    expect(box).toBeInTheDocument();
-    // The drawn box keeps its exact drawn size (jsdom fallback: 96px/in):
-    // (240-100)px wide, (120-50)px tall from anchor (100,50).
+    // Exact drawn size (jsdom fallback: 96px/in): (240-100)x(120-50) from (100,50).
     expect(box).toHaveStyle({
       left: '1.04in',
       top: '0.52in',
       width: '1.46in',
       height: '0.73in',
     });
-    // The new region shows its name and gets a text field below.
-    expect(screen.getByLabelText(/tagline/i, { selector: 'input' })).toBeInTheDocument();
   });
 
   it('dragging a corner handle moves the box', () => {
@@ -168,19 +145,10 @@ describe('MockupPostcardEdit', () => {
     fireEvent.mouseMove(preview, { clientX: 550, clientY: 230 });
     fireEvent.mouseUp(preview);
 
-    // jsdom offsets are 0, so the new position is the pointer delta at 96dpi.
     expect(screen.getByTestId('postcard-region-box-back_headline')).toHaveStyle({
       left: '0.52in',
       top: '0.31in',
     });
-  });
-
-  it('has a back link to the iterations view', () => {
-    renderPage();
-    expect(screen.getByRole('link', { name: /back to iterations/i })).toHaveAttribute(
-      'href',
-      '/mockups/main',
-    );
   });
 
   it('the region popup has a Delete button that removes the box', async () => {
@@ -193,9 +161,14 @@ describe('MockupPostcardEdit', () => {
 
     expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
     expect(screen.queryByTestId('postcard-region-box-back_headline')).not.toBeInTheDocument();
-    expect(
-      screen.queryByLabelText(/^headline$/i, { selector: 'input' }),
-    ).not.toBeInTheDocument();
+  });
+
+  it('has a back link to the iterations view', () => {
+    renderPage();
+    expect(screen.getByRole('link', { name: /back to iterations/i })).toHaveAttribute(
+      'href',
+      '/mockups/main',
+    );
   });
 
   it('shows the chat box with the postcard exchange', () => {
@@ -205,7 +178,7 @@ describe('MockupPostcardEdit', () => {
     expect(screen.getByText(/move the qr code down/i)).toBeInTheDocument();
   });
 
-  it('Generate PDF opens a print window containing both sides and the edited text', async () => {
+  it('Generate PDF opens a print window with both sides and popup-edited text', async () => {
     const user = userEvent.setup();
 
     const docWrite = vi.fn();
@@ -217,9 +190,12 @@ describe('MockupPostcardEdit', () => {
 
     renderPage();
 
-    const headlineInput = screen.getByLabelText(/headline/i, { selector: 'input' });
-    await user.clear(headlineInput);
-    await user.type(headlineInput, 'PDF HEADLINE');
+    // Edit the headline via its popup, then generate.
+    await user.click(screen.getByTestId('postcard-region-box-back_headline'));
+    const dialog = screen.getByRole('dialog', { name: /edit headline/i });
+    const popupInput = within(dialog).getByLabelText(/headline text/i);
+    await user.clear(popupInput);
+    await user.type(popupInput, 'PDF HEADLINE{Enter}');
 
     await user.click(screen.getByRole('button', { name: /generate pdf/i }));
 

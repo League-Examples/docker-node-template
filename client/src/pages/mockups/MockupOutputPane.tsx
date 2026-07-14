@@ -129,7 +129,7 @@ export default function MockupOutputPane() {
         {STUB_OUTPUT_ITERATIONS.map((iteration) => (
           <div
             key={iteration.id}
-            className="max-w-[800px] rounded border border-slate-200 bg-slate-100"
+            className="mx-auto w-full max-w-[800px] rounded border border-slate-200 bg-slate-100"
           >
             {/* Media fits within 800x800, aspect ratio preserved. */}
             <div className="relative overflow-hidden">

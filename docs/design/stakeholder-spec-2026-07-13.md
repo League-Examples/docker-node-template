@@ -293,7 +293,16 @@ Responding to `specification.md` §16:
   and the iterations view a back button to the projects list.
 - Round 9 (2026-07-14): the iterations page media is scaled to fit within
   **at most 800x800** — aspect ratio maintained, max width 800, max
-  height 800.
+  height 800. Follow-up: **center it** (borders later).
+- Round 10 (2026-07-14): on the postcard front/back view — call it the
+  **text editor** — the separate text-region section below the image is no
+  longer needed; remove it (text is edited by clicking the boxes on the
+  postcard).
+- Round 11 (2026-07-14): people are logged in with our email addresses,
+  and the project list needs **views**: **My projects** (the ones I've
+  created), **All projects** (everybody's), and an **Archive** for
+  archived projects — shown as buttons/navigation (don't have to be
+  particularly active yet).
 
 ---
 
