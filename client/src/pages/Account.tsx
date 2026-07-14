@@ -7,7 +7,6 @@ import { McpSetupContent } from './McpSetup';
 const PROVIDER_LABELS: Record<string, string> = {
   github: 'GitHub',
   google: 'Google',
-  pike13: 'Pike 13',
 };
 
 function providerLabel(p: string): string {
@@ -19,14 +18,6 @@ function addButtonStyle(provider: string): React.CSSProperties {
     return {
       ...styles.addButton,
       background: '#24292e',
-      color: '#fff',
-      border: 'none',
-    };
-  }
-  if (provider === 'pike13') {
-    return {
-      ...styles.addButton,
-      background: '#f37121',
       color: '#fff',
       border: 'none',
     };

@@ -18,7 +18,6 @@ interface AdminUser {
 const PROVIDER_LOGOS: Record<string, { src: string; alt: string }> = {
   github: { src: 'https://github.githubassets.com/favicons/favicon-dark.svg', alt: 'GitHub' },
   google: { src: 'https://www.google.com/favicon.ico', alt: 'Google' },
-  pike13: { src: 'https://www.pike13.com/favicon.ico', alt: 'Pike 13' },
 };
 
 function ProviderBadge({ provider }: { provider: string }) {

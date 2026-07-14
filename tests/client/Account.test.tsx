@@ -44,7 +44,6 @@ vi.mock('../../client/src/context/AuthContext', () => ({
 let mockProviderStatus = {
   github: true,
   google: true,
-  pike13: true,
   loading: false,
 };
 
@@ -87,18 +86,17 @@ function mockFetchUnlink(provider: string, response: { ok: boolean; body?: objec
 describe('Account — Sign-in methods section', () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    mockProviderStatus = { github: true, google: true, pike13: true, loading: false };
+    mockProviderStatus = { github: true, google: true, loading: false };
     mockRefresh.mockResolvedValue(undefined);
   });
 
   describe('Add buttons', () => {
-    it('shows Add buttons for all three providers when user has no linked providers', () => {
+    it('shows Add buttons for both providers when user has no linked providers', () => {
       mockUser = makeAuthUser({ linkedProviders: [] });
       renderAccount();
 
       expect(screen.getByText('Add GitHub')).toBeInTheDocument();
       expect(screen.getByText('Add Google')).toBeInTheDocument();
-      expect(screen.getByText('Add Pike 13')).toBeInTheDocument();
     });
 
     it('shows "No OAuth providers linked." message when no providers linked', () => {
@@ -113,11 +111,10 @@ describe('Account — Sign-in methods section', () => {
 
       expect(screen.queryByText('Add GitHub')).not.toBeInTheDocument();
       expect(screen.getByText('Add Google')).toBeInTheDocument();
-      expect(screen.getByText('Add Pike 13')).toBeInTheDocument();
     });
 
     it('shows no Add buttons when only GitHub is globally configured and it is already linked', () => {
-      mockProviderStatus = { github: true, google: false, pike13: false, loading: false };
+      mockProviderStatus = { github: true, google: false, loading: false };
       mockUser = makeAuthUser({ linkedProviders: ['github'] });
       renderAccount();
 
@@ -125,13 +122,12 @@ describe('Account — Sign-in methods section', () => {
     });
 
     it('does not show Add buttons for providers not globally configured', () => {
-      mockProviderStatus = { github: true, google: false, pike13: false, loading: false };
+      mockProviderStatus = { github: true, google: false, loading: false };
       mockUser = makeAuthUser({ linkedProviders: [] });
       renderAccount();
 
       expect(screen.getByText('Add GitHub')).toBeInTheDocument();
       expect(screen.queryByText('Add Google')).not.toBeInTheDocument();
-      expect(screen.queryByText('Add Pike 13')).not.toBeInTheDocument();
     });
 
     it('Add GitHub link navigates to /api/auth/github?link=1', () => {
@@ -148,14 +144,6 @@ describe('Account — Sign-in methods section', () => {
 
       const link = screen.getByText('Add Google').closest('a');
       expect(link).toHaveAttribute('href', '/api/auth/google?link=1');
-    });
-
-    it('Add Pike 13 link navigates to /api/auth/pike13?link=1', () => {
-      mockUser = makeAuthUser({ linkedProviders: [] });
-      renderAccount();
-
-      const link = screen.getByText('Add Pike 13').closest('a');
-      expect(link).toHaveAttribute('href', '/api/auth/pike13?link=1');
     });
   });
 
@@ -265,7 +253,7 @@ describe('Account — Sign-in methods section', () => {
     });
 
     it('Add section is absent when no providers are globally configured', () => {
-      mockProviderStatus = { github: false, google: false, pike13: false, loading: false };
+      mockProviderStatus = { github: false, google: false, loading: false };
       mockUser = makeAuthUser({ linkedProviders: [] });
       renderAccount();
 
