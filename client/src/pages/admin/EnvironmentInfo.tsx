@@ -27,7 +27,6 @@ function formatMB(bytes: number): string {
 const INTEGRATION_LABELS: Record<string, string> = {
   github: 'GitHub OAuth',
   google: 'Google OAuth',
-  pike13: 'Pike 13',
   githubToken: 'GitHub Token',
   anthropic: 'Claude API',
   openai: 'OpenAI API',

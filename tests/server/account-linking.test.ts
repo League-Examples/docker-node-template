@@ -2,7 +2,7 @@
  * OAuth account-linking tests.
  *
  * The findOrCreateOAuthUser helper was removed in Sprint 018 ticket 004
- * when OAuth strategies (GitHub/Google/Pike13) were replaced with demo
+ * when OAuth strategies (GitHub/Google) were replaced with demo
  * login credentials. These tests are obsolete and replaced by
  * auth-demo-login.test.ts.
  */

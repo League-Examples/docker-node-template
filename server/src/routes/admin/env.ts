@@ -31,9 +31,6 @@ adminEnvRouter.get('/env', async (req, res) => {
       google: {
         configured: !!(config.get('GOOGLE_CLIENT_ID') && config.get('GOOGLE_CLIENT_SECRET')),
       },
-      pike13: {
-        configured: !!(config.get('PIKE13_CLIENT_ID') && config.get('PIKE13_CLIENT_SECRET')),
-      },
       githubToken: {
         configured: !!config.get('GITHUB_TOKEN'),
       },

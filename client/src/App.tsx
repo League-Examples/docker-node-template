@@ -4,7 +4,12 @@ import { AuthProvider } from './context/AuthContext';
 import AppLayout from './components/AppLayout';
 import HomePage from './pages/HomePage';
 import Login from './pages/Login';
-import Register from './pages/Register';
+
+import MockupsIndex from './pages/mockups/MockupsIndex';
+import MockupMain from './pages/mockups/MockupMain';
+import MockupNewProject from './pages/mockups/MockupNewProject';
+import MockupPostcardEdit from './pages/mockups/MockupPostcardEdit';
+import MockupLogin from './pages/mockups/MockupLogin';
 
 import About from './pages/About';
 import McpSetup from './pages/McpSetup';
@@ -32,10 +37,17 @@ function App() {
           <Routes>
             {/* Standalone pages (no AppLayout) */}
             <Route path="/login" element={<Login />} />
-            <Route path="/register" element={<Register />} />
 
             {/* Admin login (standalone, no layout) */}
             <Route path="/admin" element={<AdminLogin />} />
+
+            {/* Wireframe mockups (standalone, no AppLayout, not auth-gated —
+                see architecture-update.md sprint 001, Decision 4) */}
+            <Route path="/mockups" element={<MockupsIndex />} />
+            <Route path="/mockups/main" element={<MockupMain />} />
+            <Route path="/mockups/new-project" element={<MockupNewProject />} />
+            <Route path="/mockups/postcard-edit" element={<MockupPostcardEdit />} />
+            <Route path="/mockups/login" element={<MockupLogin />} />
 
             {/* All authenticated routes share AppLayout (sidebar + topbar) */}
             <Route element={<AppLayout />}>

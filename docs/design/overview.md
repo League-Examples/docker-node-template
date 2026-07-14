@@ -11,7 +11,10 @@ designer talks, the agent produces.
 You open Flyerbot and see two panes. On the left, a browser of everything
 that has ever gone into a League marketing asset: logos, stock photos,
 prior-art photographs, past projects, named art styles (pop art, manga,
-flat poster...), compositions, and layout templates. On the right, a mostly
+flat poster...), compositions, and layout templates. Every asset is
+auto-described by a vision model the moment it's added, so instead of
+digging through folders you can just ask — "show me the assets with robots
+in them" — and the browser filters to match. On the right, a mostly
 empty canvas with a chat box at the bottom.
 
 You type: *"I want to make a postcard for Robot Riot, pop-art style, arena

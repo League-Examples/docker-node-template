@@ -323,16 +323,14 @@ describe('POST /api/auth/unlink/:provider — successful unlink', () => {
       data: [
         { userId, provider: 'github', providerId: 'gh-ret-001' },
         { userId, provider: 'google', providerId: 'go-ret-001' },
-        { userId, provider: 'pike13', providerId: 'p13-ret-001' },
       ],
     });
 
-    const res = await agent.post('/api/auth/unlink/pike13');
+    const res = await agent.post('/api/auth/unlink/google');
     expect(res.status).toBe(200);
-    expect(res.body.linkedProviders).toHaveLength(2);
+    expect(res.body.linkedProviders).toHaveLength(1);
     expect(res.body.linkedProviders).toContain('github');
-    expect(res.body.linkedProviders).toContain('google');
-    expect(res.body.linkedProviders).not.toContain('pike13');
+    expect(res.body.linkedProviders).not.toContain('google');
   });
 });
 
@@ -347,8 +345,6 @@ describe('OAuth initiate routes — 401 when ?link=1 and not authenticated', () 
     delete process.env.GITHUB_CLIENT_SECRET;
     delete process.env.GOOGLE_CLIENT_ID;
     delete process.env.GOOGLE_CLIENT_SECRET;
-    delete process.env.PIKE13_CLIENT_ID;
-    delete process.env.PIKE13_CLIENT_SECRET;
   });
 
   it('GET /api/auth/github?link=1 returns 401 when not authenticated (configured)', async () => {
@@ -369,15 +365,6 @@ describe('OAuth initiate routes — 401 when ?link=1 and not authenticated', () 
     expect(res.status).toBe(401);
     delete process.env.GOOGLE_CLIENT_ID;
     delete process.env.GOOGLE_CLIENT_SECRET;
-  });
-
-  it('GET /api/auth/pike13?link=1 returns 401 when not authenticated (configured)', async () => {
-    process.env.PIKE13_CLIENT_ID = 'test-id';
-    process.env.PIKE13_CLIENT_SECRET = 'test-secret';
-    const res = await request(app).get('/api/auth/pike13?link=1');
-    expect(res.status).toBe(401);
-    delete process.env.PIKE13_CLIENT_ID;
-    delete process.env.PIKE13_CLIENT_SECRET;
   });
 
   it('GET /api/auth/github returns 501 (not 401) when not configured and no ?link=1', async () => {

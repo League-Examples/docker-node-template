@@ -15,10 +15,6 @@ export const CONFIG_KEYS: ConfigKeyMeta[] = [
   // Google OAuth
   { key: 'GOOGLE_CLIENT_ID', group: 'Google OAuth', label: 'Client ID', isSecret: false, requiresRestart: true },
   { key: 'GOOGLE_CLIENT_SECRET', group: 'Google OAuth', label: 'Client Secret', isSecret: true, requiresRestart: true },
-  // Pike 13
-  { key: 'PIKE13_CLIENT_ID', group: 'Pike 13', label: 'Client ID', isSecret: false, requiresRestart: true },
-  { key: 'PIKE13_CLIENT_SECRET', group: 'Pike 13', label: 'Client Secret', isSecret: true, requiresRestart: true },
-  { key: 'PIKE13_API_BASE', group: 'Pike 13', label: 'API Base URL', isSecret: false, requiresRestart: false },
   // GitHub API
   { key: 'GITHUB_TOKEN', group: 'GitHub API', label: 'Personal Access Token', isSecret: true, requiresRestart: false },
   { key: 'GITHUB_STORAGE_REPO', group: 'GitHub API', label: 'Storage Repo (owner/repo)', isSecret: false, requiresRestart: false },

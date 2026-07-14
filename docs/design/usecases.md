@@ -251,7 +251,14 @@ be executed in ID order.
      the scope of the single project.
 - **Postconditions**: The asset appears in the relevant collection in the
   left-pane library (UC-002) and is available for future projects to
-  reference (UC-004).
+  reference (UC-004). In addition, the commit triggers automatic
+  description generation: the asset is run through a vision model that
+  produces a classification, a rich textual description, and tags (tag
+  vocabulary TBD — spec §5, §16 open question 8, RESOLVED 2026-07-13: tags
+  are in scope after all) — covering at minimum whether it's a real
+  photograph, whether it's a logo, its style, and whether any people shown
+  are real or AI-generated. That description is what powers semantic
+  search/filter of the library (UC-014) going forward.
 - **Error flows**:
   - **E1 — Duplicate asset**: System detects the asset already exists in
     the collection (e.g. by hash or path) and informs the user rather than
@@ -260,6 +267,12 @@ be executed in ID order.
     create a new collection or use an existing similarly-named one.
   - **E3 — Upload fails / unsupported format** (Flow C): Upload is rejected
     with an inline error; no catalog entry is created.
+  - **E4 — Vision model unavailable at commit time**: The asset is still
+    added to the collection, but description generation is deferred —
+    generated lazily on next access, or queued for a background retry —
+    rather than blocking the commit. The asset is searchable by filename/
+    path in the interim but not yet by semantic description (see UC-014,
+    E3).
 
 ---
 
@@ -426,3 +439,49 @@ be executed in ID order.
     user's active project references mid-edit**: Referencing project should
     not silently break — at minimum, the broken reference should surface
     to the affected user rather than fail silently.
+
+---
+
+## UC-014: Semantic search/filter of the library via chat
+
+- **Actor**: Any authenticated user.
+- **Preconditions**: User is logged in (UC-001). At least some assets in the
+  left-pane library have been committed into a collection (UC-008) and thus
+  carry an auto-generated description; the library may be a mix of
+  described and not-yet-described assets (see UC-008 E4).
+- **Main flow — conversational (primary)**:
+  1. User asks Claude, in chat, for assets by content or feel rather than by
+     name or folder — e.g. "show me the assets with robots in them," "show
+     me a style that conveys a sense of wonder," or "a young girl looking at
+     a computer screen" (spec §3, addition 2026-07-13).
+  2. Claude matches the request against the auto-generated descriptions
+     (UC-008 postconditions) across the asset library.
+  3. The left-pane browser view (UC-002) filters to show the matching
+     assets.
+  4. User can refine the request conversationally ("just the black-and-white
+     ones") and the filtered view updates.
+- **Main flow — filter bar (secondary, possible)**:
+  1. User types a query into a filter/search bar at the top of the left
+     pane, if one is present (spec §3 — the stakeholder called this a
+     possible secondary path, with conversational filtering as the expected
+     primary path).
+  2. Left-pane browser view filters to match, same as the conversational
+     flow.
+- **Postconditions**: The left-pane library view reflects the semantic
+  query; no underlying asset or collection data is changed. This use case
+  is read-only, like UC-002, but filters by generated description/meaning
+  rather than by category or literal text match.
+- **Error flows**:
+  - **E1 — No matching assets**: Filtered view is empty; user is invited to
+    broaden the query, consistent with UC-002 E1.
+  - **E2 — Ambiguous or under-specified query**: Claude asks a clarifying
+    question in chat rather than guessing (conversational flow only; the
+    filter-bar flow, if present, would instead fall back to a broader
+    literal/partial match).
+  - **E3 — Asset has no description yet** (vision model was unavailable at
+    commit time, or generation is still queued — UC-008 E4): The asset is
+    excluded from semantic-search results until its description is
+    generated; it remains reachable via ordinary browsing (UC-002) or
+    filename search in the meantime. Once description generation completes
+    (lazily or via the queued retry), the asset becomes eligible for
+    semantic matches on subsequent queries.

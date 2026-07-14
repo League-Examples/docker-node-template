@@ -40,8 +40,6 @@ describe('Admin Environment API', () => {
     expect(typeof integrations.github.configured).toBe('boolean');
     expect(integrations.google).toHaveProperty('configured');
     expect(typeof integrations.google.configured).toBe('boolean');
-    expect(integrations.pike13).toHaveProperty('configured');
-    expect(typeof integrations.pike13.configured).toBe('boolean');
     expect(integrations.anthropic).toHaveProperty('configured');
     expect(typeof integrations.anthropic.configured).toBe('boolean');
   });
