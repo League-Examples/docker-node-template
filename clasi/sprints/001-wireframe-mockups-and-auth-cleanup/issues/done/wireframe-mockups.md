@@ -1,11 +1,11 @@
 ---
-status: in-progress
+status: done
 sprint: '001'
 tickets:
-- 001-003
-- 001-004
-- 001-005
-- 001-006
+- '003'
+- '004'
+- '005'
+- '006'
 ---
 
 # Wireframe mockups for the Flyerbot two-pane UI
