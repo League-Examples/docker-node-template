@@ -1,9 +1,11 @@
 ---
 id: '006'
 title: Predecessor knowledge seed import job
-status: open
-use-cases: [SUC-003]
-depends-on: ['003']
+status: done
+use-cases:
+- SUC-003
+depends-on:
+- '003'
 github-issue: ''
 issue: foundation-schema-and-knowledge-store.md
 completes_issue: true
@@ -34,10 +36,10 @@ a note in the PR description rather than silently doing a partial import.
 
 ## Acceptance Criteria
 
-- [ ] `server/src/scripts/import-predecessor-knowledge.ts` (or similar)
+- [x] `server/src/scripts/import-predecessor-knowledge.ts` (or similar)
       exists and is runnable via an npm script (e.g. `npm run
       import:predecessor-knowledge` in `server/package.json`).
-- [ ] Running the script creates a `KnowledgeEntry` row for each of the
+- [x] Running the script creates a `KnowledgeEntry` row for each of the
       predecessor's 10 styles (`pop-art`, `comic-book`, `manga`,
       `dragon-ball-z`, `technical-blueprint`, `8bit-video-game`,
       `flat-poster`, `graphic-novel`, `type-sample`,
@@ -46,23 +48,23 @@ a note in the PR description rather than silently doing a partial import.
       capturing, implementer's structuring choice within
       `structuredFields`) the source `positive.md` and `negative.md`
       content.
-- [ ] Running the script creates `KnowledgeEntry` rows for the
+- [x] Running the script creates `KnowledgeEntry` rows for the
       predecessor's palettes (`app/prompts/palettes/`), compositions
       (`app/prompts/compositions/`), and layouts (`app/layouts/`), each
       with the correct `kind`.
-- [ ] Each imported `KnowledgeEntry` is placed under a corresponding
+- [x] Each imported `KnowledgeEntry` is placed under a corresponding
       `WorkspaceDirectory` row (e.g. `knowledge/styles/pop-art/`) created
       via ticket 004's sync utility, so the import produces both DB rows
       and correct `_dir.json` mirrors.
-- [ ] Running the script twice does not create duplicate `KnowledgeEntry`
+- [x] Running the script twice does not create duplicate `KnowledgeEntry`
       rows — it upserts by a stable natural key (`kind` + slug), matching
       Migration Concerns' idempotency requirement in
       architecture-update.md.
-- [ ] A test queries `KnowledgeEntry` where `kind = 'style'` and confirms
+- [x] A test queries `KnowledgeEntry` where `kind = 'style'` and confirms
       at least `pop-art`, `manga`, and `flat-poster` exist with
       non-empty `bodyText` (validates SUC-003's acceptance criterion
       directly).
-- [ ] The script does not fail the build or `npm test` if the predecessor
+- [x] The script does not fail the build or `npm test` if the predecessor
       repo path is unavailable (e.g. CI, a future production host) — it
       should be explicitly invoked, not run as part of `npm test` or
       `prisma migrate dev`, and should fail loudly with a clear message
@@ -133,3 +135,32 @@ pattern.
 - **New tests to write**: fixture-based import test, idempotency test,
   `WorkspaceDirectory` creation test.
 - **Verification command**: `npm test`
+
+### Testing Notes
+
+- `npm test` (root): 20 server test files / 158 tests passed (151 prior +
+  7 new in `tests/server/import-predecessor-knowledge.test.ts`), 12 client
+  test files / 91 tests passed. No regressions.
+- New fixture-based tests (`tests/fixtures/predecessor-knowledge/`, 3
+  styles / 2 palettes + 1 skipped `.html` / 3 compositions / 2 layouts + 1
+  skipped `zone-maps/` subdirectory) cover: correct counts by kind, style
+  `bodyText` combining `positive.md` + `negative.md`, `.md`-only /
+  non-recursive filtering (index.html and zone-maps/ excluded), `kind`
+  correctness for palette/composition/layout, `WorkspaceDirectory` row +
+  `_dir.json` mirror creation, idempotent re-run (no duplicate rows, same
+  counts), and the "fails loudly on a missing source path" behavior.
+- Manually ran `npm run import:predecessor-knowledge` (from `server/`)
+  against the real predecessor repo
+  (`/Volumes/Proj/proj/league-projects/infrastructure/marketing`), twice,
+  per the ticket's second verification command. **Real import counts:
+  10 styles, 5 palettes (6 `.md`-adjacent files in
+  `app/prompts/palettes/` minus the non-markdown `index.html`),
+  26 compositions, 9 layouts** (9 top-level `.md` files under
+  `app/layouts/`; the `zone-maps/` subdirectory is correctly skipped —
+  it holds SVGs/a generator script, not layout prompt text). Verified via
+  direct SQLite query against `server/data/dev.db` that the second run
+  left the same row counts as the first (idempotent) and that
+  `KnowledgeEntry` rows exist for all 10 real style slugs with non-empty,
+  correctly-combined `bodyText`. This run only touched the gitignored
+  `server/data/dev.db` and `server/workspace/**/_dir.json` mirrors — no
+  predecessor content was committed to this repo.
