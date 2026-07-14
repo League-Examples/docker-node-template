@@ -9,6 +9,7 @@ import MockupsIndex from './pages/mockups/MockupsIndex';
 import MockupMain from './pages/mockups/MockupMain';
 import MockupNewProject from './pages/mockups/MockupNewProject';
 import MockupPostcardEdit from './pages/mockups/MockupPostcardEdit';
+import MockupLogin from './pages/mockups/MockupLogin';
 
 import About from './pages/About';
 import McpSetup from './pages/McpSetup';
@@ -46,6 +47,7 @@ function App() {
             <Route path="/mockups/main" element={<MockupMain />} />
             <Route path="/mockups/new-project" element={<MockupNewProject />} />
             <Route path="/mockups/postcard-edit" element={<MockupPostcardEdit />} />
+            <Route path="/mockups/login" element={<MockupLogin />} />
 
             {/* All authenticated routes share AppLayout (sidebar + topbar) */}
             <Route element={<AppLayout />}>

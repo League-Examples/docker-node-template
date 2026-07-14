@@ -35,7 +35,7 @@ const MOCKUP_LINKS: MockupLink[] = [
     label: 'Google-only login',
     description: 'Single Google sign-in affordance, replacing the multi-provider login.',
     ticket: '006',
-    available: false,
+    available: true,
   },
 ];
 

@@ -37,11 +37,14 @@ describe('MockupsIndex', () => {
     expect(link).toHaveAttribute('href', '/mockups/postcard-edit');
   });
 
-  it('shows not-yet-built mockups as non-navigable placeholders', () => {
+  it('links to the Google-only login mockup', () => {
     renderPage();
-    expect(screen.getByText(/google-only login/i)).toBeInTheDocument();
-    expect(
-      screen.queryByRole('link', { name: /google-only login/i }),
-    ).not.toBeInTheDocument();
+    const link = screen.getByRole('link', { name: /google-only login/i });
+    expect(link).toHaveAttribute('href', '/mockups/login');
+  });
+
+  it('has no not-yet-built placeholders remaining', () => {
+    renderPage();
+    expect(screen.queryByText(/not yet built/i)).not.toBeInTheDocument();
   });
 });
