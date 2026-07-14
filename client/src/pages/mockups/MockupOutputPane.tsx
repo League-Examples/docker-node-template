@@ -129,15 +129,18 @@ export default function MockupOutputPane() {
         {STUB_OUTPUT_ITERATIONS.map((iteration) => (
           <div
             key={iteration.id}
-            className="rounded border border-slate-200 bg-slate-100"
+            className="max-w-[800px] rounded border border-slate-200 bg-slate-100"
           >
-            <div className="relative aspect-[3/2] w-full overflow-hidden">
-              {iteration.image && (
+            {/* Media fits within 800x800, aspect ratio preserved. */}
+            <div className="relative overflow-hidden">
+              {iteration.image ? (
                 <img
                   src={iteration.image}
                   alt={iteration.label}
-                  className="absolute inset-0 h-full w-full object-cover"
+                  className="block h-auto max-h-[800px] w-auto max-w-full object-contain"
                 />
+              ) : (
+                <div aria-hidden="true" className="aspect-[3/2] w-full bg-slate-200" />
               )}
               <div className="absolute left-2 top-2 flex items-center gap-2">
                 <span className="rounded bg-white/85 px-2 py-0.5 text-sm text-slate-700">

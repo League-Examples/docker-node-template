@@ -291,6 +291,9 @@ Responding to `specification.md` §16:
   they show a **small image with an X** (upper corner) to remove them. The
   postcard text-entry view needs a **back button** to the iterations view,
   and the iterations view a back button to the projects list.
+- Round 9 (2026-07-14): the iterations page media is scaled to fit within
+  **at most 800x800** — aspect ratio maintained, max width 800, max
+  height 800.
 
 ---
 
