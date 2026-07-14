@@ -18,7 +18,7 @@ export default function MockupLeftBrowser() {
   const items = LIBRARY_ITEMS[active];
 
   return (
-    <aside className="w-72 flex-shrink-0 border-r border-slate-200 bg-white flex flex-col">
+    <aside className="w-1/2 flex-shrink-0 border-r border-slate-200 bg-white flex flex-col">
       <div className="p-3 border-b border-slate-200">
         <input
           type="search"
@@ -46,20 +46,16 @@ export default function MockupLeftBrowser() {
         ))}
       </nav>
 
-      <ul className="flex-1 overflow-y-auto p-2 space-y-2">
+      {/* Two-column grid of rectangular asset tiles. */}
+      <ul className="grid flex-1 grid-cols-2 content-start gap-2 overflow-y-auto p-2">
         {items.map((item) => (
-          <li
-            key={item.id}
-            className="flex items-center gap-2 rounded border border-slate-200 p-2"
-          >
+          <li key={item.id} className="rounded border border-slate-200 p-2">
             <div
               aria-hidden="true"
-              className="h-10 w-10 flex-shrink-0 rounded bg-slate-200"
+              className="mb-2 aspect-video w-full rounded bg-slate-200"
             />
-            <div className="min-w-0">
-              <p className="truncate text-sm text-slate-800">{item.label}</p>
-              <p className="truncate text-xs text-slate-400">{item.detail}</p>
-            </div>
+            <p className="truncate text-sm text-slate-800">{item.label}</p>
+            <p className="truncate text-xs text-slate-400">{item.detail}</p>
           </li>
         ))}
       </ul>

@@ -1,10 +1,14 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, vi, afterEach } from 'vitest';
 import { render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import MockupPostcardEdit from '../../client/src/pages/mockups/MockupPostcardEdit';
 
 describe('MockupPostcardEdit', () => {
-  it('renders at least 3 labeled region inputs pre-filled with stub text on the default (back) side', () => {
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  it('renders at least 3 labeled region inputs pre-filled with stub text', () => {
     render(<MockupPostcardEdit />);
 
     const headline = screen.getByLabelText(/headline/i) as HTMLInputElement;
@@ -17,6 +21,18 @@ describe('MockupPostcardEdit', () => {
     expect(datetime.value).toMatch(/saturday, july 11/i);
     expect(body).toBeInTheDocument();
     expect(body.value).toMatch(/you build the robot/i);
+  });
+
+  it('shows both front and back previews at once (no toggle)', () => {
+    render(<MockupPostcardEdit />);
+
+    expect(screen.getByTestId('postcard-preview-front')).toBeInTheDocument();
+    expect(screen.getByTestId('postcard-preview-back')).toBeInTheDocument();
+    // The front is image-only in the stub data.
+    expect(screen.getByText(/front image only/i)).toBeInTheDocument();
+    // No side toggle remains.
+    expect(screen.queryByRole('button', { name: /^front$/i })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /^back$/i })).not.toBeInTheDocument();
   });
 
   it('typing into one region updates that region in the preview and leaves another unchanged', async () => {
@@ -33,20 +49,6 @@ describe('MockupPostcardEdit', () => {
     );
   });
 
-  it('switches to the front side region set on toggle, and back again', async () => {
-    const user = userEvent.setup();
-    render(<MockupPostcardEdit />);
-
-    expect(screen.getByLabelText(/headline/i)).toBeInTheDocument();
-
-    await user.click(screen.getByRole('button', { name: /^front$/i }));
-    expect(screen.queryByLabelText(/headline/i)).not.toBeInTheDocument();
-    expect(screen.getByText(/no text regions on the front side/i)).toBeInTheDocument();
-
-    await user.click(screen.getByRole('button', { name: /^back$/i }));
-    expect(screen.getByLabelText(/headline/i)).toBeInTheDocument();
-  });
-
   it('renders the QR/extra_html placeholder box on the back side, distinguishable from text regions', () => {
     render(<MockupPostcardEdit />);
 
@@ -54,8 +56,35 @@ describe('MockupPostcardEdit', () => {
     expect(overlay).toBeInTheDocument();
     expect(within(overlay).getByText(/qr code overlay/i)).toBeInTheDocument();
 
-    const preview = screen.getByTestId('postcard-preview');
-    expect(within(preview).getByTestId('postcard-region-box-back_headline')).toBeInTheDocument();
-    expect(overlay).not.toBe(within(preview).getByTestId('postcard-region-box-back_headline'));
+    const back = screen.getByTestId('postcard-preview-back');
+    expect(within(back).getByTestId('postcard-region-box-back_headline')).toBeInTheDocument();
+    expect(overlay).not.toBe(within(back).getByTestId('postcard-region-box-back_headline'));
+  });
+
+  it('Generate PDF opens a print window containing both sides and the edited text', async () => {
+    const user = userEvent.setup();
+
+    const docWrite = vi.fn();
+    const docClose = vi.fn();
+    const openMock = vi.fn(() => ({
+      document: { write: docWrite, close: docClose },
+    }));
+    vi.stubGlobal('open', openMock);
+
+    render(<MockupPostcardEdit />);
+
+    const headlineInput = screen.getByLabelText(/headline/i);
+    await user.clear(headlineInput);
+    await user.type(headlineInput, 'PDF HEADLINE');
+
+    await user.click(screen.getByRole('button', { name: /generate pdf/i }));
+
+    expect(openMock).toHaveBeenCalledOnce();
+    const html = docWrite.mock.calls[0][0] as string;
+    expect(html).toContain('size: 6in 4in');
+    expect((html.match(/class="page"/g) ?? []).length).toBe(2);
+    expect(html).toContain('PDF HEADLINE');
+    expect(html).toContain('window.print()');
+    expect(docClose).toHaveBeenCalledOnce();
   });
 });

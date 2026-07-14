@@ -17,11 +17,12 @@ export default function MockupOutputPane() {
         <p className="text-sm text-slate-500">{STUB_PROJECT_META}</p>
       </header>
 
-      <div className="grid grid-cols-2 gap-4">
+      {/* Iterations stack vertically, one per row — not side by side. */}
+      <div className="flex flex-col gap-4">
         {STUB_OUTPUT_ITERATIONS.map((iteration) => (
           <div
             key={iteration.id}
-            className="flex aspect-[4/3] flex-col items-center justify-center rounded border border-slate-200 bg-slate-100 text-sm text-slate-500"
+            className="flex aspect-[3/2] w-full flex-col items-center justify-center rounded border border-slate-200 bg-slate-100 text-sm text-slate-500"
           >
             <span>{iteration.label}</span>
             {iteration.isCurrent && (

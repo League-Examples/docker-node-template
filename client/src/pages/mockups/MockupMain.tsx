@@ -5,9 +5,10 @@ import MockupChatPanel from './MockupChatPanel';
 /**
  * /mockups/main — the two-pane main layout wireframe (spec §2).
  *
- * Left pane: a browser for assets, examples, styles, and previous
- * projects. Right pane: the project-output view occupying the top
- * three-quarters, with the chat window below it. This is the layout that
+ * Left pane (~half the screen): a browser for assets, examples, styles,
+ * and previous projects. Right pane (the other half): the project-output
+ * view occupying the top three-quarters, with the chat window below it.
+ * This is the layout that
  * is expected to replace most of AppLayout's sidebar role (see
  * architecture-update.md, Decision 4) — it deliberately renders outside
  * AppLayout, with no sidebar/topbar of its own.
