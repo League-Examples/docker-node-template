@@ -1,14 +1,22 @@
 import { useState } from 'react';
 import { Link } from 'react-router-dom';
-import { STUB_PROJECT_CARDS } from './mockupStubData';
+import {
+  LIBRARY_CATEGORY_LABELS,
+  LIBRARY_ITEMS,
+  STUB_PROJECT_CARDS,
+  type LibraryCategory,
+} from './mockupStubData';
 
-type ProjectView = 'mine' | 'all' | 'archive';
+type ProjectView = 'mine' | 'all' | 'library' | 'archive';
 
 const VIEW_LABELS: Record<ProjectView, string> = {
   mine: 'My projects',
   all: 'All projects',
+  library: 'Library',
   archive: 'Archive',
 };
+
+const LIBRARY_CATEGORIES = Object.keys(LIBRARY_CATEGORY_LABELS) as LibraryCategory[];
 
 /**
  * /mockups/projects — the project-list wireframe: the concept for the
@@ -20,12 +28,18 @@ const VIEW_LABELS: Record<ProjectView, string> = {
  *
  * Views (stakeholder, 2026-07-14): users are logged in with their email
  * addresses, so the list has My projects (ones I created), All projects
- * (everybody's), and Archive (archived projects).
+ * (everybody's), Library, and Archive (archived projects).
+ *
+ * Library view (stakeholder, 2026-07-14, round 12): clicking a library
+ * asset CREATES A PROJECT for that asset — you manipulate the asset as a
+ * project and later put it back into the library (mostly by asking the
+ * AI to put things into the library).
  */
 export default function MockupProjects() {
   const [view, setView] = useState<ProjectView>('mine');
 
   const visible = STUB_PROJECT_CARDS.filter((p) => {
+    if (view === 'library') return false; // library shows assets, not projects
     if (view === 'archive') return p.archived;
     if (view === 'mine') return p.mine && !p.archived;
     return !p.archived;
@@ -72,6 +86,49 @@ export default function MockupProjects() {
             </button>
           ))}
         </div>
+
+        {view === 'library' && (
+          <div>
+            <p className="mb-3 text-sm text-slate-500">
+              Click an asset to create a project for it — manipulate it as a
+              project, then put it back into the library (usually by asking
+              the AI).
+            </p>
+            {LIBRARY_CATEGORIES.map((category) => (
+              <section key={category} className="mb-5">
+                <h2 className="mb-2 text-sm font-semibold uppercase tracking-wide text-slate-500">
+                  {LIBRARY_CATEGORY_LABELS[category]}
+                </h2>
+                <ul className="grid grid-cols-3 gap-3">
+                  {LIBRARY_ITEMS[category].map((item) => (
+                    <li key={item.id}>
+                      <Link
+                        to="/mockups/main"
+                        aria-label={`Create a project for ${item.label}`}
+                        className="block rounded-lg border border-slate-200 bg-white p-2 hover:border-indigo-400"
+                      >
+                        {item.image ? (
+                          <img
+                            src={item.image}
+                            alt=""
+                            className="mb-1.5 aspect-video w-full rounded bg-slate-100 object-cover"
+                          />
+                        ) : (
+                          <div
+                            aria-hidden="true"
+                            className="mb-1.5 aspect-video w-full rounded bg-slate-200"
+                          />
+                        )}
+                        <p className="truncate text-sm text-slate-800">{item.label}</p>
+                        <p className="truncate text-xs text-slate-400">{item.detail}</p>
+                      </Link>
+                    </li>
+                  ))}
+                </ul>
+              </section>
+            ))}
+          </div>
+        )}
 
         <ul className="grid grid-cols-2 gap-4">
           {visible.map((project) => (

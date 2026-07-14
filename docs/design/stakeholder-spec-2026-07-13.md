@@ -303,6 +303,12 @@ Responding to `specification.md` §16:
   created), **All projects** (everybody's), and an **Archive** for
   archived projects — shown as buttons/navigation (don't have to be
   particularly active yet).
+- Round 12 (2026-07-14): add **Library** to those view buttons — clicking
+  it shows the library. **Clicking a library asset creates a project for
+  that asset**: you manipulate the asset as a project, and later put it
+  back into the library. Mostly you'll ask the AI to put things into the
+  library, but this flow lets you add an asset, work it as a project, and
+  return it.
 
 ---
 

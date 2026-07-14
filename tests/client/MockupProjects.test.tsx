@@ -43,6 +43,20 @@ describe('MockupProjects', () => {
     expect(screen.queryByText('Spring Open House Postcard')).not.toBeInTheDocument();
   });
 
+  it('Library view shows assets; clicking one creates a project for it', () => {
+    renderPage();
+    fireEvent.click(screen.getByRole('button', { name: 'Library' }));
+
+    // Assets replace project cards.
+    expect(screen.queryByText('Spring Open House Postcard')).not.toBeInTheDocument();
+    expect(screen.getByText(/click an asset to create a project/i)).toBeInTheDocument();
+
+    const assetLink = screen.getByRole('link', {
+      name: /create a project for league robot logo/i,
+    });
+    expect(assetLink).toHaveAttribute('href', '/mockups/main');
+  });
+
   it('postcard heroes are the front; unaccepted projects fall back to the last iteration', () => {
     renderPage();
     fireEvent.click(screen.getByRole('button', { name: 'All projects' }));
