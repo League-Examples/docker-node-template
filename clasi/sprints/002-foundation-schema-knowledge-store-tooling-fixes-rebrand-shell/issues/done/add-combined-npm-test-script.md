@@ -1,8 +1,8 @@
 ---
-status: in-progress
+status: done
 sprint: '002'
 tickets:
-- 002-001
+- '001'
 ---
 
 # Add a combined `npm test` script (server + client) for tooling that takes a single test command
