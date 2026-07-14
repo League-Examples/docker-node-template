@@ -14,9 +14,9 @@ export default defineConfig({
     proxy: {
       '/api': {
         target: apiTarget,
-        // Keep the browser's Host header (localhost:5173) so Passport
+        // Keep the browser's Host header (the Vite dev port) so Passport
         // constructs OAuth callback URLs through the Vite proxy,
-        // not directly to the backend (localhost:3000).
+        // not directly to the backend port.
         changeOrigin: false,
       },
     },
