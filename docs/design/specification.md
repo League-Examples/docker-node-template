@@ -602,6 +602,20 @@ during implementation:
    Code anymore." Flyerbot's own runtime is an agent loop built on the
    Claude Agent SDK, distinct from the Claude Code sessions used to build
    Flyerbot itself.
+
+   **Addendum (2026-07-14, build planning)**: the agent loop is the hard
+   requirement; the provider is explicitly not — "the Anthropic SDK would
+   be fine, probably very helpful — but we don't really care. It could be
+   some third party. We wouldn't mind changing to another provider; in
+   fact, if the software is going to be distributed, it probably needs to
+   work with a provider other than Anthropic." Flyerbot's agent runtime is
+   therefore specified against a provider-neutral LLM interface (chat
+   completions + tool use), with the Anthropic Claude Agent SDK as the
+   first/default provider implementation — swapping providers must not
+   require changes to the loop contract, the Workspace MCP tool surface,
+   or chat/session storage. See `docs/architecture/architecture-001.md`,
+   **Amendment (2026-07-14): Provider-Neutral LLM Interface for the Agent
+   Runtime** and **Design Rationale D10** for the architectural detail.
 8. The asset auto-description schema (§3, §5) is explicitly undecided. The
    stakeholder specified required content (real-photograph flag, logo flag,
    style, real-vs-AI-generated people) but explicitly ruled out tags as the

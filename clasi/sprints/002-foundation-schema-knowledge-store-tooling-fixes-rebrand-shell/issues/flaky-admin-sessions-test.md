@@ -1,5 +1,8 @@
 ---
-status: pending
+status: in-progress
+sprint: '002'
+tickets:
+- 002-002
 ---
 
 # Flaky server test: admin-sessions "returns 403 for non-admin" times out intermittently

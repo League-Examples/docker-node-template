@@ -26,8 +26,10 @@ app explored read-only for precedent.
 ## Architecture Overview
 
 Flyerbot is a single Express/Node server plus a React SPA, backed by one
-SQLite database, that hosts a Claude-Agent-SDK-driven conversational loop
-per project. The user's two-pane experience (left: browsable catalog of
+SQLite database, that hosts a conversational agent loop per project,
+specified against a provider-neutral LLM interface and driven by the
+Claude Agent SDK as its first/default provider implementation (see
+**Amendment (2026-07-14)**). The user's two-pane experience (left: browsable catalog of
 assets/styles/projects; right: project outputs over a chat box) is a thin
 presentation layer over three domain concerns:
 
@@ -37,12 +39,13 @@ presentation layer over three domain concerns:
    a lightweight in-database vector index for semantic retrieval.
 2. **The workspace filesystem** — a git-tracked directory tree holding the
    actual image bytes and rendered outputs the catalog's rows point to.
-3. **The agent runtime** — a Claude Agent SDK loop, one active conversation
-   per project, whose only path to mutating the catalog or filesystem is a
-   moderated in-process MCP server exposing a narrow, lockable tool
-   surface (read/move/create-directory/stat for files; typed create/update/
-   propose-correction operations for the catalog — never raw shell, never
-   raw SQL).
+3. **The agent runtime** — an agent loop against a provider-neutral LLM
+   interface (chat completions + tool use), driven today by the Claude
+   Agent SDK, one active conversation per project, whose only path to
+   mutating the catalog or filesystem is a moderated in-process MCP server
+   exposing a narrow, lockable tool surface (read/move/create-directory/stat
+   for files; typed create/update/propose-correction operations for the
+   catalog — never raw shell, never raw SQL).
 
 Everything server-side runs as part of the existing Express app (no new
 services to deploy); "moderation" and "locking" are architectural
@@ -58,7 +61,7 @@ boundaries inside that one process, not separate infrastructure.
 | Full-text search | SQLite `FTS5` virtual table | new; keyword/tag fallback path alongside vector search |
 | Client | React 19 + Vite + Tailwind, React Router v7, TanStack Query | existing |
 | Auth | Passport Google OAuth only | existing, Sprint 001 |
-| Agent runtime | Claude Agent SDK (`@anthropic-ai/claude-agent-sdk` or equivalent) | new dependency; **not** Claude Code (spec §16 Q7 RESOLVED) |
+| Agent runtime | Claude Agent SDK (`@anthropic-ai/claude-agent-sdk` or equivalent), behind a provider-neutral LLM interface | new dependency; **not** Claude Code (spec §16 Q7 RESOLVED); Anthropic SDK is the first/default provider implementation, not an Anthropic-locked runtime — see **Amendment (2026-07-14)** and **D10** |
 | Agent↔workspace mediation | `@modelcontextprotocol/sdk` (already a server dependency), in-process transport | reuses the SDK already used by `server/src/mcp/*`; new, separate server instance — see D5 |
 | Image generation | OpenAI `gpt-image-2` (`/v1/images/generations`, `/v1/images/edits`) | direct, not via OpenRouter |
 | Vision evaluation / description | OpenRouter (model per `OPENROUTER_MODEL`) | generation vs. evaluation split preserved from predecessor |
@@ -91,14 +94,29 @@ skill's dependency-direction rule.
   delegates to the Catalog & Knowledge Store or the Agent Runtime.
 - **Use cases**: UC-001 (directly); transport layer for all others.
 
-### 3. Agent Runtime (Claude Agent SDK loop)
-- **Purpose**: Drives a Claude Agent SDK loop per active project
-  conversation, translating chat input into moderated tool calls.
+### 3. Agent Runtime (LLM agent loop, provider-neutral interface)
+- **Purpose**: Drives an agent loop per active project conversation,
+  translating chat input into moderated tool calls.
 - **Boundary**: new `server/src/agent/` module. Reads chat history and
   retrieved knowledge from the Catalog & Knowledge Store directly
   (read-only, unmoderated — see D9); every write goes through the
   Workspace MCP Server; every image request goes through the Image &
   Vision Service. Stateless between turns — see D8.
+- **Provider interface (Amendment, 2026-07-14 — see D10)**: the loop's
+  contract — turn lifecycle (receive message, plan, call tools, stream a
+  response), tool dispatch to the Workspace MCP Server, session
+  persistence (reconstructed each turn per D8), and token/event streaming
+  to the client (see **Streaming chat transport** in Technology Stack) —
+  is specified against a provider-neutral LLM interface: chat completions
+  plus tool use, independent of any one vendor's SDK. The Claude Agent SDK
+  is the first/default implementation of that interface, not a hard
+  dependency baked into the loop contract. Swapping the underlying
+  provider must not require changes to the loop contract itself, to the
+  Workspace MCP Server's tool definitions, or to session/chat storage
+  (`ChatMessage`, per **Data Model**) — only to the provider-adapter layer
+  inside this module. The Workspace MCP Server already being a standard,
+  provider-neutral MCP tool surface (rather than an Anthropic-specific
+  tool-calling format) is what makes this swap contained to the adapter.
 - **Use cases**: UC-003, UC-004, UC-005, UC-006, UC-007, UC-009, UC-010,
   UC-011, UC-012.
 
@@ -194,7 +212,7 @@ skill's dependency-direction rule.
 graph TD
     Client["Client App\n(Two-Pane UI)"]
     Gateway["API Gateway\n(Express routes)"]
-    Agent["Agent Runtime\n(Claude Agent SDK loop)"]
+    Agent["Agent Runtime\n(LLM agent loop, provider-neutral;\nClaude Agent SDK default)"]
     MCP["Workspace MCP Server\n(fs + catalog tools, locked)"]
     Catalog["Catalog & Knowledge Store\n(SQLite / Prisma)"]
     Vector["Vector Index\n(sqlite-vec, same DB file)"]
@@ -778,6 +796,49 @@ that sprint's Open Question 3 ("Sidebar fate"):
   oversight — documented here so a future reviewer doesn't "fix" it into
   a single moderated path.
 
+### D10: Agent Runtime loop specified against a provider-neutral LLM interface; Anthropic SDK as first/default provider (Amendment, 2026-07-14)
+- **Context**: `docs/design/stakeholder-spec-2026-07-13.md`, "Agent-loop
+  requirement (2026-07-14, build planning)": the agent the user converses
+  with must have an agent loop; the Anthropic SDK is an acceptable —
+  probably helpful — default, but "we don't really care" which provider,
+  and for distribution the system "probably needs to work with a provider
+  other than Anthropic." The agent loop itself is the near-certain
+  requirement; the provider is explicitly swappable. This sharpens, but
+  does not reverse, spec §16 Q7 RESOLVED ("not Claude Code... an agent
+  loop built on the Claude Agent SDK") — that resolution ruled out Claude
+  Code as the runtime; it never ruled in Anthropic-only as a permanent
+  constraint.
+- **Alternatives considered**: (a) build the loop directly against the
+  Claude Agent SDK's own types/session model, with no abstraction layer —
+  simplest to build first, but every subsequent provider swap would touch
+  the loop, the tool-call translation, and potentially session shape; (b)
+  build a full multi-provider abstraction library up front, with adapters
+  for several providers implemented immediately — more work than the
+  stakeholder asked for ("we don't really care" which provider, not "we
+  need three providers now"), and speculative given no second provider is
+  actually named yet.
+- **Why this choice**: a provider-neutral interface (chat completions +
+  tool use) with exactly one implemented adapter (Anthropic, via the
+  Claude Agent SDK) satisfies the hard requirement — the loop contract,
+  tool surface, and storage never assume a specific vendor — without
+  building speculative adapters for providers nobody has named. The
+  Workspace MCP Server (Module 4) already exposes a standard MCP tool
+  surface rather than an Anthropic-specific tool-calling format, so most
+  of the provider-neutrality work is already done by that boundary; this
+  decision makes the Agent Runtime's own internals (turn lifecycle,
+  session reconstruction per D8, streaming) honor the same boundary
+  rather than leaking a vendor-specific shape into `ChatMessage` storage
+  or the loop's control flow.
+- **Consequences**: the Agent Runtime module gains an internal
+  provider-adapter seam (Anthropic adapter first); no new top-level module
+  is introduced — this is a boundary inside Module 3, not a new module,
+  so it does not change the Component/Module Diagram, the dependency
+  graph, or module count. `ChatMessage.toolCalls` (see **Data Model**)
+  must be stored in a provider-neutral shape (tool name + structured
+  args/results), not a raw copy of any one SDK's wire format, so a future
+  second adapter can read the same history. No second provider is
+  implemented by this amendment — see **Open Question 9**.
+
 ## Migration Concerns
 
 - **New Prisma models**: `Project`, `Iteration`, `ChatMessage`,
@@ -870,13 +931,60 @@ as a starting condition:
   open for whichever sprint next touches auth surface or deployment
   gating.
 
+## Amendment (2026-07-14): Provider-Neutral LLM Interface for the Agent Runtime
+
+**Source**: `docs/design/stakeholder-spec-2026-07-13.md`, "Agent-loop
+requirement (2026-07-14, build planning)."
+
+This is a dated amendment to the Module 3 (Agent Runtime) design above,
+not a renumbering or reversal of any existing decision — spec §16 Q7
+RESOLVED ("not Claude Code... an agent loop built on the Claude Agent
+SDK") stands unchanged; this amendment sharpens what "built on the Claude
+Agent SDK" means architecturally.
+
+**What Changed**: the Agent Runtime module's loop — turn lifecycle
+(receive message, plan, call tools, stream a response), tool dispatch to
+the Workspace MCP Server, session persistence (reconstructed per turn,
+D8), and token/event streaming to the client — is now specified against a
+provider-neutral LLM interface (chat completions + tool use), documented
+in Module 3's new **Provider interface** bullet and **D10**. The Claude
+Agent SDK / Anthropic remains the first and default provider
+implementation; the Technology Stack table's Agent runtime row is updated
+to reflect this. No module was added or removed; no diagram or module
+count changed (see D10 **Consequences**).
+
+**Why**: the agent loop is the stakeholder's near-certain requirement;
+the provider is explicitly not — "we don't really care" which provider is
+used, and distribution likely requires supporting a provider other than
+Anthropic. Locking the loop contract to one vendor's SDK would make that
+future swap a rewrite instead of an adapter change.
+
+**Impact on Existing Components**: none of the other nine modules change.
+The Workspace MCP Server (Module 4) already being a standard MCP tool
+surface — not an Anthropic-specific tool-calling format — is what
+contains this amendment's blast radius to Module 3's internals; it is
+called out explicitly in Module 3's **Provider interface** bullet and in
+D10 as the reason a second provider would not require touching the tool
+layer. `ChatMessage` (Data Model) is unaffected in shape but is now
+explicitly required (D10 **Consequences**) to store `toolCalls` in a
+provider-neutral form rather than a vendor-specific wire format.
+
+**Migration Concerns**: none for this amendment specifically — no second
+provider is implemented now, no schema change, no deployment-sequencing
+change. It is a constraint on how Module 3 is *built* (adapter seam
+present from the start) rather than a change to what is built this
+sprint-cycle. See **Open Question 9**.
+
 ## Sprint Changes
 
 Not applicable — this is the initial architecture document; there is no
 prior consolidated architecture to diff against. Future sprint-scoped
 `architecture-update-NNN.md` documents will diff against this baseline
 (`architecture-001.md`) going forward, per the `consolidate-architecture`
-skill's numbering convention.
+skill's numbering convention. This document's own **Amendment (2026-07-14)**
+section above is a direct in-place amendment (per this dispatch's explicit
+write scope), not a sprint-scoped update file — it does not create a new
+`architecture-update-NNN.md`.
 
 ## Open Questions
 
@@ -920,6 +1028,15 @@ skill's numbering convention.
    maybe something the agent can control" was never fully resolved —
    confirm automatic-and-batched is acceptable, or whether the agent
    should have an explicit "commit now" tool instead/also.
+9. **Second LLM provider timeline** (**Amendment 2026-07-14** / **D10**):
+   the stakeholder said distribution "probably" needs a non-Anthropic
+   provider but named none and set no timeline. This document keeps the
+   loop contract provider-neutral and implements only the Anthropic
+   adapter now. Confirm whether a second provider adapter should be
+   built proactively (e.g. before first external distribution) or only
+   when a concrete second-provider need arises — this document takes no
+   position and treats it as a future ticket, not a gap in this
+   amendment.
 
 ---
 
@@ -931,11 +1048,12 @@ Consistency" is evaluated as internal consistency only).
 
 **Internal Consistency**: The Module Design, Data Model, and both
 diagrams agree on all ten modules and their edges; no module appears in
-one section and not another. The Design Rationale entries (D1-D9) each
-trace back to a specific spec-resolved open question or an explicit gap
-this document had to fill, and are cross-referenced from the body
-sections that rely on them (Data Model → D2/D3/D4; File-System Layout →
-D6; Locking → D9). PASS.
+one section and not another. The Design Rationale entries (D1-D9, plus
+D10 added by the **Amendment (2026-07-14)** below) each trace back to a
+specific spec-resolved open question or an explicit gap this document
+had to fill, and are cross-referenced from the body sections that rely on
+them (Data Model → D2/D3/D4; File-System Layout → D6; Locking → D9;
+Module 3/Technology Stack → D10). PASS.
 
 **Codebase Alignment**: Verified against the actual repo, not just the
 spec's grounding notes — `server/prisma/schema.prisma` (existing models
@@ -1020,3 +1138,40 @@ confirmed with the stakeholder before or during Sprint 002 ticketing;
 none of them blocks starting that planning work, since each has a stated
 default this document is prepared to implement against if no correction
 comes back.
+
+### Amendment Self-Review (2026-07-14)
+
+Re-reviewed against the same five categories, scoped to the **Amendment
+(2026-07-14)** / **D10** change only (the rest of the document's original
+review above is unaffected and not re-litigated).
+
+- **Consistency**: the amendment's substance appears in exactly three
+  places — Module 3's new **Provider interface** bullet, the Technology
+  Stack table's Agent runtime row, and **D10** — and all three
+  cross-reference each other and the Amendment section. No other module,
+  diagram, or data-model section asserts a vendor-specific claim that now
+  contradicts this. PASS.
+- **Codebase Alignment**: no code exists yet for the Agent Runtime module
+  (Migration Concerns already lists it as net-new); there is nothing to
+  drift from. Not applicable / PASS by default.
+- **Design Quality**: this amendment narrows Module 3's own interface
+  (adds an adapter seam), it does not add a module, edge, or dependency —
+  fan-out, dependency direction, and the Component/Module Diagram are
+  unchanged in shape (only Module 3's diagram label text changed, for
+  accuracy). Cohesion holds: Module 3's purpose sentence is still
+  one sentence, no "and." PASS.
+- **Anti-Pattern Detection**: an internal provider-adapter seam with
+  exactly one implementation (Anthropic) is the minimum structure that
+  satisfies the requirement — not speculative generality, since the
+  requirement itself (spec: "probably needs to work with a provider
+  other than Anthropic" for distribution) is the stated reason, not a
+  hypothetical. No god component, shotgun surgery, or circular dependency
+  introduced. PASS.
+- **Risks**: none new. No breaking change (no code exists yet to break);
+  no data migration (schema unaffected); no deployment-sequencing change.
+  The only follow-up is **Open Question 9** (second-provider timeline),
+  which is a scheduling question, not a structural risk.
+
+**Verdict: APPROVE.** No revision needed; the amendment is folded into
+the document's existing structure without altering the original
+**APPROVE WITH CHANGES** verdict's basis.

@@ -303,6 +303,13 @@ Responding to `specification.md` §16:
   created), **All projects** (everybody's), and an **Archive** for
   archived projects — shown as buttons/navigation (don't have to be
   particularly active yet).
+- Agent-loop requirement (2026-07-14, build planning): the agent the user
+  converses with **must have an agent loop**. We've been using Claude
+  Code; the **Anthropic SDK would be fine, probably very helpful — but we
+  don't really care**. It could be some third party. **We wouldn't mind
+  changing to another provider**; in fact, if the software is going to be
+  distributed, it probably **needs to work with a provider other than
+  Anthropic**. The agent loop itself is the near-certain requirement.
 - Round 12 (2026-07-14): add **Library** to those view buttons — clicking
   it shows the library. **Clicking a library asset creates a project for
   that asset**: you manipulate the asset as a project, and later put it

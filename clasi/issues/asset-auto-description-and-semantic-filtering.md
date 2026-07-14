@@ -1,5 +1,6 @@
 ---
 status: pending
+sprint: '004'
 ---
 
 # Auto-generate asset descriptions on collection commit; semantic search/filter of the library

@@ -1,5 +1,8 @@
 ---
-status: pending
+status: in-progress
+sprint: '002'
+tickets:
+- 002-001
 ---
 
 # Add a combined `npm test` script (server + client) for tooling that takes a single test command

@@ -1,5 +1,8 @@
 ---
-status: pending
+status: in-progress
+sprint: '002'
+tickets:
+- 002-008
 ---
 
 # Move the app-shell sidebar (AppLayout) to a top menu / hamburger
