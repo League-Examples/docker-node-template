@@ -123,12 +123,27 @@ ${printPageHtml('back', regionText)}
 export default function MockupPostcardEdit() {
   const [side, setSide] = useState<PostcardSide>('back');
   const [regionText, setRegionText] = useState<Record<string, string>>(buildInitialTextMap);
+  // Click-to-edit popup state: which region is being edited, and its draft.
+  const [editingRegion, setEditingRegion] = useState<PostcardRegion | null>(null);
+  const [draftText, setDraftText] = useState('');
 
   const regions = STUB_POSTCARD_REGIONS[side];
   const overlay = STUB_POSTCARD_EXTRA_OVERLAY[side];
 
   function handleRegionTextChange(name: string, value: string) {
     setRegionText((prev) => ({ ...prev, [name]: value }));
+  }
+
+  function openRegionEditor(region: PostcardRegion) {
+    setEditingRegion(region);
+    setDraftText(regionText[region.name] ?? '');
+  }
+
+  function commitRegionEditor() {
+    if (editingRegion) {
+      handleRegionTextChange(editingRegion.name, draftText);
+    }
+    setEditingRegion(null);
   }
 
   return (
@@ -188,10 +203,13 @@ export default function MockupPostcardEdit() {
                   </p>
                 )}
                 {regions.map((region) => (
-                  <div
+                  <button
                     key={region.name}
+                    type="button"
                     data-testid={`postcard-region-box-${region.name}`}
-                    className="absolute overflow-hidden border border-dashed border-indigo-400 bg-indigo-50/60 p-1 text-[9px] leading-tight"
+                    aria-label={`Edit ${region.label}`}
+                    onClick={() => openRegionEditor(region)}
+                    className="absolute cursor-pointer overflow-hidden border border-dashed border-indigo-400 bg-indigo-50/60 p-1 text-left text-[9px] leading-tight hover:bg-indigo-100"
                     style={{
                       top: region.position.top,
                       left: region.position.left,
@@ -205,7 +223,7 @@ export default function MockupPostcardEdit() {
                     <span data-testid={`postcard-region-text-${region.name}`}>
                       {regionText[region.name]}
                     </span>
-                  </div>
+                  </button>
                 ))}
 
                 {overlay && (
@@ -275,6 +293,48 @@ export default function MockupPostcardEdit() {
       <div className="flex h-64 flex-shrink-0 flex-col border-t border-slate-200">
         <MockupChatPanel messages={STUB_POSTCARD_CHAT_MESSAGES} />
       </div>
+
+      {/* Click-to-edit popup: click a region on the postcard, edit its
+          text here, hit return to apply. */}
+      {editingRegion && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/40"
+          onClick={() => setEditingRegion(null)}
+        >
+          <div
+            role="dialog"
+            aria-label={`Edit ${editingRegion.label}`}
+            className="w-full max-w-md rounded-lg bg-white p-5 shadow-xl"
+            onClick={(event) => event.stopPropagation()}
+          >
+            <h3 className="text-sm font-semibold text-slate-700">
+              {editingRegion.label}
+            </h3>
+            <p className="mb-3 mt-0.5 text-xs text-slate-500">
+              {summarizePositionAndFont(editingRegion)} — press Return to
+              apply, Esc to cancel
+            </p>
+            <form
+              onSubmit={(event) => {
+                event.preventDefault();
+                commitRegionEditor();
+              }}
+            >
+              <input
+                autoFocus
+                type="text"
+                aria-label={`${editingRegion.label} text`}
+                value={draftText}
+                onChange={(event) => setDraftText(event.target.value)}
+                onKeyDown={(event) => {
+                  if (event.key === 'Escape') setEditingRegion(null);
+                }}
+                className="w-full rounded border border-slate-300 px-3 py-2 text-sm text-slate-800"
+              />
+            </form>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

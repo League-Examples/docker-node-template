@@ -11,9 +11,9 @@ describe('MockupPostcardEdit', () => {
   it('renders at least 3 labeled region inputs pre-filled with stub text on the default (back) side', () => {
     render(<MockupPostcardEdit />);
 
-    const headline = screen.getByLabelText(/headline/i) as HTMLInputElement;
-    const datetime = screen.getByLabelText(/date & location/i) as HTMLInputElement;
-    const body = screen.getByLabelText(/body copy/i) as HTMLInputElement;
+    const headline = screen.getByLabelText(/headline/i, { selector: 'input' }) as HTMLInputElement;
+    const datetime = screen.getByLabelText(/date & location/i, { selector: 'input' }) as HTMLInputElement;
+    const body = screen.getByLabelText(/body copy/i, { selector: 'input' }) as HTMLInputElement;
 
     expect(headline).toBeInTheDocument();
     expect(headline.value).toMatch(/robot riot/i);
@@ -27,7 +27,7 @@ describe('MockupPostcardEdit', () => {
     const user = userEvent.setup();
     render(<MockupPostcardEdit />);
 
-    const headlineInput = screen.getByLabelText(/headline/i);
+    const headlineInput = screen.getByLabelText(/headline/i, { selector: 'input' });
     await user.clear(headlineInput);
     await user.type(headlineInput, 'GO TEAM');
 
@@ -41,14 +41,14 @@ describe('MockupPostcardEdit', () => {
     const user = userEvent.setup();
     render(<MockupPostcardEdit />);
 
-    expect(screen.getByLabelText(/headline/i)).toBeInTheDocument();
+    expect(screen.getByLabelText(/headline/i, { selector: 'input' })).toBeInTheDocument();
 
     await user.click(screen.getByRole('button', { name: /^front$/i }));
-    expect(screen.queryByLabelText(/headline/i)).not.toBeInTheDocument();
+    expect(screen.queryByLabelText(/headline/i, { selector: 'input' })).not.toBeInTheDocument();
     expect(screen.getByText(/no text regions on the front side/i)).toBeInTheDocument();
 
     await user.click(screen.getByRole('button', { name: /^back$/i }));
-    expect(screen.getByLabelText(/headline/i)).toBeInTheDocument();
+    expect(screen.getByLabelText(/headline/i, { selector: 'input' })).toBeInTheDocument();
   });
 
   it('renders the QR/extra_html placeholder box on the back side, distinguishable from text regions', () => {
@@ -61,6 +61,45 @@ describe('MockupPostcardEdit', () => {
     const preview = screen.getByTestId('postcard-preview');
     expect(within(preview).getByTestId('postcard-region-box-back_headline')).toBeInTheDocument();
     expect(overlay).not.toBe(within(preview).getByTestId('postcard-region-box-back_headline'));
+  });
+
+  it('clicking a region opens a popup; editing and pressing Return updates the preview', async () => {
+    const user = userEvent.setup();
+    render(<MockupPostcardEdit />);
+
+    await user.click(screen.getByTestId('postcard-region-box-back_headline'));
+
+    const dialog = screen.getByRole('dialog', { name: /edit headline/i });
+    expect(dialog).toBeInTheDocument();
+
+    const popupInput = within(dialog).getByLabelText(/headline text/i);
+    await user.clear(popupInput);
+    await user.type(popupInput, 'CLICKED AND EDITED{Enter}');
+
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+    expect(screen.getByTestId('postcard-region-text-back_headline')).toHaveTextContent(
+      'CLICKED AND EDITED',
+    );
+    // The form field below stays in sync (same underlying state).
+    expect((screen.getByLabelText(/^headline$/i) as HTMLInputElement).value).toBe(
+      'CLICKED AND EDITED',
+    );
+  });
+
+  it('Escape closes the popup without applying the draft', async () => {
+    const user = userEvent.setup();
+    render(<MockupPostcardEdit />);
+
+    await user.click(screen.getByTestId('postcard-region-box-back_headline'));
+    const dialog = screen.getByRole('dialog', { name: /edit headline/i });
+    const popupInput = within(dialog).getByLabelText(/headline text/i);
+    await user.clear(popupInput);
+    await user.type(popupInput, 'DISCARD ME{Escape}');
+
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+    expect(screen.getByTestId('postcard-region-text-back_headline')).toHaveTextContent(
+      /robot riot/i,
+    );
   });
 
   it('shows the chat box with the postcard exchange', () => {
@@ -82,7 +121,7 @@ describe('MockupPostcardEdit', () => {
 
     render(<MockupPostcardEdit />);
 
-    const headlineInput = screen.getByLabelText(/headline/i);
+    const headlineInput = screen.getByLabelText(/headline/i, { selector: 'input' });
     await user.clear(headlineInput);
     await user.type(headlineInput, 'PDF HEADLINE');
 
