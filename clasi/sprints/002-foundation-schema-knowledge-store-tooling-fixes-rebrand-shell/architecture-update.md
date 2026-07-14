@@ -237,6 +237,23 @@ adds the two-pane layout, rather than fighting both changes at once.
   unconfirmable in time, ship with the brute-force fallback as the active
   path and leave `sqlite-vec` wired but dormant — no data-model change
   either way (D1).
+  - **RESOLVED (ticket 002-005)**: does not work on this repo's actual
+    Docker base image (`node:20-alpine`). Confirmed directly inside a
+    `node:20-alpine` container: `sqlite-vec`'s npm-distributed
+    `sqlite-vec-linux-x64` binary is built against glibc and fails to
+    `dlopen` under musl libc (`Error loading shared library
+    .../vec0.so.so: No such file or directory` — the file is present;
+    it's an ABI mismatch, not a missing binary, so no `apk add` package
+    fixes it). `sqlite-vec` loads successfully on macOS dev (arm64),
+    confirmed both directly and via the ticket's test suite. Per D1's
+    design, this changes nothing structurally: the brute-force
+    cosine-similarity fallback is what actually answers `nearestNeighbors`
+    in this repo's production Docker deployment today, transparently, with
+    no thrown error and no caller code change. Switching the Dockerfile's
+    base image to a glibc-based distro (e.g. `node:20-slim`) would likely
+    activate the fast path, but that's a size/security-surface tradeoff
+    left as a candidate follow-up ticket, not required for correctness.
+    See ticket 002-005's Testing Notes for the full reproduction.
 - **Seed import idempotency**: the Seed Import Job must be safe to re-run
   (e.g. upsert on a stable natural key like `kind` + slug) since it may
   run again in a fresh environment or after a schema fix — deployment
@@ -302,6 +319,9 @@ adds the two-pane layout, rather than fighting both changes at once.
 1. **`sqlite-vec` platform coverage** — carried forward from
    architecture-001 Open Question 1, unresolved until this sprint's
    ticket verifies it against the actual deployment Docker base image.
+   **RESOLVED (ticket 002-005)**: does not work on `node:20-alpine`
+   (glibc-built binary under musl libc); production runs the brute-force
+   fallback. See Migration Concerns above for the full result.
 2. **Seed import scope** — exactly which predecessor styles/layouts/
    compositions/palettes get imported (all 10 styles + all layouts, or a
    representative subset)? This document defaults to "all of them" for

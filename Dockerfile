@@ -9,6 +9,18 @@ COPY client/ ./
 RUN npm run build
 
 # --- Server stage (full deps; prisma generate; keep TS source) ---
+# Note (ticket 002-005, architecture-001 Open Question 1): the `sqlite-vec`
+# loadable extension's npm-distributed `sqlite-vec-linux-x64` binary is
+# glibc-built and does NOT load under this image's musl libc (confirmed by
+# direct test: dlopen fails, "no such file or directory" on the resolved
+# .so path). This is a platform ABI mismatch, not something `apk add`
+# fixes. The app's search module (server/src/services/search.ts) already
+# falls back transparently to a brute-force cosine-similarity scan when the
+# extension fails to load, so this is not a correctness issue here -- just
+# a known limitation: the fast vec0 KNN path is inactive in this image.
+# Switching to a glibc-based base (e.g. node:20-slim) would likely activate
+# it, but that tradeoff is out of scope for now (see architecture-update.md
+# Open Question 1 for this sprint).
 FROM node:20-alpine AS server
 RUN apk add --no-cache python3 make g++
 WORKDIR /src/server

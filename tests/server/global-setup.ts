@@ -40,10 +40,29 @@ async function cleanup() {
   let db;
   try {
     db = new Database(dbPath);
+    // Best-effort: load sqlite-vec so the `VecEmbeddings` vec0 virtual table
+    // (created lazily by server/src/services/search.ts, ticket 002-005) can
+    // be found and cleared here too, on platforms where the extension is
+    // available. If it isn't, the per-table try/catch below skips just that
+    // table instead of aborting cleanup for every other table -- a vec0
+    // virtual table left over from a previous run is unusable without the
+    // module loaded on this connection ("no such module: vec0"), regardless
+    // of which table this cleanup pass currently cares about.
+    try {
+      const sqliteVec = await import('sqlite-vec');
+      sqliteVec.load(db);
+    } catch {
+      // No sqlite-vec on this platform -- fine, see comment above.
+    }
     const tables = db.prepare("SELECT name FROM sqlite_master WHERE type='table'").all() as { name: string }[];
     const tableNames = tables.map((t) => t.name).filter((n) => n !== '_prisma_migrations' && n !== 'sqlite_sequence');
     for (const table of tableNames) {
-      db.prepare(`DELETE FROM "${table}"`).run();
+      try {
+        db.prepare(`DELETE FROM "${table}"`).run();
+      } catch {
+        // A virtual table whose module isn't loaded on this connection --
+        // skip rather than abort the whole cleanup pass.
+      }
     }
   } catch {
     // DB file may not exist yet
