@@ -1,0 +1,75 @@
+---
+id: '001'
+title: Remove Pike13 server-side integration
+status: open
+use-cases: [SUC-001]
+depends-on: []
+github-issue: ''
+issue: remove-pike13-google-only-auth.md
+completes_issue: false
+---
+<!-- CLASI: Before changing code or making plans, review the SE process in CLAUDE.md -->
+
+# Remove Pike13 server-side integration
+
+## Description
+
+Pike13 is confirmed unneeded (stakeholder: "I want you to clean out
+Pike13, which I don't think we need"). This ticket removes its entire
+server-side footprint: the route module, its mount in `app.ts`, its
+fields in the integrations-status and admin-env endpoints, its recognized
+config keys, its env vars in tracked config files, and its server-side
+test coverage. This is foundation work — Ticket 002 (client-side cleanup)
+depends on the narrowed `/api/integrations/status` response shape this
+ticket produces.
+
+`completes_issue: false` — this ticket only partially addresses
+`remove-pike13-google-only-auth.md` (Ticket 002 covers the client half);
+the issue is archived once both tickets are done.
+
+See `architecture-update.md` §"1. Auth Module (server)" for full detail.
+
+## Acceptance Criteria
+
+- [ ] `server/src/routes/pike13.ts` is deleted.
+- [ ] `server/src/app.ts` no longer imports or mounts `pike13Router`.
+- [ ] `server/src/routes/integrations.ts`'s `GET /api/integrations/status`
+      response no longer includes a `pike13` field.
+- [ ] `server/src/routes/admin/env.ts`'s `GET /api/admin/env` response no
+      longer includes a `pike13` field under `integrations`.
+- [ ] `server/src/services/config.ts`'s `CONFIG_KEYS` no longer includes
+      `PIKE13_CLIENT_ID`, `PIKE13_CLIENT_SECRET`, or `PIKE13_API_BASE`.
+- [ ] `PIKE13_*` lines are removed from `config/dev/public.env`,
+      `config/dev/secrets.env`, `config/prod/public.env`,
+      `config/prod/secrets.env`, and `config/env.template`.
+- [ ] `tests/server/pike13.test.ts` is deleted.
+- [ ] Pike13 references/assertions are removed from
+      `tests/server/integrations.test.ts`,
+      `tests/server/admin-environment.test.ts`,
+      `tests/server/account-linking.test.ts`, and
+      `tests/server/auth-linkedproviders.test.ts` (each test file
+      otherwise keeps its non-Pike13 coverage intact).
+- [ ] No `pike13`/`Pike13`/`PIKE13` string remains anywhere under
+      `server/`, `config/`, or `tests/server/` (grep-verifiable).
+- [ ] The Google and GitHub Passport strategies, and the password-based
+      auth endpoints, are untouched by this ticket (out of scope — see
+      architecture-update.md Decision 1).
+- [ ] Full server test suite passes.
+
+## Testing
+
+- **Existing tests to run**: `tests/server/` full suite (run via the
+  project's server test command, e.g. `npm run test:server` or the
+  Vitest config in `tests/server/`), specifically
+  `integrations.test.ts`, `admin-environment.test.ts`,
+  `account-linking.test.ts`, `auth-linkedproviders.test.ts`, `app.test.ts`
+  (to confirm the app still boots and mounts routes correctly with
+  `pike13Router` removed), and `auth-oauth.test.ts` (to confirm Google/
+  GitHub strategy registration is unaffected).
+- **New tests to write**: none required — this is a removal; existing
+  test files are edited in place to drop Pike13-specific
+  cases/assertions, not extended.
+- **Verification command**: run the server test suite from the repo root
+  (check `package.json` scripts, e.g. `npm run test:server` or
+  equivalent) and confirm `grep -ril pike13 server/ config/ tests/server/`
+  returns no results.
