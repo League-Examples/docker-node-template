@@ -11,10 +11,6 @@ integrationsRouter.get('/integrations/status', (_req, res) => {
     google: {
       configured: !!(getConfig('GOOGLE_CLIENT_ID') && getConfig('GOOGLE_CLIENT_SECRET')),
     },
-    pike13: {
-      configured: !!(process.env.PIKE13_ACCESS_TOKEN ||
-        (getConfig('PIKE13_CLIENT_ID') && getConfig('PIKE13_CLIENT_SECRET'))),
-    },
     githubToken: {
       configured: !!getConfig('GITHUB_TOKEN'),
     },

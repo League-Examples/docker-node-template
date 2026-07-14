@@ -22,7 +22,6 @@ describe('GET /api/integrations/status', () => {
     delete process.env.GITHUB_CLIENT_SECRET;
     delete process.env.GOOGLE_CLIENT_ID;
     delete process.env.GOOGLE_CLIENT_SECRET;
-    delete process.env.PIKE13_ACCESS_TOKEN;
     delete process.env.GITHUB_TOKEN;
     delete process.env.ANTHROPIC_API_KEY;
     delete process.env.OPENAI_API_KEY;
@@ -32,7 +31,6 @@ describe('GET /api/integrations/status', () => {
     expect(res.body).toEqual({
       github: { configured: false },
       google: { configured: false },
-      pike13: { configured: false },
       githubToken: { configured: false },
       anthropic: { configured: false },
       openai: { configured: false },
@@ -57,20 +55,11 @@ describe('GET /api/integrations/status', () => {
     expect(res.body.google.configured).toBe(true);
   });
 
-  it('reports pike13 configured when access token is set', async () => {
-    process.env.PIKE13_ACCESS_TOKEN = 'test-token';
-
-    const res = await request(app).get('/api/integrations/status');
-    expect(res.status).toBe(200);
-    expect(res.body.pike13.configured).toBe(true);
-  });
-
   it('never exposes actual secret values in the response', async () => {
     process.env.GITHUB_CLIENT_ID = 'gh-id-12345';
     process.env.GITHUB_CLIENT_SECRET = 'gh-secret-67890';
     process.env.GOOGLE_CLIENT_ID = 'google-id-12345';
     process.env.GOOGLE_CLIENT_SECRET = 'google-secret-67890';
-    process.env.PIKE13_ACCESS_TOKEN = 'pike-token-12345';
 
     const res = await request(app).get('/api/integrations/status');
     const body = JSON.stringify(res.body);
@@ -79,15 +68,14 @@ describe('GET /api/integrations/status', () => {
     expect(body).not.toContain('gh-secret-67890');
     expect(body).not.toContain('google-id-12345');
     expect(body).not.toContain('google-secret-67890');
-    expect(body).not.toContain('pike-token-12345');
   });
 
-  it('response shape includes all six services with configured boolean', async () => {
+  it('response shape includes all five services with configured boolean', async () => {
     const res = await request(app).get('/api/integrations/status');
     expect(res.status).toBe(200);
 
     const keys = Object.keys(res.body);
-    const expectedServices = ['github', 'google', 'pike13', 'githubToken', 'anthropic', 'openai'];
+    const expectedServices = ['github', 'google', 'githubToken', 'anthropic', 'openai'];
     expect(keys).toEqual(expect.arrayContaining(expectedServices));
     expect(keys).toHaveLength(expectedServices.length);
 
