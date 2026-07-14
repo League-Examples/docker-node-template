@@ -18,8 +18,6 @@ describe('GET /api/integrations/status', () => {
   });
 
   it('returns all services with configured: false when no env vars set', async () => {
-    delete process.env.GITHUB_CLIENT_ID;
-    delete process.env.GITHUB_CLIENT_SECRET;
     delete process.env.GOOGLE_CLIENT_ID;
     delete process.env.GOOGLE_CLIENT_SECRET;
     delete process.env.GITHUB_TOKEN;
@@ -29,21 +27,11 @@ describe('GET /api/integrations/status', () => {
     const res = await request(app).get('/api/integrations/status');
     expect(res.status).toBe(200);
     expect(res.body).toEqual({
-      github: { configured: false },
       google: { configured: false },
       githubToken: { configured: false },
       anthropic: { configured: false },
       openai: { configured: false },
     });
-  });
-
-  it('reports github configured when both client ID and secret are set', async () => {
-    process.env.GITHUB_CLIENT_ID = 'test-id';
-    process.env.GITHUB_CLIENT_SECRET = 'test-secret';
-
-    const res = await request(app).get('/api/integrations/status');
-    expect(res.status).toBe(200);
-    expect(res.body.github.configured).toBe(true);
   });
 
   it('reports google configured when both client ID and secret are set', async () => {
@@ -56,26 +44,22 @@ describe('GET /api/integrations/status', () => {
   });
 
   it('never exposes actual secret values in the response', async () => {
-    process.env.GITHUB_CLIENT_ID = 'gh-id-12345';
-    process.env.GITHUB_CLIENT_SECRET = 'gh-secret-67890';
     process.env.GOOGLE_CLIENT_ID = 'google-id-12345';
     process.env.GOOGLE_CLIENT_SECRET = 'google-secret-67890';
 
     const res = await request(app).get('/api/integrations/status');
     const body = JSON.stringify(res.body);
 
-    expect(body).not.toContain('gh-id-12345');
-    expect(body).not.toContain('gh-secret-67890');
     expect(body).not.toContain('google-id-12345');
     expect(body).not.toContain('google-secret-67890');
   });
 
-  it('response shape includes all five services with configured boolean', async () => {
+  it('response shape includes all four services with configured boolean', async () => {
     const res = await request(app).get('/api/integrations/status');
     expect(res.status).toBe(200);
 
     const keys = Object.keys(res.body);
-    const expectedServices = ['github', 'google', 'githubToken', 'anthropic', 'openai'];
+    const expectedServices = ['google', 'githubToken', 'anthropic', 'openai'];
     expect(keys).toEqual(expect.arrayContaining(expectedServices));
     expect(keys).toHaveLength(expectedServices.length);
 

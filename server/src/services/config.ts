@@ -9,9 +9,6 @@ export interface ConfigKeyMeta {
 }
 
 export const CONFIG_KEYS: ConfigKeyMeta[] = [
-  // GitHub OAuth
-  { key: 'GITHUB_CLIENT_ID', group: 'GitHub OAuth', label: 'Client ID', isSecret: false, requiresRestart: true },
-  { key: 'GITHUB_CLIENT_SECRET', group: 'GitHub OAuth', label: 'Client Secret', isSecret: true, requiresRestart: true },
   // Google OAuth
   { key: 'GOOGLE_CLIENT_ID', group: 'Google OAuth', label: 'Client ID', isSecret: false, requiresRestart: true },
   { key: 'GOOGLE_CLIENT_SECRET', group: 'Google OAuth', label: 'Client Secret', isSecret: true, requiresRestart: true },

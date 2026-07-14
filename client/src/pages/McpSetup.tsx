@@ -41,7 +41,7 @@ export function McpSetupContent() {
         </p>
         <pre style={styles.codeBlock}>{`{
   "mcpServers": {
-    "chat-app": {
+    "flyerbot": {
       "url": "http://localhost:3000/api/mcp",
       "headers": {
         "Authorization": "Bearer YOUR_MCP_TOKEN"

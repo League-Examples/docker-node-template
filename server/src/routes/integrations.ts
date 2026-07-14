@@ -5,9 +5,6 @@ export const integrationsRouter = Router();
 
 integrationsRouter.get('/integrations/status', (_req, res) => {
   res.json({
-    github: {
-      configured: !!(getConfig('GITHUB_CLIENT_ID') && getConfig('GITHUB_CLIENT_SECRET')),
-    },
     google: {
       configured: !!(getConfig('GOOGLE_CLIENT_ID') && getConfig('GOOGLE_CLIENT_SECRET')),
     },

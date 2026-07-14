@@ -75,12 +75,20 @@ describe('AppLayout', () => {
     });
   });
 
-  it('renders sidebar with Home navigation link', () => {
+  it('does not render nav entries until the hamburger menu is opened', () => {
     renderLayout();
+    expect(screen.queryByText('Home')).not.toBeInTheDocument();
+    expect(screen.queryByRole('navigation', { name: 'App menu' })).not.toBeInTheDocument();
+  });
+
+  it('shows the Home navigation link in the hamburger menu when opened', () => {
+    renderLayout();
+    fireEvent.click(screen.getByRole('button', { name: 'Menu' }));
+    expect(screen.getByRole('navigation', { name: 'App menu' })).toBeInTheDocument();
     expect(screen.getByText('Home')).toBeInTheDocument();
   });
 
-  it('shows Admin link when user has admin role', () => {
+  it('shows Admin link in the hamburger menu when user has admin role', () => {
     mockUseAuth.mockReturnValue({
       user: makeAdminUser(),
       loading: false,
@@ -88,12 +96,27 @@ describe('AppLayout', () => {
     });
 
     renderLayout();
+    fireEvent.click(screen.getByRole('button', { name: 'Menu' }));
     expect(screen.getByText('Admin')).toBeInTheDocument();
   });
 
   it('hides Admin link when user has non-admin role', () => {
     renderLayout();
+    fireEvent.click(screen.getByRole('button', { name: 'Menu' }));
     expect(screen.queryByText('Admin')).not.toBeInTheDocument();
+  });
+
+  it('closes the hamburger menu when a nav entry is clicked', () => {
+    renderLayout();
+    fireEvent.click(screen.getByRole('button', { name: 'Menu' }));
+    expect(screen.getByText('Home')).toBeInTheDocument();
+    fireEvent.click(screen.getByText('Home'));
+    expect(screen.queryByText('Home')).not.toBeInTheDocument();
+  });
+
+  it('displays the rebranded app name in the top bar', () => {
+    renderLayout();
+    expect(screen.getByText('Flyerbot')).toBeInTheDocument();
   });
 
   it('displays user name in the top bar', () => {
@@ -146,9 +169,7 @@ describe('AppLayout', () => {
 
   it('shows "Log out" in dropdown when not impersonating', () => {
     renderLayout();
-    // hover over user area to open dropdown
-    const userArea = screen.getByText('Jane Student').closest('div[style]')!;
-    fireEvent.click(userArea);
+    fireEvent.click(screen.getByTestId('user-menu-trigger'));
     expect(screen.getByText('Log out')).toBeInTheDocument();
     expect(screen.queryByText('Stop impersonating')).not.toBeInTheDocument();
   });
@@ -165,8 +186,7 @@ describe('AppLayout', () => {
     });
 
     renderLayout();
-    const userArea = screen.getByText('Target User').closest('div[style]')!;
-    fireEvent.click(userArea);
+    fireEvent.click(screen.getByTestId('user-menu-trigger'));
     expect(screen.getByText('Stop impersonating')).toBeInTheDocument();
     expect(screen.queryByText('Log out')).not.toBeInTheDocument();
   });
@@ -191,8 +211,7 @@ describe('AppLayout', () => {
     });
 
     renderLayout();
-    const userArea = screen.getByText('Target User').closest('div[style]')!;
-    fireEvent.click(userArea);
+    fireEvent.click(screen.getByTestId('user-menu-trigger'));
 
     const stopBtn = screen.getByText('Stop impersonating');
     fireEvent.click(stopBtn);

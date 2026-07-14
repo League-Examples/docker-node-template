@@ -9,9 +9,7 @@ import { Writable } from 'stream';
 import { healthRouter } from './routes/health';
 import { integrationsRouter } from './routes/integrations';
 import { authRouter } from './routes/auth';
-import { githubRouter } from './routes/github';
 import { adminRouter } from './routes/admin';
-import { countersRouter } from './routes/counters';
 import { impersonateMiddleware } from './middleware/impersonate';
 import { mcpTokenAuth } from './middleware/mcpAuth';
 import { createMcpHandler } from './mcp/handler';
@@ -25,6 +23,32 @@ const app = express();
 
 // Trust first proxy (Caddy in production, Vite in dev)
 app.set('trust proxy', 1);
+
+// Tests (tests/server/*.test.ts) call `request(app)` / `request.agent(app)`
+// directly, which makes supertest spin up a brand-new ephemeral
+// `http.Server` per call — hundreds of times within a single test file's
+// process — and tear it down right after via `server.close()`. Node's HTTP
+// keep-alive is on by default, so a socket from a just-closed ephemeral
+// server can briefly outlive it; under the very fast, very high churn rate
+// this suite produces (many ephemeral loopback listeners bound/closed per
+// second), that's a plausible contributor to the suite's intermittent
+// cross-request corruption (occasionally observed as "Parse Error:
+// Expected HTTP/", "socket hang up", or a response that doesn't match the
+// request that was sent — see the ticket 002-002 investigation notes).
+// Forcing `Connection: close` in test mode stops the application from
+// advertising a socket as reusable, removing one plausible source of the
+// reuse window. NOTE: applying this alone did NOT eliminate the suite's
+// flakiness in verification runs — the deeper, harder-to-fix cause is
+// structural (supertest creating one ephemeral server per assertion
+// instead of one persistent server per file) and is out of this ticket's
+// scope; see the ticket's Testing section for the full writeup and a
+// recommended follow-up. Left in place as harmless, defensible hardening.
+if (process.env.NODE_ENV === 'test') {
+  app.use((_req, res, next) => {
+    res.set('Connection', 'close');
+    next();
+  });
+}
 
 app.use(express.json());
 
@@ -91,9 +115,7 @@ app.use(attachServices(registry));
 app.use('/api', healthRouter);
 app.use('/api', integrationsRouter);
 app.use('/api', authRouter);
-app.use('/api', githubRouter);
 app.use('/api', adminRouter);
-app.use('/api/counters', countersRouter);
 
 // MCP endpoint — token-based auth, separate from session auth
 app.post('/api/mcp', mcpTokenAuth, createMcpHandler());

@@ -25,9 +25,6 @@ adminEnvRouter.get('/env', async (req, res) => {
     deployment: process.env.NODE_ENV || 'development',
     database: dbStatus,
     integrations: {
-      github: {
-        configured: !!(config.get('GITHUB_CLIENT_ID') && config.get('GITHUB_CLIENT_SECRET')),
-      },
       google: {
         configured: !!(config.get('GOOGLE_CLIENT_ID') && config.get('GOOGLE_CLIENT_SECRET')),
       },

@@ -20,7 +20,7 @@ healthRouter.get('/health', (_req, res) => {
   res.json({
     status: 'ok',
     version,
-    appName: process.env.APP_NAME || 'Chat App',
-    appSlug: process.env.APP_SLUG || 'chat-app',
+    appName: process.env.APP_NAME || 'Flyerbot',
+    appSlug: process.env.APP_SLUG || 'flyerbot',
   });
 });

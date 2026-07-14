@@ -33,250 +33,29 @@ const BOTTOM_NAV: NavItem[] = [
 ];
 
 /* ------------------------------------------------------------------ */
-/*  Styles                                                             */
-/* ------------------------------------------------------------------ */
-
-const SIDEBAR_WIDTH = 240;
-const TOPBAR_HEIGHT = 52;
-
-const styles = {
-  wrapper: {
-    display: 'flex',
-    minHeight: '100vh',
-  } as const,
-
-  sidebar: (open: boolean) =>
-    ({
-      position: 'fixed' as const,
-      top: 0,
-      left: 0,
-      bottom: 0,
-      width: SIDEBAR_WIDTH,
-      flexShrink: 0,
-      background: '#1a1a2e',
-      color: '#eee',
-      display: 'flex',
-      flexDirection: 'column' as const,
-      zIndex: 100,
-      transform: open ? 'translateX(0)' : `translateX(-${SIDEBAR_WIDTH}px)`,
-      transition: 'transform 0.2s ease',
-    }),
-
-  sidebarDesktop: {
-    transform: 'translateX(0)',
-  } as const,
-
-  overlay: {
-    position: 'fixed' as const,
-    inset: 0,
-    background: 'rgba(0,0,0,0.4)',
-    zIndex: 99,
-  } as const,
-
-  logo: {
-    padding: '16px 16px 12px',
-    fontWeight: 700,
-    fontSize: 16,
-    letterSpacing: '-0.01em',
-    display: 'flex',
-    alignItems: 'center',
-    gap: 8,
-    borderBottom: '1px solid #2a2a4e',
-  } as const,
-
-  navLink: (isActive: boolean) =>
-    ({
-      display: 'block',
-      padding: '9px 16px',
-      color: isActive ? '#fff' : '#aaa',
-      background: isActive ? '#16213e' : 'transparent',
-      textDecoration: 'none',
-      fontSize: 14,
-    }),
-
-  topbar: {
-    position: 'fixed' as const,
-    top: 0,
-    right: 0,
-    height: TOPBAR_HEIGHT,
-    background: '#fff',
-    borderBottom: '1px solid #e2e8f0',
-    display: 'flex',
-    alignItems: 'center',
-    padding: '0 16px',
-    gap: 12,
-    zIndex: 50,
-  } as const,
-
-  hamburger: {
-    background: 'none',
-    border: 'none',
-    fontSize: 22,
-    cursor: 'pointer',
-    padding: '4px 8px',
-    color: '#333',
-    lineHeight: 1,
-  } as const,
-
-  userArea: {
-    position: 'relative' as const,
-    display: 'flex',
-    alignItems: 'center',
-    gap: 8,
-    cursor: 'pointer',
-    padding: '4px 8px',
-    borderRadius: 6,
-    userSelect: 'none' as const,
-  } as const,
-
-  avatar: {
-    width: 28,
-    height: 28,
-    borderRadius: '50%',
-    objectFit: 'cover' as const,
-  } as const,
-
-  avatarFallback: {
-    width: 28,
-    height: 28,
-    borderRadius: '50%',
-    background: '#4f46e5',
-    color: '#fff',
-    display: 'flex',
-    alignItems: 'center',
-    justifyContent: 'center',
-    fontSize: 13,
-    fontWeight: 600,
-    flexShrink: 0,
-  } as const,
-
-  roleBadge: (bg: string, fg: string) =>
-    ({
-      fontSize: 11,
-      padding: '2px 7px',
-      borderRadius: 9999,
-      fontWeight: 600,
-      background: bg,
-      color: fg,
-    }),
-
-  dropdown: {
-    position: 'absolute' as const,
-    top: '100%',
-    right: 0,
-    marginTop: 4,
-    background: '#fff',
-    border: '1px solid #e2e8f0',
-    borderRadius: 6,
-    boxShadow: '0 4px 12px rgba(0,0,0,0.1)',
-    minWidth: 140,
-    zIndex: 200,
-    overflow: 'hidden',
-  } as const,
-
-  dropdownItem: {
-    display: 'block',
-    width: '100%',
-    padding: '8px 14px',
-    background: 'none',
-    border: 'none',
-    textAlign: 'left' as const,
-    fontSize: 14,
-    cursor: 'pointer',
-    color: '#333',
-  } as const,
-
-  content: {
-    flex: 1,
-    padding: 24,
-    minWidth: 0,
-    overflow: 'auto',
-  } as const,
-
-  impersonationBanner: {
-    background: '#f59e0b',
-    color: '#1c1917',
-    padding: '8px 16px',
-    fontSize: 13,
-    fontWeight: 600,
-    display: 'flex',
-    alignItems: 'center',
-    gap: 8,
-  } as const,
-
-  sidebarUserArea: {
-    position: 'relative' as const,
-    display: 'flex',
-    alignItems: 'center',
-    gap: 8,
-    cursor: 'pointer',
-    padding: '10px 16px',
-    borderTop: '1px solid #2a2a4e',
-    userSelect: 'none' as const,
-  } as const,
-
-  sidebarUserName: {
-    flex: 1,
-    fontSize: 14,
-    fontWeight: 500,
-    color: '#eee',
-    overflow: 'hidden',
-    textOverflow: 'ellipsis',
-    whiteSpace: 'nowrap' as const,
-  } as const,
-
-  sidebarDropdown: {
-    position: 'absolute' as const,
-    bottom: '100%',
-    left: 8,
-    right: 8,
-    marginBottom: 4,
-    background: '#fff',
-    border: '1px solid #e2e8f0',
-    borderRadius: 6,
-    boxShadow: '0 -4px 12px rgba(0,0,0,0.2)',
-    zIndex: 200,
-    overflow: 'hidden',
-  } as const,
-};
-
-/* ------------------------------------------------------------------ */
-/*  Helpers                                                            */
-/* ------------------------------------------------------------------ */
-
-const MOBILE_BREAKPOINT = 768;
-
-function useIsMobile() {
-  const [mobile, setMobile] = useState(
-    typeof window !== 'undefined' ? window.innerWidth < MOBILE_BREAKPOINT : false,
-  );
-
-  useEffect(() => {
-    function onResize() {
-      setMobile(window.innerWidth < MOBILE_BREAKPOINT);
-    }
-    window.addEventListener('resize', onResize);
-    return () => window.removeEventListener('resize', onResize);
-  }, []);
-
-  return mobile;
-}
-
-/* ------------------------------------------------------------------ */
 /*  Component                                                          */
 /* ------------------------------------------------------------------ */
 
+/**
+ * App shell: a top bar with a hamburger menu (nav entries) and an account
+ * dropdown, replacing the template's fixed left sidebar. Follows the
+ * pattern established by the `/mockups/main` wireframe (stakeholder,
+ * 2026-07-14, wireframe review round 5) — the hamburger collapses the nav
+ * on every viewport width rather than branching desktop/mobile behavior,
+ * which frees the left edge of the screen for Sprint 005's asset-browser
+ * overlay.
+ */
 export default function AppLayout() {
   const { user, loading, logout } = useAuth();
   const navigate = useNavigate();
   const location = useLocation();
-  const isMobile = useIsMobile();
 
   const isAdminSection = location.pathname.startsWith('/admin/');
 
-  const [sidebarOpen, setSidebarOpen] = useState(false);
+  const [menuOpen, setMenuOpen] = useState(false);
   const [dropdownOpen, setDropdownOpen] = useState(false);
-  const [appName, setAppName] = useState(import.meta.env.VITE_APP_NAME ?? 'Template App');
+  const [appName, setAppName] = useState(import.meta.env.VITE_APP_NAME ?? 'Flyerbot');
+  const menuRef = useRef<HTMLDivElement>(null);
   const dropdownRef = useRef<HTMLDivElement>(null);
 
   // Fetch app name from health endpoint
@@ -287,9 +66,12 @@ export default function AppLayout() {
       .catch(() => {});
   }, []);
 
-  // Close dropdown on outside click
+  // Close menus on outside click
   useEffect(() => {
     function handleClick(e: MouseEvent) {
+      if (menuRef.current && !menuRef.current.contains(e.target as Node)) {
+        setMenuOpen(false);
+      }
       if (dropdownRef.current && !dropdownRef.current.contains(e.target as Node)) {
         setDropdownOpen(false);
       }
@@ -301,7 +83,7 @@ export default function AppLayout() {
   // Redirect to login if not authenticated
   if (loading) {
     return (
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', minHeight: '100vh' }}>
+      <div className="flex min-h-screen items-center justify-center">
         <p>Loading...</p>
       </div>
     );
@@ -316,8 +98,8 @@ export default function AppLayout() {
   const isAdmin = hasAdminAccess(role);
   const avatarInitial = displayName.charAt(0).toUpperCase();
 
-  function closeSidebarIfMobile() {
-    if (isMobile) setSidebarOpen(false);
+  function closeMenu() {
+    setMenuOpen(false);
   }
 
   async function handleLogout() {
@@ -332,181 +114,139 @@ export default function AppLayout() {
     window.location.reload();
   }
 
-  /* ---------- Sidebar ---------- */
-
   const primaryNav = isAdminSection ? ADMIN_NAV : MAIN_NAV;
 
-  const sidebarStyle = isMobile
-    ? styles.sidebar(sidebarOpen)
-    : { ...styles.sidebar(true), ...styles.sidebarDesktop };
-
-  const sidebar = (
-    <nav style={sidebarStyle}>
-      {/* Logo */}
-      <div style={styles.logo}>
-        {isAdminSection ? 'Admin' : appName}
-      </div>
-
-      {/* Mode switch link */}
-      {isAdminSection ? (
-        <NavLink
-          to="/"
-          onClick={closeSidebarIfMobile}
-          style={{
-            display: 'block',
-            padding: '9px 16px',
-            color: '#aaa',
-            textDecoration: 'none',
-            fontSize: 14,
-            borderBottom: '1px solid #2a2a4e',
-          }}
-        >
-          &larr; Back to App
-        </NavLink>
-      ) : null}
-
-      {/* Primary nav */}
-      <div style={{ flex: 1, overflowY: 'auto', paddingTop: 8 }}>
-        {primaryNav.map((item) => (
-          <NavLink
-            key={item.to}
-            to={item.to}
-            end={item.end}
-            onClick={closeSidebarIfMobile}
-            style={({ isActive }) => styles.navLink(isActive)}
-          >
-            {item.label}
-          </NavLink>
-        ))}
-      </div>
-
-      {/* User area — above MCP Setup */}
-      <div
-        ref={dropdownRef}
-        style={styles.sidebarUserArea}
-        onClick={() => setDropdownOpen((v) => !v)}
-      >
-        {user.avatarUrl ? (
-          <img src={user.avatarUrl} alt={displayName} style={styles.avatar} />
-        ) : (
-          <div style={styles.avatarFallback}>{avatarInitial}</div>
-        )}
-        <span style={styles.sidebarUserName}>{displayName}</span>
-        <span style={styles.roleBadge(badge.background, badge.color)}>
-          {roleShortLabel(role)}
-        </span>
-
-        {dropdownOpen && (
-          <div style={styles.sidebarDropdown}>
-            <button
-              style={styles.dropdownItem}
-              onClick={(e) => {
-                e.stopPropagation();
-                setDropdownOpen(false);
-                navigate('/account');
-              }}
-            >
-              Account
-            </button>
-            {user.impersonating ? (
-              <button
-                style={{ ...styles.dropdownItem, borderTop: '1px solid #e2e8f0', color: '#92400e' }}
-                onClick={(e) => {
-                  e.stopPropagation();
-                  void handleStopImpersonating();
-                }}
-              >
-                Stop impersonating
-              </button>
-            ) : (
-              <button
-                style={{ ...styles.dropdownItem, borderTop: '1px solid #e2e8f0' }}
-                onClick={(e) => {
-                  e.stopPropagation();
-                  void handleLogout();
-                }}
-              >
-                Log out
-              </button>
-            )}
-          </div>
-        )}
-      </div>
-
-      {/* Bottom nav */}
-      <div style={{ borderTop: '1px solid #2a2a4e', paddingTop: 4, paddingBottom: 8 }}>
-        {BOTTOM_NAV.map((item) => (
-          <NavLink
-            key={item.to}
-            to={item.to}
-            onClick={closeSidebarIfMobile}
-            style={({ isActive }) => styles.navLink(isActive)}
-          >
-            {item.label}
-          </NavLink>
-        ))}
-        {isAdmin && !isAdminSection && (
-          <NavLink
-            to="/admin/users"
-            onClick={closeSidebarIfMobile}
-            style={({ isActive }) => styles.navLink(isActive)}
-          >
-            Admin
-          </NavLink>
-        )}
-      </div>
-    </nav>
-  );
-
-  /* ---------- Topbar ---------- */
-
-  const topbarLeftOffset = isMobile ? 0 : SIDEBAR_WIDTH;
-
-  const topbar = (
-    <header style={{ ...styles.topbar, left: topbarLeftOffset }}>
-      {isMobile && (
-        <button
-          style={styles.hamburger}
-          onClick={() => setSidebarOpen((v) => !v)}
-          aria-label="Toggle sidebar"
-        >
-          &#9776;
-        </button>
-      )}
-      <div style={{ flex: 1 }} />
-    </header>
-  );
-
-  /* ---------- Render ---------- */
+  const navLinkClass = ({ isActive }: { isActive: boolean }) =>
+    `block px-4 py-1.5 text-sm ${
+      isActive ? 'bg-slate-100 font-semibold text-slate-900' : 'text-slate-600 hover:bg-slate-50'
+    }`;
 
   return (
-    <div style={styles.wrapper}>
-      {/* Mobile overlay */}
-      {isMobile && sidebarOpen && (
-        <div style={styles.overlay} onClick={() => setSidebarOpen(false)} />
-      )}
+    <div className="flex min-h-screen flex-col bg-slate-50 text-slate-800">
+      {/* Top bar: hamburger menu (replaces the old sidebar) + account menu. */}
+      <header className="flex flex-shrink-0 items-center gap-3 border-b border-slate-200 bg-white px-4 py-2">
+        <div className="relative" ref={menuRef}>
+          <button
+            type="button"
+            aria-label="Menu"
+            aria-expanded={menuOpen}
+            onClick={() => setMenuOpen((v) => !v)}
+            className="rounded border border-slate-300 px-3 py-1.5 text-sm text-slate-600 hover:bg-slate-50"
+          >
+            &#9776;
+          </button>
+          {menuOpen && (
+            <nav
+              aria-label="App menu"
+              className="absolute left-0 top-full z-40 mt-1 w-52 rounded border border-slate-200 bg-white py-1 shadow-lg"
+            >
+              {isAdminSection && (
+                <NavLink to="/" onClick={closeMenu} className={navLinkClass}>
+                  &larr; Back to App
+                </NavLink>
+              )}
+              {primaryNav.map((item) => (
+                <NavLink
+                  key={item.to}
+                  to={item.to}
+                  end={item.end}
+                  onClick={closeMenu}
+                  className={navLinkClass}
+                >
+                  {item.label}
+                </NavLink>
+              ))}
+              <div className="my-1 border-t border-slate-100" />
+              {BOTTOM_NAV.map((item) => (
+                <NavLink key={item.to} to={item.to} onClick={closeMenu} className={navLinkClass}>
+                  {item.label}
+                </NavLink>
+              ))}
+              {isAdmin && !isAdminSection && (
+                <NavLink to="/admin/users" onClick={closeMenu} className={navLinkClass}>
+                  Admin
+                </NavLink>
+              )}
+            </nav>
+          )}
+        </div>
 
-      {sidebar}
+        <span className="font-semibold text-slate-700">{isAdminSection ? 'Admin' : appName}</span>
 
-      <div
-        style={{
-          flex: 1,
-          marginLeft: isMobile ? 0 : SIDEBAR_WIDTH,
-          paddingTop: TOPBAR_HEIGHT,
-        }}
-      >
-        {topbar}
-        {user.impersonating && user.realAdmin && (
-          <div style={styles.impersonationBanner}>
-            <span>
-              Viewing as {user.displayName ?? 'unknown'} — real admin: {user.realAdmin.displayName}
+        <div className="flex-1" />
+
+        {/* Account menu */}
+        <div className="relative" ref={dropdownRef}>
+          <div
+            data-testid="user-menu-trigger"
+            className="flex cursor-pointer select-none items-center gap-2 rounded px-2 py-1 hover:bg-slate-50"
+            onClick={() => setDropdownOpen((v) => !v)}
+          >
+            {user.avatarUrl ? (
+              <img
+                src={user.avatarUrl}
+                alt={displayName}
+                className="h-7 w-7 rounded-full object-cover"
+              />
+            ) : (
+              <div className="flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-full bg-indigo-600 text-sm font-semibold text-white">
+                {avatarInitial}
+              </div>
+            )}
+            <span className="text-sm font-medium text-slate-700">{displayName}</span>
+            <span
+              style={{ background: badge.background, color: badge.color }}
+              className="rounded-full px-2 py-0.5 text-xs font-semibold"
+            >
+              {roleShortLabel(role)}
             </span>
           </div>
-        )}
-        <main style={styles.content}>
-          <Outlet />
-        </main>
-      </div>
+
+          {dropdownOpen && (
+            <div className="absolute right-0 top-full z-40 mt-1 w-40 overflow-hidden rounded border border-slate-200 bg-white shadow-lg">
+              <button
+                type="button"
+                className="block w-full px-3.5 py-2 text-left text-sm text-slate-700 hover:bg-slate-50"
+                onClick={() => {
+                  setDropdownOpen(false);
+                  navigate('/account');
+                }}
+              >
+                Account
+              </button>
+              {user.impersonating ? (
+                <button
+                  type="button"
+                  className="block w-full border-t border-slate-100 px-3.5 py-2 text-left text-sm text-amber-800 hover:bg-slate-50"
+                  onClick={() => void handleStopImpersonating()}
+                >
+                  Stop impersonating
+                </button>
+              ) : (
+                <button
+                  type="button"
+                  className="block w-full border-t border-slate-100 px-3.5 py-2 text-left text-sm text-slate-700 hover:bg-slate-50"
+                  onClick={() => void handleLogout()}
+                >
+                  Log out
+                </button>
+              )}
+            </div>
+          )}
+        </div>
+      </header>
+
+      {user.impersonating && user.realAdmin && (
+        <div className="flex flex-shrink-0 items-center gap-2 bg-amber-500 px-4 py-2 text-sm font-semibold text-stone-900">
+          <span>
+            Viewing as {user.displayName ?? 'unknown'} — real admin: {user.realAdmin.displayName}
+          </span>
+        </div>
+      )}
+
+      <main className="min-w-0 flex-1 overflow-auto p-6">
+        <Outlet />
+      </main>
     </div>
   );
 }

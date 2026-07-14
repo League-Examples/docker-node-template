@@ -1,9 +1,10 @@
 {
-  "name": "docker-nodeapp",
-  "version": "0.20260714.17",
+  "name": "flyerbot",
+  "version": "0.20260714.26",
   "private": true,
   "scripts": {
     "dev": "./scripts/dev.sh",
+    "test": "npm run test:server && npm run test:client",
     "test:server": "cd server && npx vitest run",
     "test:client": "cd client && npx vitest run",
     "docker:build": "./scripts/docker.sh build",

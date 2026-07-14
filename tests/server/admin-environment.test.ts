@@ -36,8 +36,6 @@ describe('Admin Environment API', () => {
     expect(typeof integrations).toBe('object');
 
     // Each integration should have a 'configured' boolean
-    expect(integrations.github).toHaveProperty('configured');
-    expect(typeof integrations.github.configured).toBe('boolean');
     expect(integrations.google).toHaveProperty('configured');
     expect(typeof integrations.google.configured).toBe('boolean');
     expect(integrations.anthropic).toHaveProperty('configured');

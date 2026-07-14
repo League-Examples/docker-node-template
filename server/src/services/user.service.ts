@@ -21,10 +21,6 @@ export class UserService {
     return this.prisma.user.findUnique({ where: { email } });
   }
 
-  async findByUsername(username: string) {
-    return this.prisma.user.findUnique({ where: { username } });
-  }
-
   async getByProvider(provider: string, providerId: string) {
     return this.prisma.user.findUnique({
       where: { provider_providerId: { provider, providerId } },
@@ -63,19 +59,6 @@ export class UserService {
       return this.prisma.user.create({ data: { ...data, role: 'ADMIN' } });
     }
     return this.prisma.user.create({ data });
-  }
-
-  async createPasswordUser(data: {
-    username: string;
-    email: string;
-    passwordHash: string;
-    displayName?: string;
-    role?: 'USER' | 'ADMIN';
-  }) {
-    const role = data.role ?? (
-      (await this.prisma.user.count()) === 0 ? 'ADMIN' : 'USER'
-    );
-    return this.prisma.user.create({ data: { ...data, role } });
   }
 
   async updateRole(id: number, role: 'USER' | 'ADMIN') {
