@@ -24,7 +24,11 @@ async function getPrismaClient() {
     const { PrismaClient } = await import('../generated/prisma/client');
     const { PrismaBetterSqlite3 } = await import('@prisma/adapter-better-sqlite3');
     ensureSqliteDir(process.env.DATABASE_URL!);
-    const adapter = new PrismaBetterSqlite3({ url: process.env.DATABASE_URL! });
+    // `timeout` maps to better-sqlite3's busy_timeout (ms): when a write finds
+    // the database locked by another connection, retry for up to this long
+    // instead of throwing SQLITE_BUSY immediately. Defensive hardening for
+    // any transient lock contention against the shared SQLite file.
+    const adapter = new PrismaBetterSqlite3({ url: process.env.DATABASE_URL!, timeout: 5000 });
     _prisma = new PrismaClient({ adapter });
   }
   return _prisma;
@@ -46,4 +50,16 @@ export const prisma = new Proxy({} as any, {
 
 export async function initPrisma() {
   await getPrismaClient();
+}
+
+// Closes the underlying better-sqlite3 connection and clears the cached
+// client so a subsequent initPrisma() call opens a fresh one. Used by test
+// teardown (see tests/server/setup.ts) so each vitest test file's process
+// closes its SQLite connection cleanly before exiting, rather than relying
+// on process teardown to release the file handle implicitly.
+export async function disconnectPrisma() {
+  if (_prisma) {
+    await _prisma.$disconnect();
+    _prisma = undefined;
+  }
 }
