@@ -1,7 +1,7 @@
 ---
 id: '001'
 title: Wireframe Mockups and Auth Cleanup
-status: done
+status: closed
 branch: sprint/001-wireframe-mockups-and-auth-cleanup
 use-cases: []
 issues:
