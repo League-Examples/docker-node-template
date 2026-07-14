@@ -1,0 +1,1 @@
+/Volumes/Proj/proj/league-projects/infrastructure/flyerbot/.agents/skills/gh-import/SKILL.md
