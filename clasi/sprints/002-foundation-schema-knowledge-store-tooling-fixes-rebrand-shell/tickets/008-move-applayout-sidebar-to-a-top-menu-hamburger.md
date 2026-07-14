@@ -1,9 +1,11 @@
 ---
-id: '008'
+id: 008
 title: Move AppLayout sidebar to a top menu / hamburger
-status: open
-use-cases: [SUC-007]
-depends-on: ['007']
+status: done
+use-cases:
+- SUC-007
+depends-on:
+- '007'
 github-issue: ''
 issue: move-app-shell-sidebar-to-top-menu.md
 completes_issue: true
@@ -34,25 +36,25 @@ architecture-update.md's Design Rationale R3.
 
 ## Acceptance Criteria
 
-- [ ] `AppLayout.tsx` no longer renders a fixed 240px sidebar.
-- [ ] A top bar (with a hamburger menu or a visible horizontal nav —
+- [x] `AppLayout.tsx` no longer renders a fixed 240px sidebar.
+- [x] A top bar (with a hamburger menu or a visible horizontal nav —
       implementer's call, following the `/mockups/main` wireframe's
       pattern) hosts the same set of entries previously in
       `MAIN_NAV`/`ADMIN_NAV`/`BOTTOM_NAV`.
-- [ ] The account dropdown (Account / Log out) is present and functional
+- [x] The account dropdown (Account / Log out) is present and functional
       in the new top bar.
-- [ ] The impersonation banner (if an admin is impersonating another
+- [x] The impersonation banner (if an admin is impersonating another
       user) still renders correctly in the new layout.
-- [ ] `AdminLayout.tsx` (nested for `/admin`) still renders correctly
+- [x] `AdminLayout.tsx` (nested for `/admin`) still renders correctly
       inside the reworked `AppLayout` shell — no broken nesting.
-- [ ] Mobile behavior (whatever the sidebar's existing responsive
+- [x] Mobile behavior (whatever the sidebar's existing responsive
       behavior was) has an equivalent in the top-bar/hamburger version —
       not a regression to a broken or non-collapsing mobile nav.
-- [ ] `tests/client/AppLayout.test.tsx` is updated to test the new
+- [x] `tests/client/AppLayout.test.tsx` is updated to test the new
       top-bar markup and passes.
-- [ ] The top bar displays the rebranded app name (ticket 007's
+- [x] The top bar displays the rebranded app name (ticket 007's
       `APP_NAME` value), not the old template name.
-- [ ] No other page's layout assumes a fixed-width sidebar exists
+- [x] No other page's layout assumes a fixed-width sidebar exists
       (e.g. no hardcoded `margin-left: 240px` or similar elsewhere in
       `client/src/`) — grep for sidebar-width assumptions and update any
       found.
@@ -101,7 +103,37 @@ already-specified wireframe pattern, not a new design decision.
 
 ## Testing
 
-- **Existing tests to run**: `npm test`.
-- **New tests to write**: `AppLayout.test.tsx` updates for the new
-  top-bar shell.
-- **Verification command**: `npm test`
+- **Existing tests to run**: `npm test` — full suite ran clean:
+  158 server tests / 94 client tests (was 91; +3 net new AppLayout
+  cases replacing/extending the old sidebar-oriented assertions).
+- **New tests to write**: `AppLayout.test.tsx` was reworked around the
+  hamburger-menu shell — nav entries are asserted closed by default and
+  present after clicking the "Menu" button (`aria-label="Menu"`), the
+  menu closes on nav-entry click, the account dropdown now opens via a
+  `data-testid="user-menu-trigger"` element (replacing the old
+  `div[style]` selector), and a new test asserts the rebranded
+  "Flyerbot" app name renders in the top bar. Existing impersonation-
+  banner and admin-role tests were kept, adjusted only where they needed
+  to open the hamburger menu first.
+- **Verification command**: `npm test` — exit 0. Also ran `npx tsc -b`
+  and `npx eslint src/components/AppLayout.tsx` in `client/` — both
+  clean.
+
+### Implementation notes
+
+- `AppLayout.tsx` was rewritten from inline-style, `isMobile`-branching
+  sidebar/topbar markup to a single Tailwind-classed top bar (matching
+  the `/mockups/main` wireframe pattern and the Tailwind conventions
+  already used by `HomePage.tsx`/`Login.tsx`). The hamburger menu
+  behaves identically at every viewport width — it collapses the nav
+  behind a button on both mobile and desktop, which is the mobile-
+  equivalent behavior required by the acceptance criteria (no separate
+  mobile/desktop code path needed, since the collapsed-by-default
+  hamburger *is* the mobile behavior, now applied universally).
+- `AdminLayout.tsx` (`client/src/pages/admin/AdminLayout.tsx`) needed no
+  changes — it only renders an `<Outlet />` after an auth check and has
+  no layout assumptions of its own.
+- Grepped `client/src` for `240`/`sidebar` width assumptions outside
+  `AppLayout.tsx`; found none. Updated one stale comment in `App.tsx`
+  ("AppLayout (sidebar + topbar)" -> "AppLayout (top bar + hamburger
+  menu)").

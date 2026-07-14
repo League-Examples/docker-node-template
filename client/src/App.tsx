@@ -51,7 +51,7 @@ function App() {
             <Route path="/mockups/login" element={<MockupLogin />} />
             <Route path="/mockups/projects" element={<MockupProjects />} />
 
-            {/* All authenticated routes share AppLayout (sidebar + topbar) */}
+            {/* All authenticated routes share AppLayout (top bar + hamburger menu) */}
             <Route element={<AppLayout />}>
               <Route path="/" element={<HomePage />} />
 
