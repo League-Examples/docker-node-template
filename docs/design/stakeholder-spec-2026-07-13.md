@@ -274,6 +274,15 @@ Responding to `specification.md` §16:
     working with. Updates always work off the accepted one; **if nothing
     is accepted, work off the last one**, unless the user explicitly says
     to work off a different version.
+- Round 7 (2026-07-14): on the iterations page — a **back arrow** to the
+  projects list; a **PDF button** showing the accepted/marked pages (just
+  the front if only a front; front and back if both); a **"Text Entry"
+  button** forward to the postcard/text-boxes view.
+  - On the text-boxes view: **drag on the postcard to draw a new text
+    box** — it rubber-bands from the anchor corner, then pops up asking
+    for a name; the name shows in the box just like existing ones.
+  - **Click a created text box** → a **delete button** off to the side
+    (in its popup) removes it.
 
 ---
 

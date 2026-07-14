@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { Link } from 'react-router-dom';
 import {
   STUB_OUTPUT_ITERATIONS,
   STUB_PROJECT_META,
@@ -6,6 +7,40 @@ import {
 } from './mockupStubData';
 
 type IterationRole = 'none' | 'front' | 'back';
+
+/** Opens a print-formatted window showing one 6x4in page per marked
+ * side (front first). "PDF view of the accepted pages": just the front
+ * if only a front is marked; front and back if both are. */
+function openSidesPdf(pages: { side: string; label: string }[]) {
+  const w = window.open('', '_blank', 'width=700,height=550');
+  if (!w) return;
+  const pageDivs = pages
+    .map(
+      (p) =>
+        `<div class="page"><p>${p.side.toUpperCase()} — ${p.label}</p></div>`,
+    )
+    .join('\n');
+  w.document.write(`<!doctype html>
+<html>
+<head>
+<title>Postcard PDF preview</title>
+<style>
+  @page { size: 6in 4in; margin: 0; }
+  body { margin: 0; }
+  .page {
+    width: 6in; height: 4in; page-break-after: always; background: #eee;
+    display: flex; align-items: center; justify-content: center;
+    font-family: sans-serif; color: #666;
+  }
+</style>
+</head>
+<body>
+${pageDivs}
+<script>window.onload = function () { window.print(); };</script>
+</body>
+</html>`);
+  w.document.close();
+}
 
 /**
  * Top portion of the right pane: the project-output view (spec §2, §6).
@@ -53,14 +88,40 @@ export default function MockupOutputPane() {
     });
   }
 
+  const markedSides = (['front', 'back'] as const)
+    .filter((s) => roles[s] !== null)
+    .map((s) => ({
+      side: s,
+      label:
+        STUB_OUTPUT_ITERATIONS.find((it) => it.id === roles[s])?.label ?? '',
+    }));
+
   return (
     <section className="flex-[3] min-h-0 overflow-y-auto border-b border-slate-200 p-4">
-      <header className="mb-4">
-        <h1 className="text-lg font-semibold text-slate-800">{STUB_PROJECT_NAME}</h1>
-        <p className="text-sm text-slate-500">{STUB_PROJECT_META}</p>
-        <p data-testid="working-from" className="mt-1 text-xs text-slate-400">
-          Working from: {workingFrom}
-        </p>
+      <header className="mb-4 flex items-start gap-4">
+        <div>
+          <h1 className="text-lg font-semibold text-slate-800">{STUB_PROJECT_NAME}</h1>
+          <p className="text-sm text-slate-500">{STUB_PROJECT_META}</p>
+          <p data-testid="working-from" className="mt-1 text-xs text-slate-400">
+            Working from: {workingFrom}
+          </p>
+        </div>
+        <div className="ml-auto flex flex-shrink-0 items-center gap-2">
+          <button
+            type="button"
+            disabled={markedSides.length === 0}
+            onClick={() => openSidesPdf(markedSides)}
+            className="rounded border border-slate-300 px-3 py-1.5 text-sm font-semibold text-slate-600 hover:bg-slate-50 disabled:opacity-50"
+          >
+            PDF
+          </button>
+          <Link
+            to="/mockups/postcard-edit"
+            className="rounded bg-indigo-600 px-3 py-1.5 text-sm font-semibold text-white hover:bg-indigo-700"
+          >
+            Text Entry
+          </Link>
+        </div>
       </header>
 
       {/* Iterations stack vertically, one per row — not side by side. */}

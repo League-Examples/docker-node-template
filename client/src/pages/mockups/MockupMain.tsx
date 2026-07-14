@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { Link } from 'react-router-dom';
 import MockupLeftBrowser from './MockupLeftBrowser';
 import MockupOutputPane from './MockupOutputPane';
 import MockupChatPanel from './MockupChatPanel';
@@ -61,6 +62,13 @@ export default function MockupMain() {
             </nav>
           )}
         </div>
+        <Link
+          to="/mockups/projects"
+          aria-label="Back to projects"
+          className="rounded border border-slate-300 px-2.5 py-1 text-sm text-slate-600 hover:bg-slate-50"
+        >
+          ←
+        </Link>
         <span className="font-semibold text-slate-700">Flyerbot</span>
       </header>
 

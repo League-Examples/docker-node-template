@@ -1,6 +1,15 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, vi } from 'vitest';
 import { render, screen, fireEvent } from '@testing-library/react';
+import { MemoryRouter } from 'react-router-dom';
 import MockupMain from '../../client/src/pages/mockups/MockupMain';
+
+function renderMain() {
+  return render(
+    <MemoryRouter>
+      <MockupMain />
+    </MemoryRouter>,
+  );
+}
 
 function openLibrary() {
   fireEvent.click(screen.getByRole('button', { name: /open library/i }));
@@ -15,7 +24,7 @@ function expectDrawerOpen(open: boolean) {
 
 describe('MockupMain', () => {
   it('renders a top bar with a hamburger menu instead of a sidebar', () => {
-    render(<MockupMain />);
+    renderMain();
     const menuButton = screen.getByRole('button', { name: /menu/i });
     expect(menuButton).toBeInTheDocument();
 
@@ -25,13 +34,13 @@ describe('MockupMain', () => {
   });
 
   it('starts with the asset browser drawer closed, pull tab showing', () => {
-    render(<MockupMain />);
+    renderMain();
     expectDrawerOpen(false);
     expect(screen.getByRole('button', { name: /open library/i })).toBeInTheDocument();
   });
 
   it('slides the drawer open via the pull tab and closed again', () => {
-    render(<MockupMain />);
+    renderMain();
     openLibrary();
     expectDrawerOpen(true);
     expect(screen.getByRole('button', { name: 'Assets' })).toBeInTheDocument();
@@ -42,7 +51,7 @@ describe('MockupMain', () => {
   });
 
   it('switches the visible library list when a category tab is clicked', () => {
-    render(<MockupMain />);
+    renderMain();
     openLibrary();
 
     fireEvent.click(screen.getByRole('button', { name: 'Styles' }));
@@ -51,7 +60,7 @@ describe('MockupMain', () => {
   });
 
   it('double-clicking an item adds it as a project reference and closes the drawer', () => {
-    render(<MockupMain />);
+    renderMain();
     openLibrary();
 
     fireEvent.doubleClick(screen.getByText(/league robot logo/i));
@@ -62,7 +71,7 @@ describe('MockupMain', () => {
   });
 
   it('renders the project output area with iteration placeholders', () => {
-    render(<MockupMain />);
+    renderMain();
     expect(screen.getByRole('heading', { name: /spring open house flyer/i })).toBeInTheDocument();
     expect(screen.getByText('Iteration 1')).toBeInTheDocument();
     expect(screen.getByText('Iteration 3')).toBeInTheDocument();
@@ -70,7 +79,7 @@ describe('MockupMain', () => {
   });
 
   it('works from the last iteration until one is accepted; accepting is exclusive', () => {
-    render(<MockupMain />);
+    renderMain();
     expect(screen.getByTestId('working-from')).toHaveTextContent(
       /iteration 3 \(last — nothing accepted\)/i,
     );
@@ -84,7 +93,7 @@ describe('MockupMain', () => {
   });
 
   it('marking a new iteration as front releases the previous front', () => {
-    render(<MockupMain />);
+    renderMain();
     // Stub starts with iteration 2 as the front.
     expect(screen.getByTestId('role-badge-iter-002')).toHaveTextContent(/front/i);
 
@@ -98,8 +107,47 @@ describe('MockupMain', () => {
   });
 
   it('renders the chat panel below the output area', () => {
-    render(<MockupMain />);
+    renderMain();
     expect(screen.getByPlaceholderText(/message claude/i)).toBeInTheDocument();
     expect(screen.getByRole('button', { name: /send/i })).toBeInTheDocument();
+  });
+
+  it('has a back arrow to projects and a Text Entry link to the postcard view', () => {
+    renderMain();
+    expect(screen.getByRole('link', { name: /back to projects/i })).toHaveAttribute(
+      'href',
+      '/mockups/projects',
+    );
+    expect(screen.getByRole('link', { name: /text entry/i })).toHaveAttribute(
+      'href',
+      '/mockups/postcard-edit',
+    );
+  });
+
+  it('PDF button prints only the marked sides', () => {
+    const docWrite = vi.fn();
+    const openMock = vi.fn(() => ({
+      document: { write: docWrite, close: vi.fn() },
+    }));
+    vi.stubGlobal('open', openMock);
+
+    renderMain();
+
+    // Stub starts with only iteration 2 marked as the front.
+    fireEvent.click(screen.getByRole('button', { name: 'PDF' }));
+    let html = docWrite.mock.calls[0][0] as string;
+    expect(html).toContain('FRONT — Iteration 2');
+    expect(html).not.toContain('BACK');
+
+    // Mark a back side too; now both pages print.
+    fireEvent.change(screen.getByRole('combobox', { name: /iteration 3 side/i }), {
+      target: { value: 'back' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'PDF' }));
+    html = docWrite.mock.calls[1][0] as string;
+    expect(html).toContain('FRONT — Iteration 2');
+    expect(html).toContain('BACK — Iteration 3');
+
+    vi.unstubAllGlobals();
   });
 });

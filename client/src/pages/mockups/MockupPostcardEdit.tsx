@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 import MockupChatPanel from './MockupChatPanel';
 import {
   STUB_POSTCARD_REGIONS,
@@ -9,9 +9,8 @@ import type { PostcardRegion, PostcardSide } from './mockupStubData';
 
 const SIDES: PostcardSide[] = ['front', 'back'];
 
-/** Builds the initial name -> text map from every region on every side.
- * Region names are unique across front/back, so a single flat map is
- * enough to keep each side's edits independent of the other. */
+/** Builds the initial name -> text map from every stub region. New
+ * regions created by drawing get their entries added on creation. */
 function buildInitialTextMap(): Record<string, string> {
   const map: Record<string, string> = {};
   for (const side of SIDES) {
@@ -45,10 +44,10 @@ function escapeHtml(value: string): string {
 /** One 6in x 4in page of print HTML for a postcard side. */
 function printPageHtml(
   side: PostcardSide,
+  regions: PostcardRegion[],
   regionText: Record<string, string>,
   qrUrl: string,
 ): string {
-  const regions = STUB_POSTCARD_REGIONS[side];
   const overlay = STUB_POSTCARD_EXTRA_OVERLAY[side];
 
   const regionDivs = regions
@@ -76,7 +75,11 @@ function printPageHtml(
  * the browser print dialog — on macOS that dialog is the PDF preview /
  * "Open in Preview" path. Wireframe stand-in for the real server-side PDF
  * pipeline (spec §11 grounding: postcard-content.json -> HTML -> PDF). */
-function openPdfPreview(regionText: Record<string, string>, qrUrl: string) {
+function openPdfPreview(
+  regionsBySide: Record<PostcardSide, PostcardRegion[]>,
+  regionText: Record<string, string>,
+  qrUrl: string,
+) {
   const w = window.open('', '_blank', 'width=700,height=550');
   if (!w) return;
   w.document.write(`<!doctype html>
@@ -96,36 +99,53 @@ function openPdfPreview(regionText: Record<string, string>, qrUrl: string) {
 </style>
 </head>
 <body>
-${printPageHtml('front', regionText, qrUrl)}
-${printPageHtml('back', regionText, qrUrl)}
+${printPageHtml('front', regionsBySide.front, regionText, qrUrl)}
+${printPageHtml('back', regionsBySide.back, regionText, qrUrl)}
 <script>window.onload = function () { window.print(); };</script>
 </body>
 </html>`);
   w.document.close();
 }
 
+interface DrawRect {
+  x: number;
+  y: number;
+  w: number;
+  h: number;
+}
+
+/** Turn a label into a region name unique within the side. */
+function makeRegionName(side: PostcardSide, label: string, taken: Set<string>): string {
+  const slug = label.toLowerCase().replace(/[^a-z0-9]+/g, '_').replace(/^_|_$/g, '') || 'box';
+  let name = `${side}_${slug}`;
+  let n = 2;
+  while (taken.has(name)) name = `${side}_${slug}_${n++}`;
+  return name;
+}
+
 /**
- * /mockups/postcard-edit — the postcard text-region edit form wireframe
- * (spec §11's "the agent makes a web page for that" example; UC-010/
- * SUC-004). Explicit design decisions (stakeholder, 2026-07-14):
- * - This view does NOT show the left-pane asset browser — it is a
- *   full-width, agent-authored editing surface.
- * - Front/back are tabs: only one side's preview and region fields show
- *   at a time.
- * - Vertical stack (stakeholder, 2026-07-14, round 3): postcard with its
- *   front/back tabs on top; below it a scrollable box holding the text
- *   fields; below that the chat session.
- * - The chat box is present at the bottom: instructions here are not
- *   limited to the text regions — the user can instruct about almost
- *   anything (layout, fonts, images, the QR overlay...).
- * Editing a region's text input live-updates only that region's text in
- * the preview via local `useState` — no network call, no persistence.
- * "Generate PDF" opens a print-formatted window (6x4in pages, BOTH sides
- * regardless of the active tab) and triggers the print dialog, which on
- * macOS doubles as the PDF preview. See architecture-update.md, Decision 4.
+ * /mockups/postcard-edit — the postcard text-entry view (spec §11's "the
+ * agent makes a web page for that" example; UC-010/SUC-004). Explicit
+ * design decisions (stakeholder, 2026-07-14, rounds 2-7):
+ * - No left-pane asset browser here — full-width, agent-authored surface.
+ * - Front/back are tabs: one side's preview and fields at a time.
+ * - Vertical stack: postcard + tabs on top, scrollable text-field box
+ *   below, chat session at the bottom (instructions in chat are not
+ *   limited to the text regions).
+ * - Regions are clickable: popup editor, Return applies, popup sized to
+ *   fit the text; the popup also carries the DELETE button that removes
+ *   the box.
+ * - DRAWING a box: drag on the postcard from an anchor corner to rubber-
+ *   band a new text box; on release a popup asks for its name; the name
+ *   then shows in the box just like the stub regions.
+ * - The QR overlay is clickable: enter the URL the QR code encodes.
+ * Reached from the iterations page's "Text Entry" button.
  */
 export default function MockupPostcardEdit() {
   const [side, setSide] = useState<PostcardSide>('back');
+  const [regionsBySide, setRegionsBySide] = useState<Record<PostcardSide, PostcardRegion[]>>(
+    () => ({ front: [...STUB_POSTCARD_REGIONS.front], back: [...STUB_POSTCARD_REGIONS.back] }),
+  );
   const [regionText, setRegionText] = useState<Record<string, string>>(buildInitialTextMap);
   // Click-to-edit popup state: which region is being edited, and its draft.
   const [editingRegion, setEditingRegion] = useState<PostcardRegion | null>(null);
@@ -134,8 +154,14 @@ export default function MockupPostcardEdit() {
   const [qrUrl, setQrUrl] = useState('https://jointheleague.org/robot-riot');
   const [editingQr, setEditingQr] = useState(false);
   const [draftQrUrl, setDraftQrUrl] = useState('');
+  // Draw-a-box state: anchor corner, live rubber-band rect, then naming.
+  const previewRef = useRef<HTMLDivElement>(null);
+  const [drawAnchor, setDrawAnchor] = useState<{ x: number; y: number } | null>(null);
+  const [drawRect, setDrawRect] = useState<DrawRect | null>(null);
+  const [namingRect, setNamingRect] = useState<DrawRect | null>(null);
+  const [draftName, setDraftName] = useState('');
 
-  const regions = STUB_POSTCARD_REGIONS[side];
+  const regions = regionsBySide[side];
   const overlay = STUB_POSTCARD_EXTRA_OVERLAY[side];
 
   function handleRegionTextChange(name: string, value: string) {
@@ -154,6 +180,72 @@ export default function MockupPostcardEdit() {
     setEditingRegion(null);
   }
 
+  function deleteEditingRegion() {
+    if (!editingRegion) return;
+    const name = editingRegion.name;
+    setRegionsBySide((prev) => ({
+      ...prev,
+      [side]: prev[side].filter((r) => r.name !== name),
+    }));
+    setEditingRegion(null);
+  }
+
+  // --- Drawing handlers (preview background only, not region buttons) ---
+
+  function previewPoint(event: React.MouseEvent): { x: number; y: number } {
+    const rect = previewRef.current?.getBoundingClientRect();
+    return { x: event.clientX - (rect?.left ?? 0), y: event.clientY - (rect?.top ?? 0) };
+  }
+
+  function handlePreviewMouseDown(event: React.MouseEvent) {
+    if (event.target !== event.currentTarget) return; // ignore drags on regions
+    setDrawAnchor(previewPoint(event));
+    setDrawRect(null);
+  }
+
+  function handlePreviewMouseMove(event: React.MouseEvent) {
+    if (!drawAnchor) return;
+    const p = previewPoint(event);
+    setDrawRect({
+      x: Math.min(drawAnchor.x, p.x),
+      y: Math.min(drawAnchor.y, p.y),
+      w: Math.abs(p.x - drawAnchor.x),
+      h: Math.abs(p.y - drawAnchor.y),
+    });
+  }
+
+  function handlePreviewMouseUp() {
+    if (drawAnchor && drawRect && (drawRect.w > 10 || drawRect.h > 10)) {
+      setNamingRect(drawRect);
+      setDraftName('');
+    }
+    setDrawAnchor(null);
+    setDrawRect(null);
+  }
+
+  function createRegionFromRect(rect: DrawRect, label: string) {
+    // Preview is 6in wide; jsdom reports zero width, so fall back to 96dpi.
+    const measured = previewRef.current?.getBoundingClientRect().width ?? 0;
+    const pxPerInch = measured > 0 ? measured / 6 : 96;
+    const taken = new Set(SIDES.flatMap((s) => regionsBySide[s].map((r) => r.name)));
+    const name = makeRegionName(side, label, taken);
+    const region: PostcardRegion = {
+      name,
+      label,
+      style: 'custom',
+      text: '',
+      position: {
+        top: `${(rect.y / pxPerInch).toFixed(2)}in`,
+        left: `${(rect.x / pxPerInch).toFixed(2)}in`,
+        width: `${Math.max(rect.w / pxPerInch, 0.5).toFixed(2)}in`,
+      },
+      font: { family: 'Arial, sans-serif', size: '14px' },
+    };
+    setRegionsBySide((prev) => ({ ...prev, [side]: [...prev[side], region] }));
+    setRegionText((prev) => ({ ...prev, [name]: '' }));
+    setNamingRect(null);
+  }
+
   return (
     <div className="flex h-screen flex-col bg-slate-50 text-slate-800">
       {/* Top: title row, then the postcard with its front/back tabs. */}
@@ -162,16 +254,16 @@ export default function MockupPostcardEdit() {
           <div className="mb-4 flex items-start justify-between gap-4">
             <div>
               <h1 className="text-xl font-semibold text-slate-800">
-                Postcard text-region edit form
+                Postcard text entry
               </h1>
               <p className="text-sm text-slate-500">
-                Structural wireframe only — region positions are an
-                approximation, not a print-accurate renderer.
+                Drag on the postcard to draw a new text box. Click a box to
+                edit or delete it.
               </p>
             </div>
             <button
               type="button"
-              onClick={() => openPdfPreview(regionText, qrUrl)}
+              onClick={() => openPdfPreview(regionsBySide, regionText, qrUrl)}
               className="flex-shrink-0 rounded bg-indigo-600 px-4 py-2 text-sm font-semibold text-white hover:bg-indigo-700"
             >
               Generate PDF
@@ -201,66 +293,81 @@ export default function MockupPostcardEdit() {
           </div>
 
           <div
+            ref={previewRef}
             data-testid="postcard-preview"
-            className="relative mx-auto mb-4 border-2 border-slate-300 bg-white shadow-sm"
+            onMouseDown={handlePreviewMouseDown}
+            onMouseMove={handlePreviewMouseMove}
+            onMouseUp={handlePreviewMouseUp}
+            className="relative mx-auto mb-4 cursor-crosshair border-2 border-slate-300 bg-white shadow-sm"
             style={{ width: '6in', height: '4in' }}
           >
-                {regions.length === 0 && (
-                  <p className="absolute inset-0 flex items-center justify-center text-sm text-slate-300">
-                    {side} image only — no text regions
-                  </p>
-                )}
-                {regions.map((region) => (
-                  <button
-                    key={region.name}
-                    type="button"
-                    data-testid={`postcard-region-box-${region.name}`}
-                    aria-label={`Edit ${region.label}`}
-                    onClick={() => openRegionEditor(region)}
-                    className="absolute cursor-pointer overflow-hidden border border-dashed border-indigo-400 bg-indigo-50/60 p-1 text-left text-[9px] leading-tight hover:bg-indigo-100"
-                    style={{
-                      top: region.position.top,
-                      left: region.position.left,
-                      right: region.position.right,
-                      width: region.position.width,
-                    }}
-                  >
-                    <span className="block font-semibold text-indigo-700">
-                      {region.label}
-                    </span>
-                    <span data-testid={`postcard-region-text-${region.name}`}>
-                      {regionText[region.name]}
-                    </span>
-                  </button>
-                ))}
+            {regions.length === 0 && (
+              <p className="pointer-events-none absolute inset-0 flex items-center justify-center text-sm text-slate-300">
+                {side} image only — drag to draw a text box
+              </p>
+            )}
+            {regions.map((region) => (
+              <button
+                key={region.name}
+                type="button"
+                data-testid={`postcard-region-box-${region.name}`}
+                aria-label={`Edit ${region.label}`}
+                onClick={() => openRegionEditor(region)}
+                className="absolute cursor-pointer overflow-hidden border border-dashed border-indigo-400 bg-indigo-50/60 p-1 text-left text-[9px] leading-tight hover:bg-indigo-100"
+                style={{
+                  top: region.position.top,
+                  left: region.position.left,
+                  right: region.position.right,
+                  width: region.position.width,
+                }}
+              >
+                <span className="block font-semibold text-indigo-700">{region.label}</span>
+                <span data-testid={`postcard-region-text-${region.name}`}>
+                  {regionText[region.name]}
+                </span>
+              </button>
+            ))}
 
-                {overlay && (
-                  <button
-                    type="button"
-                    data-testid="postcard-extra-overlay"
-                    aria-label={`${overlay.label} — set URL`}
-                    onClick={() => {
-                      setDraftQrUrl(qrUrl);
-                      setEditingQr(true);
-                    }}
-                    className="absolute flex cursor-pointer flex-col items-center justify-center border-2 border-dashed border-amber-500 bg-amber-50/70 p-1 text-center text-[9px] font-semibold text-amber-700 hover:bg-amber-100"
-                    style={{
-                      top: overlay.position.top,
-                      left: overlay.position.left,
-                      right: overlay.position.right,
-                      width: overlay.position.width,
-                      height: overlay.position.height,
-                    }}
-                  >
-                    <span>{overlay.label}</span>
-                    <span
-                      data-testid="postcard-qr-url"
-                      className="mt-0.5 block max-w-full truncate font-normal"
-                    >
-                      {qrUrl}
-                    </span>
-                  </button>
-                )}
+            {drawRect && (
+              <div
+                data-testid="draw-rubber-band"
+                className="pointer-events-none absolute border-2 border-dashed border-emerald-500 bg-emerald-50/40"
+                style={{
+                  top: drawRect.y,
+                  left: drawRect.x,
+                  width: drawRect.w,
+                  height: drawRect.h,
+                }}
+              />
+            )}
+
+            {overlay && (
+              <button
+                type="button"
+                data-testid="postcard-extra-overlay"
+                aria-label={`${overlay.label} — set URL`}
+                onClick={() => {
+                  setDraftQrUrl(qrUrl);
+                  setEditingQr(true);
+                }}
+                className="absolute flex cursor-pointer flex-col items-center justify-center border-2 border-dashed border-amber-500 bg-amber-50/70 p-1 text-center text-[9px] font-semibold text-amber-700 hover:bg-amber-100"
+                style={{
+                  top: overlay.position.top,
+                  left: overlay.position.left,
+                  right: overlay.position.right,
+                  width: overlay.position.width,
+                  height: overlay.position.height,
+                }}
+              >
+                <span>{overlay.label}</span>
+                <span
+                  data-testid="postcard-qr-url"
+                  className="mt-0.5 block max-w-full truncate font-normal"
+                >
+                  {qrUrl}
+                </span>
+              </button>
+            )}
           </div>
         </div>
       </div>
@@ -312,8 +419,7 @@ export default function MockupPostcardEdit() {
         <MockupChatPanel messages={STUB_POSTCARD_CHAT_MESSAGES} />
       </div>
 
-      {/* Click-to-edit popup: click a region on the postcard, edit its
-          text here, hit return to apply. */}
+      {/* Click-to-edit popup: edit the text, or delete the box. */}
       {editingRegion && (
         <div
           className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/40"
@@ -325,13 +431,24 @@ export default function MockupPostcardEdit() {
             className="w-full max-w-2xl rounded-lg bg-white p-6 shadow-xl"
             onClick={(event) => event.stopPropagation()}
           >
-            <h3 className="text-sm font-semibold text-slate-700">
-              {editingRegion.label}
-            </h3>
-            <p className="mb-3 mt-0.5 text-xs text-slate-500">
-              {summarizePositionAndFont(editingRegion)} — Return applies,
-              Shift+Return for a new line, Esc cancels
-            </p>
+            <div className="flex items-start justify-between gap-4">
+              <div>
+                <h3 className="text-sm font-semibold text-slate-700">
+                  {editingRegion.label}
+                </h3>
+                <p className="mb-3 mt-0.5 text-xs text-slate-500">
+                  {summarizePositionAndFont(editingRegion)} — Return applies,
+                  Shift+Return for a new line, Esc cancels
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={deleteEditingRegion}
+                className="flex-shrink-0 rounded border border-red-300 px-3 py-1.5 text-sm font-semibold text-red-600 hover:bg-red-50"
+              >
+                Delete
+              </button>
+            </div>
             <textarea
               autoFocus
               aria-label={`${editingRegion.label} text`}
@@ -351,8 +468,43 @@ export default function MockupPostcardEdit() {
         </div>
       )}
 
-      {/* QR popup: click the QR overlay, enter the URL the QR code
-          should encode, hit return to apply. */}
+      {/* Name-the-new-box popup, after drawing. */}
+      {namingRect && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/40"
+          onClick={() => setNamingRect(null)}
+        >
+          <div
+            role="dialog"
+            aria-label="Name new text box"
+            className="w-full max-w-md rounded-lg bg-white p-6 shadow-xl"
+            onClick={(event) => event.stopPropagation()}
+          >
+            <h3 className="text-sm font-semibold text-slate-700">New text box</h3>
+            <p className="mb-3 mt-0.5 text-xs text-slate-500">
+              Name it — Return creates, Esc discards
+            </p>
+            <input
+              autoFocus
+              type="text"
+              aria-label="Text box name"
+              placeholder="e.g. Headline"
+              value={draftName}
+              onChange={(event) => setDraftName(event.target.value)}
+              onKeyDown={(event) => {
+                if (event.key === 'Escape') setNamingRect(null);
+                if (event.key === 'Enter' && draftName.trim()) {
+                  event.preventDefault();
+                  createRegionFromRect(namingRect, draftName.trim());
+                }
+              }}
+              className="w-full rounded border border-slate-300 px-3 py-2 text-base text-slate-800"
+            />
+          </div>
+        </div>
+      )}
+
+      {/* QR popup: enter the URL the QR code should encode. */}
       {editingQr && (
         <div
           className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/40"

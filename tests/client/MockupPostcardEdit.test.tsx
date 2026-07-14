@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, afterEach } from 'vitest';
-import { render, screen, within } from '@testing-library/react';
+import { render, screen, within, fireEvent } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import MockupPostcardEdit from '../../client/src/pages/mockups/MockupPostcardEdit';
 
@@ -117,6 +117,41 @@ describe('MockupPostcardEdit', () => {
     expect(screen.getByTestId('postcard-qr-url')).toHaveTextContent(
       'https://example.org/signup',
     );
+  });
+
+  it('dragging on the postcard draws a box; naming it creates a region', async () => {
+    const user = userEvent.setup();
+    render(<MockupPostcardEdit />);
+
+    const preview = screen.getByTestId('postcard-preview');
+    fireEvent.mouseDown(preview, { clientX: 100, clientY: 50 });
+    fireEvent.mouseMove(preview, { clientX: 240, clientY: 120 });
+    expect(screen.getByTestId('draw-rubber-band')).toBeInTheDocument();
+    fireEvent.mouseUp(preview);
+
+    const dialog = screen.getByRole('dialog', { name: /name new text box/i });
+    const nameInput = within(dialog).getByLabelText(/text box name/i);
+    await user.type(nameInput, 'Tagline{Enter}');
+
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+    expect(screen.getByTestId('postcard-region-box-back_tagline')).toBeInTheDocument();
+    // The new region shows its name and gets a text field below.
+    expect(screen.getByLabelText(/tagline/i, { selector: 'input' })).toBeInTheDocument();
+  });
+
+  it('the region popup has a Delete button that removes the box', async () => {
+    const user = userEvent.setup();
+    render(<MockupPostcardEdit />);
+
+    await user.click(screen.getByTestId('postcard-region-box-back_headline'));
+    const dialog = screen.getByRole('dialog', { name: /edit headline/i });
+    await user.click(within(dialog).getByRole('button', { name: /delete/i }));
+
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+    expect(screen.queryByTestId('postcard-region-box-back_headline')).not.toBeInTheDocument();
+    expect(
+      screen.queryByLabelText(/^headline$/i, { selector: 'input' }),
+    ).not.toBeInTheDocument();
   });
 
   it('shows the chat box with the postcard exchange', () => {
