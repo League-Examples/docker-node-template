@@ -341,21 +341,8 @@ describe('POST /api/auth/unlink/:provider — successful unlink', () => {
 describe('OAuth initiate routes — 401 when ?link=1 and not authenticated', () => {
   beforeEach(() => {
     // Ensure env vars are absent so we don't accidentally trigger actual OAuth redirects
-    delete process.env.GITHUB_CLIENT_ID;
-    delete process.env.GITHUB_CLIENT_SECRET;
     delete process.env.GOOGLE_CLIENT_ID;
     delete process.env.GOOGLE_CLIENT_SECRET;
-  });
-
-  it('GET /api/auth/github?link=1 returns 401 when not authenticated (configured)', async () => {
-    // To test the 401 guard we need the route to be "configured" so it passes the 501 check.
-    // We simulate by temporarily setting env vars.
-    process.env.GITHUB_CLIENT_ID = 'test-id';
-    process.env.GITHUB_CLIENT_SECRET = 'test-secret';
-    const res = await request(app).get('/api/auth/github?link=1');
-    expect(res.status).toBe(401);
-    delete process.env.GITHUB_CLIENT_ID;
-    delete process.env.GITHUB_CLIENT_SECRET;
   });
 
   it('GET /api/auth/google?link=1 returns 401 when not authenticated (configured)', async () => {
@@ -365,35 +352,5 @@ describe('OAuth initiate routes — 401 when ?link=1 and not authenticated', () 
     expect(res.status).toBe(401);
     delete process.env.GOOGLE_CLIENT_ID;
     delete process.env.GOOGLE_CLIENT_SECRET;
-  });
-
-  it('GET /api/auth/github returns 501 (not 401) when not configured and no ?link=1', async () => {
-    const res = await request(app).get('/api/auth/github');
-    expect(res.status).toBe(501);
-  });
-});
-
-describe('OAuth initiate routes — link mode stashes oauthLinkMode in session', () => {
-  it('GET /api/auth/github?link=1 sets oauthLinkMode when authenticated', async () => {
-    process.env.GITHUB_CLIENT_ID = 'test-id';
-    process.env.GITHUB_CLIENT_SECRET = 'test-secret';
-
-    const agent = request.agent(app);
-    await agent.post('/api/auth/test-login').send({
-      email: 'linkstash@example.com',
-      displayName: 'Link Stash',
-      role: 'USER',
-    });
-
-    // The redirect to GitHub will fail in tests but the 302 response confirms
-    // the route proceeded past the auth guard. In a real browser, oauthLinkMode
-    // would be set in the session before the redirect happens.
-    const res = await agent.get('/api/auth/github?link=1');
-    // Either a 302 redirect (Passport redirects to GitHub) or
-    // 500/302 — the key assertion is it is NOT 401
-    expect(res.status).not.toBe(401);
-
-    delete process.env.GITHUB_CLIENT_ID;
-    delete process.env.GITHUB_CLIENT_SECRET;
   });
 });

@@ -1,9 +1,11 @@
 ---
 id: '007'
 title: Rebrand template to Flyerbot and remove Counter demo leftovers
-status: open
-use-cases: [SUC-007]
-depends-on: ['003']
+status: done
+use-cases:
+- SUC-007
+depends-on:
+- '003'
 github-issue: ''
 issue: rebrand-to-flyerbot.md
 completes_issue: true
@@ -29,25 +31,25 @@ model, producing a confusing intermediate state).
 
 ## Acceptance Criteria
 
-- [ ] `package.json` (root and `client`/`server` as applicable) `name`
+- [x] `package.json` (root and `client`/`server` as applicable) `name`
       field no longer reads `docker-nodeapp` (or equivalent template
       name) — set to a Flyerbot-appropriate value.
-- [ ] `APP_NAME`/`APP_SLUG` config values no longer read "League Web
+- [x] `APP_NAME`/`APP_SLUG` config values no longer read "League Web
       App"/"join-the-web-app" — updated to Flyerbot branding across
       `config/{dev,prod}` and any hardcoded fallback default in code.
-- [ ] All page `<title>` values (client routes, `index.html`) reflect
+- [x] All page `<title>` values (client routes, `index.html`) reflect
       Flyerbot branding, not the template's.
-- [ ] `Counter` API route (`server/src/routes/*counter*` or equivalent)
+- [x] `Counter` API route (`server/src/routes/*counter*` or equivalent)
       is deleted.
-- [ ] `Counter` seed entries in `server/prisma/seed.ts` are removed.
-- [ ] No client component imports or references a `Counter`
+- [x] `Counter` seed entries in `server/prisma/seed.ts` are removed.
+- [x] No client component imports or references a `Counter`
       route/hook/type (grep confirms zero remaining references).
-- [ ] GitHub and username/password Passport strategies are confirmed
+- [x] GitHub and username/password Passport strategies are confirmed
       absent (not just disabled) from `server/src/`, matching spec §13 —
       if Sprint 001 already fully removed these, this criterion is a
       verification pass with no code change; if any leftover reference
       is found, remove it here.
-- [ ] `npm test` passes with no test referencing `Counter` remaining
+- [x] `npm test` passes with no test referencing `Counter` remaining
       (delete or update any such test).
 
 ## Implementation Plan
@@ -106,3 +108,62 @@ removal as expected future-sprint work).
 - **Existing tests to run**: `npm test`.
 - **New tests to write**: none (deletion/rename ticket).
 - **Verification command**: `npm test` + grep verification pass.
+
+### Results
+
+- `npm test` (repo root): exit 0. Server: 17 files / 133 tests passing
+  (was 191 passing with 5 failing counters.test.ts tests before this
+  ticket — net count differs because `counters.test.ts`,
+  `auth-login.test.ts`, `auth-register.test.ts`,
+  `user-service-password.test.ts`, `auth-schemas.test.ts`, and
+  `github.test.ts` were deleted outright, and several other files had
+  GitHub/password-specific cases removed). Client: 12 files / 91 tests
+  passing (unchanged file count; `RegisterPage.test.tsx` deleted since
+  `Register.tsx` depended entirely on the removed
+  `/api/auth/register` endpoint).
+- `tsc --noEmit` clean in `server/`; `tsc -b` clean in `client/`.
+- Grep verification pass: zero remaining hits for `docker-nodeapp`,
+  "League Web App", "join-the-web-app" outside of `clasi/sprints/`
+  planning docs (which legitimately retain the old names for
+  historical context) — one additional hardcoded fallback found and
+  fixed beyond the ticket's initial file list:
+  `docker-compose.yml`'s `${APP_SLUG:-docker-nodeapp}` default. Zero
+  remaining `Counter` model/route/service references outside of a
+  removal-context comment in `server/prisma/seed.ts`.
+
+### Scope note: GitHub/password auth removal (AC 7)
+
+Investigation before editing found that Sprint 001 ticket 002's
+`architecture-update.md` Decision 1 had *deliberately* kept the GitHub
+Passport strategy and the password register/login endpoints live
+server-side, flagging their removal as "Open Question 1 for the
+stakeholder" — this ticket's premise ("if Sprint 001 already fully
+removed these, this criterion is a verification pass") was incorrect;
+Sprint 001 explicitly did not remove them. Proceeded per this ticket's
+explicit direction ("if any leftover reference is found, remove it
+here") and the team-lead's task-brief instruction to follow the
+ticket's boundary on this topic, treating that as the resolution of
+the open question. Removed: the GitHub Passport strategy and OAuth
+routes (`server/src/routes/auth.ts`, deleted
+`server/src/routes/github.ts`), the password
+register/login routes and their supporting `server/src/auth/password.ts`
+and `server/src/auth/schemas.ts` (both deleted), `UserService
+.createPasswordUser`/`.findByUsername`, the `GITHUB_CLIENT_ID`/
+`GITHUB_CLIENT_SECRET` config keys and env values (dev/prod, via
+`dotconfig load`/`save` to preserve SOPS encryption), and the
+env-seeded demo-user password logic in `server/prisma/seed.ts`. Left
+untouched (out of this criterion's scope, confirmed by grep/read
+before deciding): `GITHUB_TOKEN`/`GITHUB_STORAGE_REPO` (an unrelated
+"GitHub API" personal-access-token integration, not a login strategy);
+`/api/auth/test-login` (test-only bypass used by ~10 test files, not a
+Passport strategy or real password login); `/api/admin/login` (a
+separate `ADMIN_PASSWORD`-gated admin-panel session flag, unrelated to
+user Passport strategies); the `User.username`/`passwordHash` Prisma
+schema fields (this sprint's architecture-update.md explicitly lists
+`User`/`UserProvider` as "untouched" this sprint — left in place as
+inert columns rather than opening a migration outside that boundary);
+and `Account.tsx`/`UsersPanel.tsx`'s cosmetic `github` label/logo
+mappings (harmless legacy-display code for any pre-existing
+GitHub-linked accounts; the "Add GitHub" affordance itself already
+disappears automatically since `useProviderStatus` no longer reports a
+`github` key).

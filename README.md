@@ -1,8 +1,11 @@
-# Docker Node Application Template
+# Flyerbot
 
-A Node.js web application template with Express, React, Prisma, and SQLite. Clone it, run the install script, and start building.
+Flyerbot is a conversational, AI-driven studio for producing marketing
+collateral — flyers, postcards, Facebook posts, logos, email banners — for
+The League of Amazing Programmers. Built with Express, React, Prisma, and
+SQLite. See `docs/design/overview.md` for the full pitch.
 
-The default home page is a counter demo: two named counters (`alpha` and `beta`) that any logged-in user can increment. Log in with `user` / `pass` (USER role) or `admin` / `admin` (ADMIN role) — no OAuth setup required.
+Sign in with Google — no other login method is supported.
 
 ## Getting Started
 

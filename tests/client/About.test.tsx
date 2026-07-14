@@ -46,7 +46,7 @@ describe('About', () => {
     );
 
     renderAbout();
-    expect(screen.getByRole('heading', { name: 'Chat App' })).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: 'Flyerbot' })).toBeInTheDocument();
     expect(screen.getByText('Version 0.1.0')).toBeInTheDocument();
   });
 });

@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
 
-const FALLBACK_NAME = 'Chat App';
+const FALLBACK_NAME = 'Flyerbot';
 const FALLBACK_VERSION = '0.1.0';
 
 export default function About() {
@@ -47,7 +47,7 @@ export default function About() {
             real time with channel-based discussions.
           </li>
           <li style={styles.listItem}>
-            <strong>OAuth Login</strong> — Sign in with GitHub or Google.
+            <strong>OAuth Login</strong> — Sign in with Google.
           </li>
           <li style={styles.listItem}>
             <strong>Admin Panel</strong> — Manage users, channels, scheduled

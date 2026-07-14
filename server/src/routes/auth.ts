@@ -1,16 +1,10 @@
 import { Router, Request, Response, NextFunction } from 'express';
 import passport from 'passport';
-import { Strategy as GitHubStrategy } from 'passport-github2';
 import { Strategy as GoogleStrategy } from 'passport-google-oauth20';
 import { prisma } from '../services/prisma';
 import { requireAuth } from '../middleware/requireAuth';
-import { hashPassword, verifyPassword } from '../auth/password.js';
-import { registerSchema, loginSchema } from '../auth/schemas.js';
-import { UserService } from '../services/user.service.js';
 
 export const authRouter = Router();
-
-const userService = new UserService(prisma);
 
 // ---------------------------------------------------------------------------
 // find-or-create helper
@@ -112,36 +106,6 @@ export async function findOrCreateOAuthUser(
 // Conditional strategy registration
 // ---------------------------------------------------------------------------
 
-if (process.env.GITHUB_CLIENT_ID && process.env.GITHUB_CLIENT_SECRET) {
-  passport.use(
-    'github',
-    new GitHubStrategy(
-      {
-        clientID: process.env.GITHUB_CLIENT_ID,
-        clientSecret: process.env.GITHUB_CLIENT_SECRET,
-        callbackURL: '/api/auth/github/callback',
-        scope: ['read:user', 'user:email'],
-        passReqToCallback: true,
-      } as any,
-      async (req: any, accessToken: string, _refreshToken: any, profile: any, done: any) => {
-        (req.session as any).githubAccessToken = accessToken;
-        try {
-          const user = await findOrCreateOAuthUser(
-            req,
-            'github',
-            String(profile.id),
-            profile.emails?.[0]?.value,
-            profile.displayName ?? profile.username,
-          );
-          done(null, user);
-        } catch (err) {
-          done(err);
-        }
-      },
-    ),
-  );
-}
-
 if (process.env.GOOGLE_CLIENT_ID && process.env.GOOGLE_CLIENT_SECRET) {
   passport.use(
     'google',
@@ -170,73 +134,6 @@ if (process.env.GOOGLE_CLIENT_ID && process.env.GOOGLE_CLIENT_SECRET) {
     ),
   );
 }
-
-// ---------------------------------------------------------------------------
-// Password-based registration
-// ---------------------------------------------------------------------------
-
-// POST /api/auth/register
-authRouter.post('/auth/register', async (req: Request, res: Response) => {
-  const parse = registerSchema.safeParse(req.body);
-  if (!parse.success) {
-    const pwErr = parse.error.issues.find((i) => i.message === 'invalid_password');
-    if (pwErr) return res.status(400).json({ error: 'invalid_password' });
-    return res.status(400).json({ error: 'validation_error', details: parse.error.issues });
-  }
-  const { username, email, password } = parse.data;
-
-  if (await userService.findByUsername(username)) {
-    return res.status(409).json({ error: 'username_taken' });
-  }
-  if (await userService.getByEmail(email)) {
-    return res.status(409).json({ error: 'email_taken' });
-  }
-
-  const passwordHash = await hashPassword(password);
-  const user = await userService.createPasswordUser({ username, email, passwordHash });
-
-  req.login(user, (err) => {
-    if (err) return res.status(500).json({ error: 'Login failed' });
-    res.status(201).json({
-      user: {
-        id: user.id,
-        email: user.email,
-        displayName: user.displayName,
-        role: user.role,
-      },
-    });
-  });
-});
-
-// ---------------------------------------------------------------------------
-// Password-based login
-// ---------------------------------------------------------------------------
-
-// POST /api/auth/login
-authRouter.post('/auth/login', async (req: Request, res: Response) => {
-  const parse = loginSchema.safeParse(req.body);
-  if (!parse.success) return res.status(400).json({ error: 'validation_error' });
-  const { username, password } = parse.data;
-
-  const user = await userService.findByUsername(username);
-  if (!user || !user.passwordHash) {
-    return res.status(401).json({ error: 'invalid_credentials' });
-  }
-  const ok = await verifyPassword(password, user.passwordHash);
-  if (!ok) return res.status(401).json({ error: 'invalid_credentials' });
-
-  req.login(user, (err) => {
-    if (err) return res.status(500).json({ error: 'Login failed' });
-    res.json({
-      user: {
-        id: user.id,
-        email: user.email,
-        displayName: user.displayName,
-        role: user.role,
-      },
-    });
-  });
-});
 
 // --- Test login (non-production only) ---
 authRouter.post('/auth/test-login', async (req: Request, res: Response) => {
@@ -391,37 +288,6 @@ authRouter.post('/auth/unlink/:provider', requireAuth, async (req: Request, res:
 
   return res.json({ success: true, linkedProviders: [...updatedLinked] });
 });
-
-// ---------------------------------------------------------------------------
-// GitHub OAuth routes
-// ---------------------------------------------------------------------------
-
-authRouter.get('/auth/github', (req: Request, res: Response, next: NextFunction) => {
-  if (!(process.env.GITHUB_CLIENT_ID && process.env.GITHUB_CLIENT_SECRET)) {
-    return res.status(501).json({
-      error: 'GitHub OAuth not configured',
-      docs: 'https://github.com/settings/developers',
-    });
-  }
-  if (req.query.link === '1') {
-    if (!req.user) {
-      return res.status(401).json({ error: 'Authentication required to link an account' });
-    }
-    (req.session as any).oauthLinkMode = true;
-  }
-  passport.authenticate('github')(req, res, next);
-});
-
-authRouter.get(
-  '/auth/github/callback',
-  (req: Request, res: Response, next: NextFunction) => {
-    passport.authenticate('github', { failureRedirect: '/login' })(req, res, next);
-  },
-  (req: Request, res: Response) => {
-    // oauthLinkMode is cleared inside findOrCreateOAuthUser; check was done before auth
-    res.redirect('/');
-  },
-);
 
 // ---------------------------------------------------------------------------
 // Google OAuth routes
