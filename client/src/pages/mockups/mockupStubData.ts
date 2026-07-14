@@ -84,6 +84,113 @@ export const STUB_CHAT_MESSAGES: ChatMessage[] = [
   },
 ];
 
+/**
+ * Postcard text-region stub data, grounded in the shape of a real generated
+ * project's `postcard-content.json` (see
+ * `marketing/projects/Robot-Riot-Postcard/postcard-content.json`): each
+ * region carries a `name` (state key), a human `label`, inline CSS `style`,
+ * the current `text`, a `position` in inches, and a `font`. This mockup
+ * does not implement chroma-key rendering or a print-accurate layout — the
+ * `position` values are used only as a structural approximation.
+ */
+export type PostcardSide = 'front' | 'back';
+
+export interface PostcardRegionPosition {
+  top: string;
+  left?: string;
+  right?: string;
+  width: string;
+}
+
+export interface PostcardRegionFont {
+  family: string;
+  size: string;
+}
+
+export interface PostcardRegion {
+  name: string;
+  label: string;
+  style: string;
+  text: string;
+  position: PostcardRegionPosition;
+  font: PostcardRegionFont;
+}
+
+export const STUB_POSTCARD_REGIONS: Record<PostcardSide, PostcardRegion[]> = {
+  // The real Robot-Riot-Postcard project also has an empty front_regions
+  // array — the front side of this particular postcard is image-only.
+  front: [],
+  back: [
+    {
+      name: 'back_headline',
+      label: 'Headline',
+      style: 'font-weight:900; color:#CC1616; letter-spacing:1px;',
+      text: 'ROBOT RIOT',
+      position: { top: '1.0in', left: '0.5in', width: '3.4in' },
+      font: { family: "'Arial Black', Arial, sans-serif", size: '34px' },
+    },
+    {
+      name: 'back_datetime',
+      label: 'Date & location',
+      style: 'font-weight:700; color:#16223C;',
+      text: 'Saturday, July 11 · 1:00 PM · The Robot Garage',
+      position: { top: '1.49in', left: '0.5in', width: '3.4in' },
+      font: { family: 'Arial, Helvetica, sans-serif', size: '18px' },
+    },
+    {
+      name: 'back_body',
+      label: 'Body copy',
+      style: 'line-height:1.5; color:#101010;',
+      text:
+        'You build the robot. You wire it, program it, and rig it with ' +
+        "flippers, pushers, and grippers. Then you drive it into the " +
+        "arena and crash it into everyone else's machine. No spectating " +
+        "— you're in the driver's seat.",
+      position: { top: '1.86in', left: '0.5in', width: '3.4in' },
+      font: { family: "Georgia, 'Times New Roman', serif", size: '15.5px' },
+    },
+    {
+      name: 'back_cta',
+      label: 'Call to action',
+      style: 'font-weight:800; color:#C96A10;',
+      text: "Scan to sign up — it's free!",
+      position: { top: '3.25in', left: '0.5in', width: '3.4in' },
+      font: { family: 'Arial, Helvetica, sans-serif', size: '16px' },
+    },
+    {
+      name: 'back_url',
+      label: 'QR caption — URL',
+      style: 'text-align:center; font-weight:700; color:#16223C;',
+      text: 'jointheleague.org/0G',
+      position: { top: '2.73in', right: '0.5in', width: '1.5in' },
+      font: { family: 'Arial, Helvetica, sans-serif', size: '13px' },
+    },
+    {
+      name: 'back_nonprofit',
+      label: 'QR caption — nonprofit/EIN',
+      style: 'text-align:center; color:#666; line-height:1.35;',
+      text: 'The League of Amazing Programmers is a 501(c)(3) nonprofit, EIN 20-4744610',
+      position: { top: '2.95in', right: '0.5in', width: '1.5in' },
+      font: { family: 'Arial, Helvetica, sans-serif', size: '10px' },
+    },
+  ],
+};
+
+export interface PostcardExtraOverlay {
+  /** Label shown on the placeholder box — this mockup does not render the
+   * real extra_html/QR image, just the region it occupies. */
+  label: string;
+  position: PostcardRegionPosition & { height: string };
+}
+
+export const STUB_POSTCARD_EXTRA_OVERLAY: Record<PostcardSide, PostcardExtraOverlay | null> = {
+  front: null,
+  back: {
+    label: 'QR code overlay (extra_html)',
+    position: { top: '1.15in', right: '0.5in', width: '1.5in', height: '1.5in' },
+  },
+};
+
 export const STUB_PROJECT_NAME = 'Spring Open House Flyer';
 export const STUB_PROJECT_META = 'Postcard · Pop Art style';
 

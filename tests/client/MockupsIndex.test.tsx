@@ -31,12 +31,14 @@ describe('MockupsIndex', () => {
     expect(link).toHaveAttribute('href', '/mockups/new-project');
   });
 
+  it('links to the postcard text-region edit form mockup', () => {
+    renderPage();
+    const link = screen.getByRole('link', { name: /postcard text-region edit form/i });
+    expect(link).toHaveAttribute('href', '/mockups/postcard-edit');
+  });
+
   it('shows not-yet-built mockups as non-navigable placeholders', () => {
     renderPage();
-    expect(screen.getByText(/postcard text-region edit form/i)).toBeInTheDocument();
-    expect(
-      screen.queryByRole('link', { name: /postcard text-region edit form/i }),
-    ).not.toBeInTheDocument();
     expect(screen.getByText(/google-only login/i)).toBeInTheDocument();
     expect(
       screen.queryByRole('link', { name: /google-only login/i }),

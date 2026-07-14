@@ -28,7 +28,7 @@ const MOCKUP_LINKS: MockupLink[] = [
     label: 'Postcard text-region edit form',
     description: 'Agent-generated form for entering text into JSON-defined bounding-box regions.',
     ticket: '005',
-    available: false,
+    available: true,
   },
   {
     to: '/mockups/login',
