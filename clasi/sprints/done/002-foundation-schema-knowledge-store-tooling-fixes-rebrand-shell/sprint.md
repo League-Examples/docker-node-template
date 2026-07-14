@@ -1,7 +1,7 @@
 ---
 id: '002'
 title: 'Foundation: Schema, Knowledge Store, Tooling Fixes, Rebrand & Shell'
-status: ticketing
+status: done
 branch: sprint/002-foundation-schema-knowledge-store-tooling-fixes-rebrand-shell
 use-cases:
 - SUC-001
