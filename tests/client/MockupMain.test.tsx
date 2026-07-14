@@ -3,7 +3,14 @@ import { render, screen, fireEvent } from '@testing-library/react';
 import MockupMain from '../../client/src/pages/mockups/MockupMain';
 
 function openLibrary() {
-  fireEvent.click(screen.getByRole('button', { name: 'Library' }));
+  fireEvent.click(screen.getByRole('button', { name: /open library/i }));
+}
+
+function expectDrawerOpen(open: boolean) {
+  expect(screen.getByTestId('library-overlay')).toHaveAttribute(
+    'data-open',
+    String(open),
+  );
 }
 
 describe('MockupMain', () => {
@@ -17,22 +24,21 @@ describe('MockupMain', () => {
     expect(screen.getByText('Log out')).toBeInTheDocument();
   });
 
-  it('starts with the asset browser collapsed', () => {
+  it('starts with the asset browser drawer closed, pull tab showing', () => {
     render(<MockupMain />);
-    expect(screen.queryByTestId('library-overlay')).not.toBeInTheDocument();
-    expect(screen.getByRole('button', { name: 'Library' })).toBeInTheDocument();
+    expectDrawerOpen(false);
+    expect(screen.getByRole('button', { name: /open library/i })).toBeInTheDocument();
   });
 
-  it('opens the library as an overlay and collapses it again', () => {
+  it('slides the drawer open via the pull tab and closed again', () => {
     render(<MockupMain />);
     openLibrary();
-
-    expect(screen.getByTestId('library-overlay')).toBeInTheDocument();
+    expectDrawerOpen(true);
     expect(screen.getByRole('button', { name: 'Assets' })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Examples' })).toBeInTheDocument();
 
-    fireEvent.click(screen.getByRole('button', { name: /collapse library/i }));
-    expect(screen.queryByTestId('library-overlay')).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: /close library/i }));
+    expectDrawerOpen(false);
   });
 
   it('switches the visible library list when a category tab is clicked', () => {
@@ -44,13 +50,13 @@ describe('MockupMain', () => {
     expect(screen.queryByText(/league robot logo/i)).not.toBeInTheDocument();
   });
 
-  it('double-clicking an item adds it as a project reference and closes the browser', () => {
+  it('double-clicking an item adds it as a project reference and closes the drawer', () => {
     render(<MockupMain />);
     openLibrary();
 
     fireEvent.doubleClick(screen.getByText(/league robot logo/i));
 
-    expect(screen.queryByTestId('library-overlay')).not.toBeInTheDocument();
+    expectDrawerOpen(false);
     const chips = screen.getByTestId('project-references');
     expect(chips).toHaveTextContent(/league robot logo/i);
   });

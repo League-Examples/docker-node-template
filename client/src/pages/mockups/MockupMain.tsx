@@ -11,8 +11,9 @@ import type { LibraryItem } from './mockupStubData';
  * - The template's sidebar menu moves to a TOP menu / hamburger — a slim
  *   top bar with a hamburger stub stands in for it here.
  * - The asset browser is COLLAPSIBLE and collapsed by default: you only
- *   use it every now and then. "Library" opens it; it overlays ~7/8 of
- *   the iterations list and chat window (it may obscure the screen).
+ *   use it every now and then. A vertical pull-out tab on the left edge
+ *   slides it over ~7/8 of the iterations list and chat window (it may
+ *   obscure the screen).
  * - Double-clicking an item adds it to the project as a reference and
  *   closes the browser automatically. Added references show as chips.
  * This page deliberately renders outside AppLayout (see
@@ -61,14 +62,6 @@ export default function MockupMain() {
           )}
         </div>
         <span className="font-semibold text-slate-700">Flyerbot</span>
-        <button
-          type="button"
-          aria-expanded={browserOpen}
-          onClick={() => setBrowserOpen((v) => !v)}
-          className="ml-auto rounded bg-indigo-600 px-3 py-1.5 text-sm font-semibold text-white hover:bg-indigo-700"
-        >
-          {browserOpen ? 'Close library' : 'Library'}
-        </button>
       </header>
 
       {/* Main content: outputs over chat. The browser overlays this. */}
@@ -95,18 +88,34 @@ export default function MockupMain() {
         <MockupOutputPane />
         <MockupChatPanel />
 
-        {/* Collapsible asset browser: overlays ~7/8 of outputs + chat. */}
-        {browserOpen && (
-          <div
-            data-testid="library-overlay"
-            className="absolute inset-y-0 left-0 z-30 flex w-[87.5%] flex-col border-r border-slate-300 bg-white shadow-2xl"
-          >
+        {/* Collapsible asset browser: a sliding drawer with a vertical
+            pull-out tab on the left edge; overlays ~7/8 of outputs + chat. */}
+        <div
+          data-testid="library-overlay"
+          data-open={browserOpen}
+          className={`absolute inset-y-0 left-0 z-30 flex w-[87.5%] flex-col border-r border-slate-300 bg-white shadow-2xl transition-transform duration-300 ${
+            browserOpen ? 'translate-x-0' : 'pointer-events-none -translate-x-full'
+          }`}
+        >
+          <div aria-hidden={!browserOpen} className="flex min-h-0 flex-1 flex-col">
             <MockupLeftBrowser
               onClose={() => setBrowserOpen(false)}
               onItemAdd={handleItemAdd}
             />
           </div>
-        )}
+          {/* The pull tab rides on the drawer's right edge, so it is the
+              visible handle when closed and the close control when open. */}
+          <button
+            type="button"
+            aria-label={browserOpen ? 'Close library' : 'Open library'}
+            aria-expanded={browserOpen}
+            onClick={() => setBrowserOpen((v) => !v)}
+            style={{ writingMode: 'vertical-rl' }}
+            className="pointer-events-auto absolute -right-8 top-1/4 rounded-r-lg bg-indigo-600 px-1.5 py-4 text-sm font-semibold tracking-wide text-white shadow-lg hover:bg-indigo-700"
+          >
+            {browserOpen ? '◂ Close' : 'Library ▸'}
+          </button>
+        </div>
       </div>
     </div>
   );
