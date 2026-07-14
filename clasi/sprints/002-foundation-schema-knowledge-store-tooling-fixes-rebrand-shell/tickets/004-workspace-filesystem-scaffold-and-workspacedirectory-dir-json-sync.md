@@ -1,9 +1,11 @@
 ---
 id: '004'
 title: Workspace filesystem scaffold and WorkspaceDirectory/_dir.json sync
-status: open
-use-cases: [SUC-005]
-depends-on: ['003']
+status: done
+use-cases:
+- SUC-005
+depends-on:
+- '003'
 github-issue: ''
 issue: foundation-schema-and-knowledge-store.md
 completes_issue: true
@@ -26,29 +28,29 @@ must exist as a Prisma model first.
 
 ## Acceptance Criteria
 
-- [ ] `workspace/` directory tree exists with `assets/`, `knowledge/`,
+- [x] `workspace/` directory tree exists with `assets/`, `knowledge/`,
       `projects/`, `exports/` top-level directories, matching
       architecture-001's File-System Layout.
-- [ ] Initial category subdirectories exist under `assets/` (`logos/`,
+- [x] Initial category subdirectories exist under `assets/` (`logos/`,
       `stock-art/`, `prior-art/`) and `knowledge/` (`styles/`,
       `palettes/`, `compositions/`, `layouts/`), each with a matching
       `WorkspaceDirectory` row.
-- [ ] A sync utility function/module exists (e.g.
+- [x] A sync utility function/module exists (e.g.
       `server/src/services/workspaceDirectorySync.ts`) that, given a
       `WorkspaceDirectory` row, writes/updates the corresponding
       `_dir.json` file at that row's `path`, with `_dir.json`'s content
       matching `descriptorJson`.
-- [ ] Creating a `WorkspaceDirectory` row via the sync utility produces a
+- [x] Creating a `WorkspaceDirectory` row via the sync utility produces a
       matching `_dir.json` file at the expected path.
-- [ ] Moving/renaming a `WorkspaceDirectory` row's `path` via the sync
+- [x] Moving/renaming a `WorkspaceDirectory` row's `path` via the sync
       utility updates the `_dir.json` location — no orphaned old
       `_dir.json` file remains at the previous path.
-- [ ] The sync utility resolves all paths against `workspace/` as an
+- [x] The sync utility resolves all paths against `workspace/` as an
       enforced root and rejects (throws/returns an error for) any
       resolved path that would escape it — this is the path-containment
       mechanism Sprint 003's MCP server will reuse, built and tested here
       first in isolation.
-- [ ] `.gitignore`/workspace-repo boundary is clarified: confirm whether
+- [x] `.gitignore`/workspace-repo boundary is clarified: confirm whether
       `workspace/` is nested inside this app repo (interim state) or
       already a separate git root, per architecture-001 Open Question 3 —
       if unresolved, scaffold it as a subdirectory of this repo but
@@ -108,7 +110,21 @@ resolve it, only avoids foreclosing either option.
 
 ## Testing
 
-- **Existing tests to run**: `npm test`.
-- **New tests to write**: sync utility unit tests (write, move,
-  path-containment rejection) and scaffold-script idempotency test.
-- **Verification command**: `npm test`
+- **Existing tests to run**: `npm test` — passes, 145 server (133 existing
+  + 12 new) / 91 client, exit 0.
+- **New tests to write**: `tests/server/workspace-directory-sync.test.ts`
+  (12 tests) — `resolveWorkspacePath` root resolution plus `../` and
+  absolute-path escape rejection; `writeDirDescriptor` content-match,
+  overwrite, and null-descriptor-defaults-to-`{}` cases;
+  `moveDirDescriptor` relocation-with-no-orphan and safe-no-op-when-
+  nothing-exists-yet cases; `scaffoldWorkspaceDirectories` creates the
+  top-level tree plus one `WorkspaceDirectory` row + matching `_dir.json`
+  per category directory, and a second run is idempotent (0 created, all
+  re-synced, no duplicate rows). All filesystem assertions run against a
+  scratch `WORKSPACE_DIR` temp directory, not the real `server/workspace/`
+  tree.
+- **Verification command**: `npm test` (also manually ran
+  `npx tsx src/scripts/scaffold-workspace-directories.ts` from `server/`
+  twice against the dev DB to confirm end-to-end idempotency outside the
+  test harness: first run reported 7 created/0 resynced, second run 0
+  created/7 resynced).

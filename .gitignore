@@ -46,3 +46,13 @@ data/
 # dotconfig — assembled env files contain decrypted secrets
 .env.*
 !.env.example
+
+# Workspace filesystem (architecture-001 §File-System Layout) — the
+# directory *tree* is committed as scaffold (see .gitkeep placeholders
+# under server/workspace/), but _dir.json mirror files are derived from
+# WorkspaceDirectory rows in the (gitignored, per-environment) SQLite DB —
+# see server/src/services/workspaceDirectorySync.ts (D6) and
+# server/src/scripts/scaffold-workspace-directories.ts. Committing them
+# would drift out of step with a DB that isn't itself versioned; regenerate
+# via the scaffold script instead.
+server/workspace/**/_dir.json

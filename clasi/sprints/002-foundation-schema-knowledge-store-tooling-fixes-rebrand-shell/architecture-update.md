@@ -313,6 +313,17 @@ adds the two-pane layout, rather than fighting both changes at once.
    larger per-worker-test-DB restructuring. Ticket-level planning should
    timebox investigation and have a fallback (per-worker DB files) ready
    if the root cause resists a small fix.
+4. **`workspace/` one-repo-vs-two** — carried forward from
+   architecture-001 D7/Open Question 3 (whether `workspace/` ends up as
+   its own git repository, pushed to a dedicated remote, or stays nested
+   inside this app repo). Ticket 002-004 scaffolds `workspace/` at
+   `server/workspace/` (configurable via `WORKSPACE_DIR`, same pattern as
+   `BACKUP_DIR`) as a subdirectory of this repo — deliberately not
+   foreclosing either option, since its top-level layout (`assets/`,
+   `knowledge/`, `projects/`, `exports/`) would not need to change if it
+   were later `git init`'d as its own repository. The stakeholder has not
+   confirmed a direction; Sprint 003's Versioning Service ticket owns the
+   actual decision.
 
 ---
 
