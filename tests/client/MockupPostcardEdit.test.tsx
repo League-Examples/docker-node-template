@@ -102,6 +102,23 @@ describe('MockupPostcardEdit', () => {
     );
   });
 
+  it('clicking the QR box opens a URL popup; Return sets the QR URL', async () => {
+    const user = userEvent.setup();
+    render(<MockupPostcardEdit />);
+
+    await user.click(screen.getByTestId('postcard-extra-overlay'));
+
+    const dialog = screen.getByRole('dialog', { name: /set qr code url/i });
+    const urlInput = within(dialog).getByLabelText(/qr code url/i);
+    await user.clear(urlInput);
+    await user.type(urlInput, 'https://example.org/signup{Enter}');
+
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+    expect(screen.getByTestId('postcard-qr-url')).toHaveTextContent(
+      'https://example.org/signup',
+    );
+  });
+
   it('shows the chat box with the postcard exchange', () => {
     render(<MockupPostcardEdit />);
 

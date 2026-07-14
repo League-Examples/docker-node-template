@@ -43,7 +43,11 @@ function escapeHtml(value: string): string {
 }
 
 /** One 6in x 4in page of print HTML for a postcard side. */
-function printPageHtml(side: PostcardSide, regionText: Record<string, string>): string {
+function printPageHtml(
+  side: PostcardSide,
+  regionText: Record<string, string>,
+  qrUrl: string,
+): string {
   const regions = STUB_POSTCARD_REGIONS[side];
   const overlay = STUB_POSTCARD_EXTRA_OVERLAY[side];
 
@@ -62,7 +66,7 @@ function printPageHtml(side: PostcardSide, regionText: Record<string, string>): 
     .join('\n');
 
   const overlayDiv = overlay
-    ? `<div style="position:absolute;top:${overlay.position.top};${overlay.position.left ? `left:${overlay.position.left};` : ''}${overlay.position.right ? `right:${overlay.position.right};` : ''}width:${overlay.position.width};height:${overlay.position.height};border:1px dashed #999;display:flex;align-items:center;justify-content:center;font-size:8px;color:#999;">${escapeHtml(overlay.label)}</div>`
+    ? `<div style="position:absolute;top:${overlay.position.top};${overlay.position.left ? `left:${overlay.position.left};` : ''}${overlay.position.right ? `right:${overlay.position.right};` : ''}width:${overlay.position.width};height:${overlay.position.height};border:1px dashed #999;display:flex;align-items:center;justify-content:center;font-size:8px;color:#999;flex-direction:column;">${escapeHtml(overlay.label)}<br/>${escapeHtml(qrUrl)}</div>`
     : '';
 
   return `<div class="page">${regionDivs}${overlayDiv}</div>`;
@@ -72,7 +76,7 @@ function printPageHtml(side: PostcardSide, regionText: Record<string, string>): 
  * the browser print dialog — on macOS that dialog is the PDF preview /
  * "Open in Preview" path. Wireframe stand-in for the real server-side PDF
  * pipeline (spec §11 grounding: postcard-content.json -> HTML -> PDF). */
-function openPdfPreview(regionText: Record<string, string>) {
+function openPdfPreview(regionText: Record<string, string>, qrUrl: string) {
   const w = window.open('', '_blank', 'width=700,height=550');
   if (!w) return;
   w.document.write(`<!doctype html>
@@ -92,8 +96,8 @@ function openPdfPreview(regionText: Record<string, string>) {
 </style>
 </head>
 <body>
-${printPageHtml('front', regionText)}
-${printPageHtml('back', regionText)}
+${printPageHtml('front', regionText, qrUrl)}
+${printPageHtml('back', regionText, qrUrl)}
 <script>window.onload = function () { window.print(); };</script>
 </body>
 </html>`);
@@ -126,6 +130,10 @@ export default function MockupPostcardEdit() {
   // Click-to-edit popup state: which region is being edited, and its draft.
   const [editingRegion, setEditingRegion] = useState<PostcardRegion | null>(null);
   const [draftText, setDraftText] = useState('');
+  // QR popup state: the URL the QR code encodes, and its draft.
+  const [qrUrl, setQrUrl] = useState('https://jointheleague.org/robot-riot');
+  const [editingQr, setEditingQr] = useState(false);
+  const [draftQrUrl, setDraftQrUrl] = useState('');
 
   const regions = STUB_POSTCARD_REGIONS[side];
   const overlay = STUB_POSTCARD_EXTRA_OVERLAY[side];
@@ -163,7 +171,7 @@ export default function MockupPostcardEdit() {
             </div>
             <button
               type="button"
-              onClick={() => openPdfPreview(regionText)}
+              onClick={() => openPdfPreview(regionText, qrUrl)}
               className="flex-shrink-0 rounded bg-indigo-600 px-4 py-2 text-sm font-semibold text-white hover:bg-indigo-700"
             >
               Generate PDF
@@ -227,11 +235,15 @@ export default function MockupPostcardEdit() {
                 ))}
 
                 {overlay && (
-                  <div
+                  <button
+                    type="button"
                     data-testid="postcard-extra-overlay"
-                    role="img"
-                    aria-label={overlay.label}
-                    className="absolute flex items-center justify-center border-2 border-dashed border-amber-500 bg-amber-50/70 p-1 text-center text-[9px] font-semibold text-amber-700"
+                    aria-label={`${overlay.label} — set URL`}
+                    onClick={() => {
+                      setDraftQrUrl(qrUrl);
+                      setEditingQr(true);
+                    }}
+                    className="absolute flex cursor-pointer flex-col items-center justify-center border-2 border-dashed border-amber-500 bg-amber-50/70 p-1 text-center text-[9px] font-semibold text-amber-700 hover:bg-amber-100"
                     style={{
                       top: overlay.position.top,
                       left: overlay.position.left,
@@ -240,8 +252,14 @@ export default function MockupPostcardEdit() {
                       height: overlay.position.height,
                     }}
                   >
-                    {overlay.label}
-                  </div>
+                    <span>{overlay.label}</span>
+                    <span
+                      data-testid="postcard-qr-url"
+                      className="mt-0.5 block max-w-full truncate font-normal"
+                    >
+                      {qrUrl}
+                    </span>
+                  </button>
                 )}
           </div>
         </div>
@@ -304,34 +322,69 @@ export default function MockupPostcardEdit() {
           <div
             role="dialog"
             aria-label={`Edit ${editingRegion.label}`}
-            className="w-full max-w-md rounded-lg bg-white p-5 shadow-xl"
+            className="w-full max-w-2xl rounded-lg bg-white p-6 shadow-xl"
             onClick={(event) => event.stopPropagation()}
           >
             <h3 className="text-sm font-semibold text-slate-700">
               {editingRegion.label}
             </h3>
             <p className="mb-3 mt-0.5 text-xs text-slate-500">
-              {summarizePositionAndFont(editingRegion)} — press Return to
-              apply, Esc to cancel
+              {summarizePositionAndFont(editingRegion)} — Return applies,
+              Shift+Return for a new line, Esc cancels
             </p>
-            <form
-              onSubmit={(event) => {
-                event.preventDefault();
-                commitRegionEditor();
+            <textarea
+              autoFocus
+              aria-label={`${editingRegion.label} text`}
+              value={draftText}
+              onChange={(event) => setDraftText(event.target.value)}
+              onKeyDown={(event) => {
+                if (event.key === 'Escape') setEditingRegion(null);
+                if (event.key === 'Enter' && !event.shiftKey) {
+                  event.preventDefault();
+                  commitRegionEditor();
+                }
               }}
-            >
-              <input
-                autoFocus
-                type="text"
-                aria-label={`${editingRegion.label} text`}
-                value={draftText}
-                onChange={(event) => setDraftText(event.target.value)}
-                onKeyDown={(event) => {
-                  if (event.key === 'Escape') setEditingRegion(null);
-                }}
-                className="w-full rounded border border-slate-300 px-3 py-2 text-sm text-slate-800"
-              />
-            </form>
+              rows={Math.max(3, Math.ceil(draftText.length / 60) + 1)}
+              className="w-full resize-y rounded border border-slate-300 px-3 py-2 text-base leading-relaxed text-slate-800"
+            />
+          </div>
+        </div>
+      )}
+
+      {/* QR popup: click the QR overlay, enter the URL the QR code
+          should encode, hit return to apply. */}
+      {editingQr && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/40"
+          onClick={() => setEditingQr(false)}
+        >
+          <div
+            role="dialog"
+            aria-label="Set QR code URL"
+            className="w-full max-w-2xl rounded-lg bg-white p-6 shadow-xl"
+            onClick={(event) => event.stopPropagation()}
+          >
+            <h3 className="text-sm font-semibold text-slate-700">QR code</h3>
+            <p className="mb-3 mt-0.5 text-xs text-slate-500">
+              The QR code encodes this URL — Return applies, Esc cancels
+            </p>
+            <input
+              autoFocus
+              type="url"
+              aria-label="QR code URL"
+              placeholder="https://…"
+              value={draftQrUrl}
+              onChange={(event) => setDraftQrUrl(event.target.value)}
+              onKeyDown={(event) => {
+                if (event.key === 'Escape') setEditingQr(false);
+                if (event.key === 'Enter') {
+                  event.preventDefault();
+                  setQrUrl(draftQrUrl);
+                  setEditingQr(false);
+                }
+              }}
+              className="w-full rounded border border-slate-300 px-3 py-2 text-base text-slate-800"
+            />
           </div>
         </div>
       )}

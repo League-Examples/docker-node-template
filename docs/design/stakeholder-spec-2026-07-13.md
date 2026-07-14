@@ -248,6 +248,12 @@ Responding to `specification.md` §16:
   has the postcard with the tabs for the front and back; below that a
   **scrollable box with the text fields** in it; below that the chat
   session.
+- Postcard editor, revision 4 (2026-07-14): the text regions on the
+  postcard are **clickable** — click one, get a pop-up, edit there, hit
+  Return, and the text changes. The pop-up must be **large enough to fit
+  all the text** (the fields themselves are short, but the pop-up should
+  expand). And the **QR code box**: clicking it prompts for a **URL** that
+  sets what the QR code encodes.
 
 ---
 
