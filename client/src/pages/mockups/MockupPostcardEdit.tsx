@@ -167,8 +167,10 @@ function SidePreview({
 /**
  * /mockups/postcard-edit — the postcard text-region edit form wireframe
  * (spec §11's "the agent makes a web page for that" example; UC-010/
- * SUC-004). Both sides render as postcard-shaped previews stacked one on
- * top of the other (front, then back), each showing its side's stub text
+ * SUC-004). Explicit design decision (stakeholder, 2026-07-14): this view
+ * does NOT show the left-pane asset browser — it is a full-width,
+ * agent-authored editing surface. Both sides render as postcard-shaped
+ * previews side by side (front, then back), each showing its side's stub text
  * regions as labeled outline boxes at their stub `position`, plus (on the
  * back) a distinct placeholder for the `extra_html` QR overlay. The form
  * below lists one row per region; editing a row's text input live-updates
@@ -206,8 +208,8 @@ export default function MockupPostcardEdit() {
           </button>
         </div>
 
-        {/* Both sides, stacked one on top of the other. */}
-        <div className="mb-8 flex flex-col gap-6">
+        {/* Both sides, side by side: front, then back. */}
+        <div className="mb-8 flex flex-row gap-6 overflow-x-auto">
           {SIDES.map((side) => (
             <SidePreview key={side} side={side} regionText={regionText} />
           ))}

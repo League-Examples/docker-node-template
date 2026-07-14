@@ -223,6 +223,23 @@ Responding to `specification.md` §16:
   classify the image, produce a description, and then there are tags — I
   just don't know what the tags are yet (vocabulary TBD).
 
+### Wireframe review feedback (2026-07-14)
+
+- Main two-pane layout: the iterations are vertically oriented — not back
+  and forth, not doubled up. One pane should be about half the screen; the
+  other is the assets. Asset tiles more rectangular and/or doubled up —
+  maybe two columns there.
+- Postcard editor: show both the front and the back as previews, **side by
+  side** (front, then back), with the text fields below. The page needs a
+  PDF button that creates a PDF and pops it up in a viewer window preview
+  on the Mac.
+- **Explicit**: when showing the postcard view, the asset browser is NOT
+  shown. (It already isn't — the stakeholder wants this recorded as a
+  deliberate rule, not an accident: agent-authored editing surfaces are
+  full-width.)
+- Home page: no counter demo; after login the user lands on something
+  useful — links to the wireframes (later, the real app).
+
 ---
 
 ## 2. Exploration findings (context for the spec author)
