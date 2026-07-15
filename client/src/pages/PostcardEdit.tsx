@@ -552,12 +552,6 @@ export default function PostcardEdit() {
               </p>
             )}
 
-            {currentIteration && regions.length === 0 && (
-              <p className="pointer-events-none absolute inset-0 flex items-center justify-center text-sm text-slate-300">
-                {side} image only — drag to draw a text box
-              </p>
-            )}
-
             {regions.map((region) => (
               <button
                 key={region.name}

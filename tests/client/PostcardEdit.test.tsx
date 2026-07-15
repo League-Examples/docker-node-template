@@ -111,6 +111,20 @@ describe('PostcardEdit -- front/back tab previews via GET /api/files/* (AC1)', (
     expect(screen.getByText(/no back image yet/i)).toBeInTheDocument();
     assertNoLibraryDrawer();
   });
+
+  it('shows no instructional hint text overlaid on the image itself (OOP change: removed)', async () => {
+    const user = userEvent.setup();
+    stubFetch(projectFixture());
+    renderPage();
+    await settle();
+
+    expect(screen.queryByText(/image only/i)).not.toBeInTheDocument();
+    expect(screen.queryByText(/drag to draw a text box/i)).not.toBeInTheDocument();
+
+    await user.click(screen.getByRole('button', { name: /^back$/i }));
+    expect(screen.queryByText(/image only/i)).not.toBeInTheDocument();
+    assertNoLibraryDrawer();
+  });
 });
 
 describe('PostcardEdit -- no text-region list section (round 10)', () => {
