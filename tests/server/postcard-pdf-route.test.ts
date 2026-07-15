@@ -226,6 +226,33 @@ describe('POST /api/postcards/:projectId/pdf -- front-only PDF', () => {
   });
 });
 
+describe('POST /api/postcards/:projectId/pdf -- rasterizer failure is handled, not fatal', () => {
+  it('returns 500 (never crashes) when the PDF rasterizer throws, e.g. no browser on the host', async () => {
+    mockRenderPostcardPdf.mockReset();
+    mockRenderPostcardPdf.mockRejectedValue(
+      new Error('Browser was not found at the configured executablePath (/usr/bin/chromium-browser)'),
+    );
+
+    const project = await makeProject(`${marker}-rasterizer-throws`);
+    await makeIteration(project.id, `projects/${project.id}/iterations/iter-1.png`, 1);
+
+    const agent = await loginAsAdmin();
+    const putRes = await agent.put(`/api/postcards/${project.id}`).send({
+      front_image: `projects/${project.id}/iterations/iter-1.png`,
+      front_regions: [],
+    });
+    expect(putRes.status).toBe(200);
+
+    const pdfRes = await agent.post(`/api/postcards/${project.id}/pdf`);
+    expect(pdfRes.status).toBe(500);
+    expect(pdfRes.body.error).toMatch(/failed to generate postcard pdf/i);
+
+    // The server is still alive: a follow-up request succeeds.
+    const healthRes = await agent.get('/api/health');
+    expect(healthRes.status).toBe(200);
+  });
+});
+
 describe('POST /api/postcards/:projectId/pdf -- non-admin authenticated user (ticket 006)', () => {
   it('a USER-role authenticated caller can request and receive a postcard PDF end to end', async () => {
     mockRenderPostcardPdf.mockReset();

@@ -1,6 +1,35 @@
+import { existsSync } from 'node:fs';
 import sharp from 'sharp';
 import { PDFDocument, degrees } from 'pdf-lib';
 import { resolveWorkspacePath } from './workspaceDirectorySync';
+
+/**
+ * Resolve the Chromium/Chrome executable puppeteer-core should launch.
+ * `PUPPETEER_EXECUTABLE_PATH` wins when set (the deployment/Docker override).
+ * Otherwise probe the common locations across environments -- the Alpine
+ * runtime's `apk` chromium first (production), then a macOS dev machine's
+ * Google Chrome / Chromium -- so local dev works without any env config.
+ * Falls back to the Alpine path so `launch` throws a clear "not found" error
+ * rather than an empty string, if nothing is present.
+ */
+function resolveBrowserExecutablePath(): string {
+  const configured = process.env.PUPPETEER_EXECUTABLE_PATH;
+  if (configured) return configured;
+  const candidates = [
+    '/usr/bin/chromium-browser',
+    '/usr/bin/chromium',
+    '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome',
+    '/Applications/Chromium.app/Contents/MacOS/Chromium',
+  ];
+  for (const candidate of candidates) {
+    try {
+      if (existsSync(candidate)) return candidate;
+    } catch {
+      /* ignore and keep probing */
+    }
+  }
+  return candidates[0];
+}
 
 /**
  * Postcard Render & PDF Service, second half (architecture-update.md Step
@@ -142,7 +171,7 @@ export const rasterizeWithChromium: FaceRasterizer = async (html) => {
   // (tests) that always inject a stub rasterizer and never touch a real
   // browser.
   const { default: puppeteer } = await import('puppeteer-core');
-  const executablePath = process.env.PUPPETEER_EXECUTABLE_PATH ?? '/usr/bin/chromium-browser';
+  const executablePath = resolveBrowserExecutablePath();
 
   const browser = await puppeteer.launch({
     executablePath,

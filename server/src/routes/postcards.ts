@@ -244,15 +244,25 @@ postcardsRouter.post('/postcards/:projectId/pdf', requireAuth, async (req, res) 
   const frontHtml = faceOnlyHtml(content, 'front');
   const backHtml = content.back_image !== undefined ? faceOnlyHtml(content, 'back') : undefined;
 
-  const pdfBytes = await renderPostcardPdf({ front: frontHtml, back: backHtml });
-
-  const pdfResult = await createAgentPage({
-    projectId,
-    filename: 'postcard.pdf',
-    content: pdfBytes,
-    contentType: 'application/pdf',
-    recordIteration: false,
-  });
+  // Rasterization runs a headless browser (puppeteer-core); a launch/render
+  // failure (e.g. no Chromium on the host) must surface as a 500, never an
+  // unhandled rejection that crashes the whole server process.
+  let pdfBytes: Buffer;
+  let pdfResult;
+  try {
+    pdfBytes = await renderPostcardPdf({ front: frontHtml, back: backHtml });
+    pdfResult = await createAgentPage({
+      projectId,
+      filename: 'postcard.pdf',
+      content: pdfBytes,
+      contentType: 'application/pdf',
+      recordIteration: false,
+    });
+  } catch (err) {
+    console.error(`Postcard PDF generation failed for project ${projectId}:`, err);
+    res.status(500).json({ error: 'Failed to generate postcard PDF.' });
+    return;
+  }
 
   res.status(200);
   res.set('Content-Type', 'application/pdf');
