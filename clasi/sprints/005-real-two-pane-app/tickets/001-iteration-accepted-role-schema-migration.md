@@ -1,7 +1,7 @@
 ---
 id: '001'
 title: Iteration accepted/role schema migration
-status: open
+status: done
 use-cases:
 - SUC-007
 - SUC-010
@@ -39,15 +39,15 @@ itself.
 
 ## Acceptance Criteria
 
-- [ ] `server/prisma/schema.prisma`'s `Iteration` model gains `accepted
+- [x] `server/prisma/schema.prisma`'s `Iteration` model gains `accepted
       Boolean @default(false)` and `role String?`.
-- [ ] A new Prisma migration is generated and committed; it is purely
+- [x] A new Prisma migration is generated and committed; it is purely
       additive — no existing `Iteration` row becomes invalid, no other
       model changes.
-- [ ] `npx prisma generate`'s output types reflect the new fields
+- [x] `npx prisma generate`'s output types reflect the new fields
       (verify `server/src/generated/prisma/models/Iteration.ts` picks
       them up).
-- [ ] Existing tests that construct `Iteration` rows (e.g. via
+- [x] Existing tests that construct `Iteration` rows (e.g. via
       `prisma.iteration.create`) continue to pass unmodified — the new
       fields must not be required at creation time.
 

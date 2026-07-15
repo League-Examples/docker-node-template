@@ -109,6 +109,8 @@ model Iteration {
   imagePath   String
   promptUsed  String
   modelParams Json?
+  accepted    Boolean  @default(false)
+  role        String?
   createdAt   DateTime @default(now())
 
   sourcedAssets Asset[]
