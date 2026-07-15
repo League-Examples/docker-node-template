@@ -1,7 +1,7 @@
 ---
 id: '004'
 title: Workspace file-serving route (GET /api/files/*)
-status: open
+status: done
 use-cases:
 - SUC-014
 depends-on: []
@@ -42,16 +42,16 @@ gate every other new route in this sprint uses). Read-only, unmoderated
 
 ## Acceptance Criteria
 
-- [ ] `GET /api/files/{valid-workspace-relative-path}` returns the file's
+- [x] `GET /api/files/{valid-workspace-relative-path}` returns the file's
       bytes with the correct `Content-Type` header.
-- [ ] A path-traversal attempt (e.g. `GET /api/files/../../etc/passwd` or
+- [x] A path-traversal attempt (e.g. `GET /api/files/../../etc/passwd` or
       an encoded equivalent) is rejected — `resolveWorkspacePath` throws
       or the route returns 400/404, never resolves outside `workspace/`.
-- [ ] A request for a path that doesn't exist under `workspace/` returns
+- [x] A request for a path that doesn't exist under `workspace/` returns
       404, not a stack trace or a directory listing.
-- [ ] An unauthenticated request (no session) is rejected by
+- [x] An unauthenticated request (no session) is rejected by
       `requireAuth` before any filesystem access happens.
-- [ ] The route is mounted in `server/src/app.ts` before the production
+- [x] The route is mounted in `server/src/app.ts` before the production
       `express.static(publicDir)` catch-all.
 
 ## Implementation Plan

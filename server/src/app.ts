@@ -12,6 +12,7 @@ import { authRouter } from './routes/auth';
 import { adminRouter } from './routes/admin';
 import { chatRouter } from './routes/chat';
 import { postcardsRouter } from './routes/postcards';
+import { filesRouter } from './routes/files';
 import { impersonateMiddleware } from './middleware/impersonate';
 import { mcpTokenAuth } from './middleware/mcpAuth';
 import { createMcpHandler } from './mcp/handler';
@@ -120,6 +121,7 @@ app.use('/api', authRouter);
 app.use('/api', adminRouter);
 app.use('/api', chatRouter);
 app.use('/api', postcardsRouter);
+app.use('/api', filesRouter);
 
 // MCP endpoint — token-based auth, separate from session auth
 app.post('/api/mcp', mcpTokenAuth, createMcpHandler());
