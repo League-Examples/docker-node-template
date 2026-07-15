@@ -232,7 +232,7 @@ describe('PostcardEdit -- click-to-edit popup (AC2)', () => {
 });
 
 describe('PostcardEdit -- move/resize handles (AC4)', () => {
-  it('dragging the top-left handle repositions the box (size unchanged)', async () => {
+  it('dragging the label tag repositions the box (size unchanged)', async () => {
     const user = userEvent.setup();
     stubFetch(projectFixture());
     renderPage();
@@ -240,7 +240,7 @@ describe('PostcardEdit -- move/resize handles (AC4)', () => {
     await drawFrontHeadlineBox(user);
 
     const preview = screen.getByTestId('postcard-preview');
-    fireEvent.mouseDown(screen.getByTestId('move-handle-tl-front_headline'), { clientX: 100, clientY: 50 });
+    fireEvent.mouseDown(screen.getByTestId('region-move-front_headline'), { clientX: 100, clientY: 50 });
     fireEvent.mouseMove(preview, { clientX: 150, clientY: 80 });
     fireEvent.mouseUp(preview);
 

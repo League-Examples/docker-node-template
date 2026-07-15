@@ -641,18 +641,18 @@ export default function PostcardEdit() {
                 </span>
                 {/* Label tag: sits centered on the top border at the upper-left,
                     left-aligned -- white background + solid border laid over the
-                    dashed box outline. */}
-                <span className="pointer-events-none absolute left-1 top-0 -translate-y-1/2 rounded-sm border border-solid border-indigo-500 bg-white px-1 font-semibold text-indigo-700">
+                    dashed box outline. The whole tag is the MOVE grip: grab it
+                    to drag the box. */}
+                <span
+                  data-testid={`region-move-${region.name}`}
+                  onMouseDown={(event) => handleMoveStart(event, 'region', 'move', region.name)}
+                  className="absolute left-1 top-0 -translate-y-1/2 cursor-move rounded-sm border border-solid border-indigo-500 bg-white px-1 font-semibold text-indigo-700"
+                >
                   {region.label}
                 </span>
-                {/* Two distinct corner handles: top-left drags to move the
-                    box, bottom-right drags to resize it (top-left corner
-                    stays fixed, width/height follow the pointer). */}
-                <span
-                  data-testid={`move-handle-tl-${region.name}`}
-                  onMouseDown={(event) => handleMoveStart(event, 'region', 'move', region.name)}
-                  className="absolute -left-1 -top-1 h-2.5 w-2.5 cursor-move rounded-sm border border-white bg-indigo-600"
-                />
+                {/* Bottom-right corner handle resizes the box (top-left corner
+                    stays fixed, width/height follow the pointer). Move is the
+                    label tag above. */}
                 <span
                   data-testid={`move-handle-br-${region.name}`}
                   onMouseDown={(event) => handleMoveStart(event, 'region', 'resize', region.name)}
