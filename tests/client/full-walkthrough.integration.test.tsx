@@ -325,8 +325,8 @@ describe('Full walkthrough (sprint 005 capstone, sprint.md Success Criteria)', (
       // land on the project list. ----
       navigateTo('/');
       render(<App />);
-      expect(await screen.findByText('Projects')).toBeInTheDocument();
-      expect(screen.getByTestId('user-menu-trigger')).toBeInTheDocument();
+      expect(await screen.findByTestId('user-menu-trigger')).toBeInTheDocument();
+      expect(within(screen.getByRole('navigation', { name: 'Primary' })).getByText('Projects')).toBeInTheDocument();
 
       // ---- Browse the library. ----
       fireEvent.click(screen.getByRole('button', { name: 'Library' }));

@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { render, screen } from '@testing-library/react';
+import { render, screen, within } from '@testing-library/react';
 import type { ReactNode } from 'react';
 import App from '../../client/src/App';
 
@@ -89,7 +89,9 @@ describe('App routing scaffold (005-007)', () => {
   it('resolves "/" inside the AppLayout shell', () => {
     navigateTo('/');
     render(<App />);
-    expect(screen.getByText('Projects')).toBeInTheDocument();
+    // "Projects" is the primary-nav tab (the page body may also contain the
+    // word), so scope the assertion to the nav.
+    expect(within(screen.getByRole('navigation', { name: 'Primary' })).getByText('Projects')).toBeInTheDocument();
     // AppLayout's top bar renders regardless of page content.
     expect(screen.getByTestId('user-menu-trigger')).toBeInTheDocument();
   });
