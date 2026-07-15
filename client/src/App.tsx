@@ -2,15 +2,10 @@ import { BrowserRouter, Routes, Route } from 'react-router-dom';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { AuthProvider } from './context/AuthContext';
 import AppLayout from './components/AppLayout';
-import HomePage from './pages/HomePage';
+import ProjectList from './pages/ProjectList';
+import ProjectDetail from './pages/ProjectDetail';
+import PostcardEdit from './pages/PostcardEdit';
 import Login from './pages/Login';
-
-import MockupsIndex from './pages/mockups/MockupsIndex';
-import MockupMain from './pages/mockups/MockupMain';
-import MockupNewProject from './pages/mockups/MockupNewProject';
-import MockupPostcardEdit from './pages/mockups/MockupPostcardEdit';
-import MockupLogin from './pages/mockups/MockupLogin';
-import MockupProjects from './pages/mockups/MockupProjects';
 
 import About from './pages/About';
 import McpSetup from './pages/McpSetup';
@@ -42,18 +37,11 @@ function App() {
             {/* Admin login (standalone, no layout) */}
             <Route path="/admin" element={<AdminLogin />} />
 
-            {/* Wireframe mockups (standalone, no AppLayout, not auth-gated —
-                see architecture-update.md sprint 001, Decision 4) */}
-            <Route path="/mockups" element={<MockupsIndex />} />
-            <Route path="/mockups/main" element={<MockupMain />} />
-            <Route path="/mockups/new-project" element={<MockupNewProject />} />
-            <Route path="/mockups/postcard-edit" element={<MockupPostcardEdit />} />
-            <Route path="/mockups/login" element={<MockupLogin />} />
-            <Route path="/mockups/projects" element={<MockupProjects />} />
-
             {/* All authenticated routes share AppLayout (top bar + hamburger menu) */}
             <Route element={<AppLayout />}>
-              <Route path="/" element={<HomePage />} />
+              <Route path="/" element={<ProjectList />} />
+              <Route path="/projects/:id" element={<ProjectDetail />} />
+              <Route path="/projects/:id/postcard" element={<PostcardEdit />} />
 
               <Route path="/about" element={<About />} />
               <Route path="/account" element={<Account />} />

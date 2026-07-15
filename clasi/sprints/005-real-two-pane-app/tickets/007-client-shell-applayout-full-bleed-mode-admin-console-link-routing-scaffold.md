@@ -1,7 +1,7 @@
 ---
 id: '007'
 title: 'Client shell: AppLayout full-bleed mode + admin-console link + routing scaffold'
-status: open
+status: done
 use-cases:
 - SUC-001
 - SUC-012
@@ -65,19 +65,19 @@ not the pages' content.
 
 ## Acceptance Criteria
 
-- [ ] `AppLayout`'s `<main>` renders full-bleed (no padding, no
+- [x] `AppLayout`'s `<main>` renders full-bleed (no padding, no
       `overflow-auto`) on `/projects/*` routes only; every other route's
       existing padding/scroll behavior is unchanged (regression test).
-- [ ] `AppLayout`'s account dropdown shows an Admin-console link
+- [x] `AppLayout`'s account dropdown shows an Admin-console link
       (navigating to `/admin/users`) only when `hasAdminAccess(role)` is
       true — a `USER`-role component test confirms the link is absent.
-- [ ] `Account.tsx` shows the same conditional Admin-console link.
-- [ ] The pre-existing hamburger-menu admin link still works (no
+- [x] `Account.tsx` shows the same conditional Admin-console link.
+- [x] The pre-existing hamburger-menu admin link still works (no
       regression).
-- [ ] `App.tsx` no longer registers any `/mockups/*` route; `/`,
+- [x] `App.tsx` no longer registers any `/mockups/*` route; `/`,
       `/projects/:id`, `/projects/:id/postcard` are registered inside the
       `AppLayout` route group.
-- [ ] `AppLayout.test.tsx` is updated with new test cases for both
+- [x] `AppLayout.test.tsx` is updated with new test cases for both
       additions (full-bleed branch, admin-link visibility) — existing
       test cases for unaffected routes still pass.
 

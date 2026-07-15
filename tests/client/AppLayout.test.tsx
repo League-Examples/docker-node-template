@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, fireEvent, waitFor } from '@testing-library/react';
-import { MemoryRouter } from 'react-router-dom';
+import { MemoryRouter, useLocation } from 'react-router-dom';
 import AppLayout from '../../client/src/components/AppLayout';
 
 // ---- Mock useAuth ----
@@ -29,9 +29,15 @@ vi.mock('../../client/src/context/AuthContext', () => ({
 
 // ---- Helpers ----
 
-function renderLayout() {
+function LocationDisplay() {
+  const location = useLocation();
+  return <div data-testid="location-display">{location.pathname}</div>;
+}
+
+function renderLayout(initialPath = '/') {
   return render(
-    <MemoryRouter>
+    <MemoryRouter initialEntries={[initialPath]}>
+      <LocationDisplay />
       <AppLayout />
     </MemoryRouter>,
   );
@@ -225,5 +231,84 @@ describe('AppLayout', () => {
     });
 
     vi.unstubAllGlobals();
+  });
+
+  // ---- Admin-console link in the account dropdown (SUC-012) ----
+
+  it('shows an Admin console link in the account dropdown when user has admin role', () => {
+    mockUseAuth.mockReturnValue({
+      user: makeAdminUser(),
+      loading: false,
+      logout: mockLogout,
+    });
+
+    renderLayout();
+    fireEvent.click(screen.getByTestId('user-menu-trigger'));
+
+    const link = screen.getByRole('button', { name: /admin console/i });
+    expect(link).toBeInTheDocument();
+  });
+
+  it('navigates to /admin/users when the account dropdown Admin console link is clicked', () => {
+    mockUseAuth.mockReturnValue({
+      user: makeAdminUser(),
+      loading: false,
+      logout: mockLogout,
+    });
+
+    renderLayout();
+    fireEvent.click(screen.getByTestId('user-menu-trigger'));
+    fireEvent.click(screen.getByRole('button', { name: /admin console/i }));
+
+    expect(screen.getByTestId('location-display')).toHaveTextContent('/admin/users');
+  });
+
+  it('hides the Admin console link in the account dropdown when user has non-admin role', () => {
+    renderLayout();
+    fireEvent.click(screen.getByTestId('user-menu-trigger'));
+    expect(screen.queryByRole('button', { name: /admin console/i })).not.toBeInTheDocument();
+  });
+
+  it('the pre-existing hamburger-menu Admin link still works alongside the dropdown link (no regression)', () => {
+    mockUseAuth.mockReturnValue({
+      user: makeAdminUser(),
+      loading: false,
+      logout: mockLogout,
+    });
+
+    renderLayout();
+    fireEvent.click(screen.getByRole('button', { name: 'Menu' }));
+    expect(screen.getByText('Admin')).toBeInTheDocument();
+  });
+
+  // ---- Full-bleed <main> mode for /projects/* (R2) ----
+
+  it('renders <main> full-bleed (no padding, no overflow-auto) on /projects/:id routes', () => {
+    renderLayout('/projects/42');
+    const mainEl = document.querySelector('main');
+    expect(mainEl).toBeInTheDocument();
+    expect(mainEl?.className).not.toMatch(/\bp-6\b/);
+    expect(mainEl?.className).not.toMatch(/\boverflow-auto\b/);
+  });
+
+  it('renders <main> full-bleed on /projects/:id/postcard routes', () => {
+    renderLayout('/projects/42/postcard');
+    const mainEl = document.querySelector('main');
+    expect(mainEl?.className).not.toMatch(/\bp-6\b/);
+    expect(mainEl?.className).not.toMatch(/\boverflow-auto\b/);
+  });
+
+  it('keeps the padded, scrolling <main> on non-/projects/* routes (regression)', () => {
+    renderLayout('/about');
+    const mainEl = document.querySelector('main');
+    expect(mainEl?.className).toMatch(/\bp-6\b/);
+    expect(mainEl?.className).toMatch(/\boverflow-auto\b/);
+  });
+
+  it('keeps the padded, scrolling <main> on the home route "/"', () => {
+    renderLayout('/');
+    const mainEl = document.querySelector('main');
+    expect(mainEl?.className).toMatch(/\bp-6\b/);
+    expect(mainEl?.className).toMatch(/\boverflow-auto\b/);
   });
 });

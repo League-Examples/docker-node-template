@@ -51,6 +51,12 @@ export default function AppLayout() {
   const location = useLocation();
 
   const isAdminSection = location.pathname.startsWith('/admin/');
+  // The two-pane app (project detail, postcard editor) is h-screen-based
+  // with its own internal scroll regions and an absolute-positioned asset
+  // drawer, so it needs a zero-padding, non-scrolling <main> ancestor —
+  // unlike every other route, which keeps the padded/scrolling default.
+  // See architecture-update.md Design Rationale R2.
+  const isProjectsSection = location.pathname.startsWith('/projects/');
 
   const [menuOpen, setMenuOpen] = useState(false);
   const [dropdownOpen, setDropdownOpen] = useState(false);
@@ -120,6 +126,10 @@ export default function AppLayout() {
     `block px-4 py-1.5 text-sm ${
       isActive ? 'bg-slate-100 font-semibold text-slate-900' : 'text-slate-600 hover:bg-slate-50'
     }`;
+
+  const mainClassName = isProjectsSection
+    ? 'relative min-w-0 flex-1 overflow-hidden'
+    : 'min-w-0 flex-1 overflow-auto p-6';
 
   return (
     <div className="flex min-h-screen flex-col bg-slate-50 text-slate-800">
@@ -214,6 +224,18 @@ export default function AppLayout() {
               >
                 Account
               </button>
+              {isAdmin && (
+                <button
+                  type="button"
+                  className="block w-full border-t border-slate-100 px-3.5 py-2 text-left text-sm text-slate-700 hover:bg-slate-50"
+                  onClick={() => {
+                    setDropdownOpen(false);
+                    navigate('/admin/users');
+                  }}
+                >
+                  Admin console
+                </button>
+              )}
               {user.impersonating ? (
                 <button
                   type="button"
@@ -244,7 +266,7 @@ export default function AppLayout() {
         </div>
       )}
 
-      <main className="min-w-0 flex-1 overflow-auto p-6">
+      <main className={mainClassName}>
         <Outlet />
       </main>
     </div>

@@ -11,12 +11,13 @@ const mockRefresh = vi.fn();
 function makeAuthUser(overrides: Partial<{
   linkedProviders: string[];
   provider: string | null;
+  role: string;
 }> = {}) {
   return {
     id: 1,
     email: 'user@example.com',
     displayName: 'Test User',
-    role: 'user',
+    role: overrides.role ?? 'user',
     avatarUrl: null,
     provider: overrides.provider ?? null,
     providerId: null,
@@ -52,11 +53,19 @@ vi.mock('../../client/src/hooks/useProviderStatus', () => ({
 }));
 
 // ---- Mock lib/roles ----
+// Partial mock: keep the real `hasAdminAccess` (needed for the
+// admin-console link visibility tests below) while stubbing the
+// presentation helpers, matching what the rest of this file already
+// assumed about role display.
 
-vi.mock('../../client/src/lib/roles', () => ({
-  roleBadgeStyle: () => ({ background: '#e0e7ff', color: '#3730a3' }),
-  roleShortLabel: (role: string) => role,
-}));
+vi.mock('../../client/src/lib/roles', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('../../client/src/lib/roles')>();
+  return {
+    ...actual,
+    roleBadgeStyle: () => ({ background: '#e0e7ff', color: '#3730a3' }),
+    roleShortLabel: (role: string) => role,
+  };
+});
 
 // ---- Helpers ----
 
@@ -258,6 +267,24 @@ describe('Account — Sign-in methods section', () => {
       renderAccount();
 
       expect(screen.queryByText(/Add/)).not.toBeInTheDocument();
+    });
+  });
+
+  describe('Admin-console link (SUC-012)', () => {
+    it('shows the Admin console link when the user has ADMIN role', () => {
+      mockUser = makeAuthUser({ role: 'ADMIN' });
+      renderAccount();
+
+      const link = screen.getByRole('link', { name: /admin console/i });
+      expect(link).toBeInTheDocument();
+      expect(link).toHaveAttribute('href', '/admin/users');
+    });
+
+    it('hides the Admin console link when the user has USER role', () => {
+      mockUser = makeAuthUser({ role: 'USER' });
+      renderAccount();
+
+      expect(screen.queryByRole('link', { name: /admin console/i })).not.toBeInTheDocument();
     });
   });
 });
