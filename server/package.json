@@ -30,6 +30,7 @@
     "passport-google-oauth20": "^2.0.0",
     "pino": "^9.6.0",
     "pino-http": "^10.4.0",
+    "simple-git": "^3.36.0",
     "sqlite-vec": "^0.1.9"
   },
   "devDependencies": {
