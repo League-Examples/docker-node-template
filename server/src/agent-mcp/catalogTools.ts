@@ -8,8 +8,8 @@ import { prisma as defaultPrisma } from '../services/prisma';
 import { resolveWorkspacePath } from '../services/workspaceDirectorySync';
 import { versioningService as defaultVersioningService } from '../services/versioning';
 import { indexKnowledgeEntry } from '../services/search';
-import { describeAsset } from '../services/description';
-import type { DescribeAssetOptions } from '../services/description';
+import { describeAsset, retryPendingDescriptions } from '../services/description';
+import type { DescribeAssetOptions, RetryPendingDescriptionsOptions } from '../services/description';
 import { acquireLock, releaseLock } from './locks';
 import type { VersioningRecorder } from './fsTools';
 import type { KnowledgeEntryModel } from '../generated/prisma/models/KnowledgeEntry';
@@ -147,6 +147,15 @@ export interface CatalogToolsOptions {
    * `describeAsset.imagingOptions.fetchImpl` (a stub) so no real
    * filesystem read or network call ever happens in the suite. */
   describeAsset?: Partial<DescribeAssetOptions>;
+  /** `add_asset_to_collection` only: options forwarded to the
+   * opportunistic-retry pass's `retryPendingDescriptions` call for any
+   * other still-pending `Asset` already in the same `Collection` (ticket
+   * 004-004). Production callers leave this unset -- `retryPendingDescriptions`
+   * reads each pending asset's bytes off the Workspace Filesystem itself
+   * by default. Tests set `retryPendingDescriptions.loadInput` to a stub
+   * returning fixture bytes so the opportunistic pass never touches the
+   * real filesystem either. */
+  retryPendingDescriptions?: Partial<RetryPendingDescriptionsOptions>;
   /** Free-text log line target for a swallowed description-pipeline
    * failure (see `add_asset_to_collection`'s header). Defaults to a
    * pino instance silent under `NODE_ENV=test`; test-injectable. */
@@ -441,7 +450,19 @@ export interface AddAssetToCollectionArgs {
  * Tests bypass the filesystem read entirely by supplying
  * `options.describeAsset.input` directly (fixture bytes/URL) alongside a
  * stub `fetchImpl`, so no real file or network access ever happens in the
- * suite. */
+ * suite.
+ *
+ * **Opportunistic retry (ticket 004-004)**: after that hand-off (success or
+ * swallowed failure), this tool also runs a best-effort
+ * `description.retryPendingDescriptions` pass scoped to this asset's
+ * `Collection` (excluding the asset just created) -- so any *other*
+ * still-pending asset already in the collection gets a free retry attempt
+ * piggybacked on this write, without a separate scheduled-job cycle. Like
+ * the main pipeline call, this pass is wrapped in try/catch: a failure here
+ * (or within the retry pass itself) is logged and swallowed, never thrown
+ * out of this function -- it never blocks or fails this commit, leaving
+ * those other assets pending for the next opportunistic or scheduled
+ * retry. */
 export async function addAssetToCollection(
   args: AddAssetToCollectionArgs,
   options: CatalogToolsOptions = {}
@@ -492,6 +513,21 @@ export async function addAssetToCollection(
     logger.error(
       { err, assetId: asset.id, path: asset.path },
       'add_asset_to_collection: description pipeline failed; Asset committed without AssetDescription (pending retry, architecture-update.md R2)'
+    );
+  }
+
+  try {
+    await retryPendingDescriptions({
+      prismaClient,
+      collectionId: asset.collectionId,
+      excludeAssetId: asset.id,
+      logger,
+      ...options.retryPendingDescriptions,
+    });
+  } catch (err) {
+    logger.error(
+      { err, assetId: asset.id, collectionId: asset.collectionId },
+      'add_asset_to_collection: opportunistic description-retry pass failed; other pending Assets left for the next retry'
     );
   }
 

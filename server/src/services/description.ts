@@ -1,7 +1,10 @@
+import fs from 'fs/promises';
+import path from 'path';
 import { prisma as defaultPrisma } from './prisma';
 import { classifyAndDescribe } from './imaging';
 import type { ClassifyAndDescribeInput, ImagingCallOptions, AssetClassification } from './imaging';
 import { indexAssetDescription } from './search';
+import { resolveWorkspacePath } from './workspaceDirectorySync';
 import type { AssetModel } from '../generated/prisma/models/Asset';
 import type { AssetDescriptionModel } from '../generated/prisma/models/AssetDescription';
 import type { EmbeddingModel } from '../generated/prisma/models/Embedding';
@@ -19,15 +22,34 @@ import type { EmbeddingModel } from '../generated/prisma/models/Embedding';
  * only to the Catalog & Knowledge Store and the Vector Index -- never
  * touches the Workspace Filesystem directly (the asset file itself was
  * already placed there by the MCP tool that triggered this pipeline)."
- * This module never calls `fs`. The asset's image bytes/URL are supplied
- * by the caller as `options.input` -- in production that caller is
+ * `describeAsset` itself never calls `fs`. The asset's image bytes/URL are
+ * supplied by the caller as `options.input` -- in production that caller is
  * `agent-mcp/catalogTools.ts`'s `addAssetToCollection`, which already
  * does filesystem I/O for its other tools (`create_agent_page`) and reads
  * the asset's bytes off the Workspace Filesystem itself before invoking
  * `describeAsset`. Tests inject `options.input` directly (fixture bytes,
  * or simply omitted since the fixture-backed `classifyAndDescribe` stub
  * never actually decodes them), so no real file ever needs to exist on
- * disk for this module's own tests.
+ * disk for this module's own tests. `retryPendingDescriptions` below is the
+ * one exception: unlike the original commit, no caller is holding fresh
+ * bytes for a retry pass, so its default `loadInput` reads the asset's file
+ * off the Workspace Filesystem itself -- test-injectable, so this module's
+ * own tests still never touch a real file.
+ *
+ * **Pending/retry model (architecture-update.md Step 6 R2, ticket
+ * 004-004)**: an `Asset` row with no `AssetDescription` row *is* the
+ * pending-retry state -- there is no separate status column or queue
+ * table. `retryPendingDescriptions` queries exactly that state
+ * (`AssetDescription` absent, optionally scoped to one `Collection`) and
+ * re-invokes `describeAsset` for each match, so a previously-failed asset
+ * is retried through the identical happy path as a brand-new commit. Two
+ * retry triggers call it: an opportunistic best-effort pass from
+ * `addAssetToCollection` (piggybacking on the next asset committed into
+ * the same collection) and a `ScheduledJob` named `description-retry`
+ * (`registerDescriptionRetryJob` below), registered at app startup on an
+ * hourly cadence -- coarse-grained is acceptable per R2's rationale, since
+ * a pending asset is already fully usable via filename/path search (UC-014
+ * E3) while it waits to be described.
  *
  * **Failure containment (architecture-update.md Step 6 R2,
  * "pending-description-as-absent-row")**: `describeAsset` lets any
@@ -205,4 +227,150 @@ export async function describeAsset(
   });
 
   return { description, embedding, classification };
+}
+
+// ---------------------------------------------------------------------------
+// retryPendingDescriptions (ticket 004-004 -- see module header)
+// ---------------------------------------------------------------------------
+
+/** Best-effort MIME type for a pending asset's stored path, used only by
+ * `defaultLoadInput` below -- mirrors `catalogTools.ts`'s own
+ * `mimeTypeForAssetPath` (not imported from there: that one is private to
+ * `catalogTools.ts`, and duplicating this small lookup avoids a dependency
+ * from this module back onto the agent-mcp layer). */
+const MIME_BY_EXTENSION: Record<string, string> = {
+  '.png': 'image/png',
+  '.jpg': 'image/jpeg',
+  '.jpeg': 'image/jpeg',
+  '.webp': 'image/webp',
+  '.heic': 'image/heic',
+};
+
+function mimeTypeForAssetPath(assetPath: string): string {
+  return MIME_BY_EXTENSION[path.extname(assetPath).toLowerCase()] ?? 'image/png';
+}
+
+/** Default `loadInput` for `retryPendingDescriptions`: reads the pending
+ * asset's bytes off the Workspace Filesystem itself, the same fallback
+ * `addAssetToCollection` uses when no fixture `input` is supplied. */
+async function defaultLoadInput(asset: Pick<AssetModel, 'path'>): Promise<ClassifyAndDescribeInput> {
+  return {
+    imageBytes: await fs.readFile(resolveWorkspacePath(asset.path)),
+    mimeType: mimeTypeForAssetPath(asset.path),
+  };
+}
+
+/** The minimal logger shape `retryPendingDescriptions` depends on for a
+ * still-failing asset -- mirrors `catalogTools.ts`'s `CatalogToolsLogger`. */
+export interface DescriptionRetryLogger {
+  error(obj: Record<string, unknown>, msg?: string): void;
+}
+
+export interface RetryPendingDescriptionsOptions {
+  /** Prisma client used for the pending-asset query and every retried
+   * `describeAsset` call. Defaults to the shared app singleton;
+   * test-injectable. */
+  prismaClient?: any;
+  /** Restricts the retry pass to `Asset` rows in this `Collection` --
+   * used by the opportunistic hook (`addAssetToCollection`) to scope
+   * retries to the collection just written to, rather than scanning the
+   * whole catalog on every commit. Omitted for the scheduled/global pass. */
+  collectionId?: number;
+  /** Excludes one `Asset` id from the pending query -- the opportunistic
+   * hook uses this to exclude the asset it just committed (whose own
+   * `describeAsset` attempt, success or failure, already just ran), so
+   * this pass only ever retries a *previously* pending asset. */
+  excludeAssetId?: number;
+  /** Forwarded to every retried `describeAsset` call's `imagingOptions`
+   * (`fetchImpl`/`openrouterApiKey`/... overrides) -- test-injectable. */
+  imagingOptions?: ImagingCallOptions;
+  /** Supplies each pending asset's image bytes/URL for `describeAsset`'s
+   * `input`. Defaults to `defaultLoadInput` (reads the file off the
+   * Workspace Filesystem -- see module header); test-injectable so tests
+   * never touch the real filesystem. */
+  loadInput?: (asset: Pick<AssetModel, 'id' | 'path'>) => Promise<ClassifyAndDescribeInput>;
+  /** Logged once per asset that fails again this pass -- the asset is left
+   * pending for the next invocation (opportunistic or scheduled), never
+   * thrown out of this function. Defaults to a no-op so a scheduled-job
+   * run without an explicit logger never throws. */
+  logger?: DescriptionRetryLogger;
+}
+
+export interface RetryPendingDescriptionsResult {
+  /** Number of pending `Asset` rows this pass attempted. */
+  attempted: number;
+  /** Number that now have an `AssetDescription`/`Embedding` row. */
+  succeeded: number;
+  /** Number still pending after this pass (left for the next retry). */
+  failed: number;
+}
+
+const noopLogger: DescriptionRetryLogger = { error() {} };
+
+/**
+ * Retries the Description & Embedding Pipeline for every `Asset` row with
+ * no `AssetDescription` row -- the pending-retry state R2 defines (see
+ * module header). Idempotent by construction: once an asset gets a
+ * description, it no longer matches this query, so re-invoking this
+ * function never re-processes it (`classifyAndDescribe` is called at most
+ * once per asset per still-pending state). A still-failing asset is simply
+ * left pending -- its failure is logged, never thrown, so one bad asset
+ * never stops the rest of the pass.
+ */
+export async function retryPendingDescriptions(
+  options: RetryPendingDescriptionsOptions = {}
+): Promise<RetryPendingDescriptionsResult> {
+  const prismaClient = options.prismaClient ?? defaultPrisma;
+  const loadInput = options.loadInput ?? defaultLoadInput;
+  const logger = options.logger ?? noopLogger;
+
+  const pending = (await prismaClient.asset.findMany({
+    where: {
+      description: null,
+      ...(options.collectionId !== undefined ? { collectionId: options.collectionId } : {}),
+      ...(options.excludeAssetId !== undefined ? { id: { not: options.excludeAssetId } } : {}),
+    },
+  })) as AssetModel[];
+
+  let succeeded = 0;
+  let failed = 0;
+  for (const asset of pending) {
+    try {
+      const input = await loadInput(asset);
+      await describeAsset(asset, { prismaClient, input, imagingOptions: options.imagingOptions });
+      succeeded += 1;
+    } catch (err) {
+      failed += 1;
+      logger.error(
+        { err, assetId: asset.id, path: asset.path },
+        'retryPendingDescriptions: description pipeline failed again; Asset left pending for the next retry pass'
+      );
+    }
+  }
+
+  return { attempted: pending.length, succeeded, failed };
+}
+
+/** The minimal `SchedulerService` surface `registerDescriptionRetryJob`
+ * depends on -- narrow enough for a test to inject a plain stub without a
+ * real `SchedulerService`/Prisma instance. */
+export interface DescriptionRetrySchedulerHandle {
+  registerHandler(jobName: string, handler: () => Promise<void>): void;
+}
+
+/**
+ * Registers the `'description-retry'` job handler on `scheduler` --
+ * invoking `retryPendingDescriptions(options)` whenever `SchedulerService`
+ * runs that job (its `ScheduledJob` row is seeded by
+ * `SchedulerService.seedDefaults`, `frequency: 'hourly'`). Split out from
+ * `server/src/index.ts`'s inline startup wiring so a test can call it
+ * directly against a stub scheduler, without booting the whole app.
+ */
+export function registerDescriptionRetryJob(
+  scheduler: DescriptionRetrySchedulerHandle,
+  options: RetryPendingDescriptionsOptions = {}
+): void {
+  scheduler.registerHandler('description-retry', async () => {
+    await retryPendingDescriptions(options);
+  });
 }
