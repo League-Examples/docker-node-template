@@ -115,13 +115,13 @@ catalogRouter.get('/catalog/tree', requireAuth, async (_req, res) => {
   // out of `findMany` as `[]` -- no separate empty-state branch needed
   // (UC-002 E1).
   res.status(200).json({
-    directories: directories.map((dir) => ({
+    directories: directories.map((dir: (typeof directories)[number]) => ({
       id: dir.id,
       parentId: dir.parentId,
       path: dir.path,
       name: directoryName(dir.path),
       kind: dir.kind,
-      collections: dir.collections.map((collection) => ({
+      collections: dir.collections.map((collection: (typeof dir.collections)[number]) => ({
         id: collection.id,
         name: collection.name,
         kind: collection.kind,
