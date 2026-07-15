@@ -787,9 +787,41 @@ describe('PostcardEdit -- load-on-mount hydration + debounced autosave (OOP chan
     expect(putCalls).toHaveLength(0);
   }, 10000);
 
+  it('does not autosave after an edit when the load-on-mount GET failed -- must never overwrite content it failed to read (OOP data-loss fix, 2026-07-16)', async () => {
+    // Regression test: if the load-on-mount GET errors (server hiccup),
+    // the editor sits at empty-region defaults. Without the
+    // autosave-enabled guard, a subsequent edit's debounced autosave PUT
+    // would silently replace still-saved server content with that empty
+    // state. Here the GET 500s, then the stakeholder draws a box -- no PUT
+    // must ever fire.
+    const user = userEvent.setup();
+    const fetchMock = stubFetch(projectFixture(), (url, init) => {
+      if (url === '/api/postcards/7' && (!init || !init.method)) {
+        return { ok: false, status: 500, json: async () => ({}) } as Response;
+      }
+      return undefined;
+    });
+    renderPage();
+    await settle();
+    await drawFrontHeadlineBox(user);
+
+    // Real-timer wait comfortably past the 700ms autosave debounce -- if
+    // the guard were missing, a PUT would show up here.
+    await new Promise((resolve) => setTimeout(resolve, 900));
+    const putCalls = fetchMock.mock.calls.filter(
+      ([url, init]) => url === '/api/postcards/7' && (init as RequestInit | undefined)?.method === 'PUT',
+    );
+    expect(putCalls).toHaveLength(0);
+  }, 10000);
+
   it('schedules a debounced PUT of the current content payload after a genuine edit (box draw)', async () => {
     const user = userEvent.setup();
     const fetchMock = stubFetch(projectFixture(), (url, init) => {
+      // Load-on-mount GET must succeed (mirrors the real server, which
+      // always returns 200 `{ content: null }` -- never a 404 -- when
+      // nothing has been saved yet) so the autosave-enabled guard (OOP
+      // data-loss fix, 2026-07-16) allows the debounced PUT below.
+      if (url === '/api/postcards/7' && (!init || !init.method)) return { ok: true, json: async () => ({ content: null }) } as Response;
       if (url === '/api/postcards/7' && init?.method === 'PUT') return { ok: true, json: async () => ({}) } as Response;
       return undefined;
     });

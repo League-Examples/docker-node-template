@@ -145,6 +145,17 @@ import PostcardQrBaseLayer from '../lib/PostcardQrBaseLayer';
  * surfaced as an error. Preview *images* are unaffected by any of this --
  * they still come from `Iteration.role`, per the section above.
  *
+ * **Autosave-on-failed-load guard (OOP data-loss fix, 2026-07-16)**: those
+ * two "nothing to hydrate" outcomes are NOT equivalent for autosave.
+ * `autosaveEnabledRef` starts `false` and flips to `true` only when the
+ * load GET actually returns 2xx -- `{ content: null }` counts as success
+ * (genuinely nothing saved yet). If the GET instead ERRORS (fetch/HTTP
+ * failure), the ref stays `false`: the editor sits at empty-region
+ * defaults, but a subsequent edit's debounced autosave is blocked from
+ * ever PUTting that empty state over server content this GET merely
+ * failed to read. Without this guard, a momentary server hiccup on load
+ * followed by any edit would silently destroy already-saved text.
+ *
  * Every change to `regionsBySide`/`regionText`/`qrBySide` (box add/delete/
  * move/resize, text commit, QR add/url-set/move/resize/delete) schedules a
  * debounced `PUT` of `buildContentPayload()`'s result (`AUTOSAVE_DEBOUNCE_MS`
@@ -326,6 +337,15 @@ export default function PostcardEdit() {
   const autosaveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const latestPayloadRef = useRef<Record<string, unknown> | null>(null);
   const skipNextAutosaveRef = useRef(true);
+  // Autosave-on-failed-load guard (OOP data-loss fix, 2026-07-16): starts
+  // `false` and is flipped to `true` only when the load-on-mount GET below
+  // actually SUCCEEDS (2xx) -- `{ content: null }` counts as success (there
+  // is genuinely nothing saved yet, so autosaving client-only defaults is
+  // safe). If that GET instead ERRORS (fetch/HTTP failure), this stays
+  // `false` forever for this mount: the editor sits at empty-region
+  // defaults, but a subsequent edit's debounced autosave must never PUT
+  // that empty state over server content the GET simply failed to read.
+  const autosaveEnabledRef = useRef(false);
 
   const loadProject = useCallback(async () => {
     setLoading(true);
@@ -354,6 +374,9 @@ export default function PostcardEdit() {
   // its client-only defaults; neither is surfaced as an error.
   useEffect(() => {
     if (Number.isNaN(projectId)) return;
+    // Reset for this mount/projectId -- autosave stays disabled until the
+    // GET below actually succeeds (see `autosaveEnabledRef`'s own comment).
+    autosaveEnabledRef.current = false;
     let cancelled = false;
     (async () => {
       try {
@@ -361,7 +384,11 @@ export default function PostcardEdit() {
         if (!res.ok) throw new Error(`HTTP ${res.status}`);
         const data = (await res.json()) as { content: PostcardContentDTO | null };
         const content = data?.content;
-        if (cancelled || !content) return;
+        if (cancelled) return;
+        // The GET itself succeeded -- safe to autosave from here on, even
+        // when there's nothing to hydrate (`content` is `null`).
+        autosaveEnabledRef.current = true;
+        if (!content) return;
 
         const hydratedRegions: Record<PostcardSide, PostcardRegion[]> = { front: [], back: [] };
         const hydratedText: Record<string, string> = {};
@@ -386,8 +413,11 @@ export default function PostcardEdit() {
         setRegionText(hydratedText);
         setQrBySide({ front: content.front_qr ?? null, back: content.back_qr ?? null });
       } catch {
-        // Nothing saved yet, or a transient fetch/parse error -- leave the
-        // editor at its client-only defaults (see module header).
+        // A transient fetch/parse error -- leave the editor at its
+        // client-only defaults (see module header) AND leave
+        // `autosaveEnabledRef` at `false` (it was reset above): a
+        // subsequent edit must not autosave over content this GET failed
+        // to read (see that ref's own comment).
       }
     })();
     return () => {
@@ -445,6 +475,9 @@ export default function PostcardEdit() {
       skipNextAutosaveRef.current = false;
       return;
     }
+    // Load-failed guard (see `autosaveEnabledRef`'s own comment): never
+    // schedule a PUT until the load-on-mount GET has actually succeeded.
+    if (!autosaveEnabledRef.current) return;
     if (autosaveTimerRef.current) {
       clearTimeout(autosaveTimerRef.current);
       autosaveTimerRef.current = null;

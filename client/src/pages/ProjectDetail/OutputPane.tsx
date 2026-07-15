@@ -185,13 +185,49 @@ export default function OutputPane({ projectId, projectTitle, iterations, onIter
    * ticket 005), then POSTs `.../pdf` to render+stream it back
    * (`postcardPdf.ts`, ticket 006), opening the result in a new tab --
    * the wireframe's "PDF button... pops it up in a viewer window"
-   * behavior, now against real image paths instead of a print stub. */
+   * behavior, now against real image paths instead of a print stub.
+   *
+   * **Merge, never clobber (OOP data-loss fix, 2026-07-16)**: `PUT
+   * /api/postcards/:id` REPLACES the saved content wholesale
+   * (`postcards.ts`'s own doc comment -- `create_agent_page` overwrites
+   * the file in place). Sending only `{ front_image, back_image }` here
+   * used to WIPE any `front_regions`/`back_regions`/`front_qr`/`back_qr`
+   * a stakeholder had already saved via the text editor
+   * (`PostcardEdit.tsx`) -- confirmed data loss on a real project. This
+   * button only ever changes which images are on the postcard, so it
+   * must carry forward whatever regions/QR already exist: a fresh `GET
+   * /api/postcards/:id` immediately before the PUT (not the mount-time
+   * `postcardContent` state, which can be stale if content was saved
+   * elsewhere since this page loaded) supplies `front_regions`/
+   * `back_regions`/`front_qr`/`back_qr` verbatim, and only
+   * `front_image`/`back_image` are overwritten from the current
+   * front/back-role iterations. When nothing has been saved yet
+   * (`{ content: null }`), there is nothing to lose, so an images-only
+   * payload is correct. */
   async function handleGeneratePdf() {
     if (!hasMarkedSide || pdfBusy) return;
     setPdfBusy(true);
     setPdfError('');
     try {
-      const content: Record<string, string> = {};
+      let existing: PostcardContentDTO | null = null;
+      try {
+        const existingRes = await fetch(`/api/postcards/${projectId}`);
+        if (existingRes.ok) {
+          const data = (await existingRes.json()) as { content: PostcardContentDTO | null };
+          existing = data?.content ?? null;
+        }
+      } catch {
+        // Fetch failed -- fall through with existing = null. The PUT
+        // below then carries only the image paths, same as if nothing
+        // had been saved yet; it never sends an explicit empty-regions
+        // payload that would overwrite real, unread content.
+      }
+
+      const content: Record<string, unknown> = {};
+      if (existing?.front_regions) content.front_regions = existing.front_regions;
+      if (existing?.back_regions) content.back_regions = existing.back_regions;
+      if (existing?.front_qr) content.front_qr = existing.front_qr;
+      if (existing?.back_qr) content.back_qr = existing.back_qr;
       if (frontIteration) content.front_image = frontIteration.imagePath;
       if (backIteration) content.back_image = backIteration.imagePath;
 

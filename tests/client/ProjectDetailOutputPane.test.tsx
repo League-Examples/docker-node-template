@@ -339,6 +339,63 @@ describe('OutputPane -- PDF button', () => {
 
     await screen.findByText(/failed to generate the pdf/i);
   });
+
+  it('merges existing saved regions/QR into the PUT payload rather than clobbering them (OOP data-loss fix, 2026-07-16)', async () => {
+    // Regression test for a real data-loss bug: this button used to PUT
+    // `{ front_image, back_image }` only, and `PUT /api/postcards/:id`
+    // REPLACES the saved content wholesale -- so a stakeholder's
+    // already-saved `front_regions`/`back_regions`/`front_qr` were wiped
+    // out. This asserts the PUT body still carries them forward.
+    const iterations = [
+      iteration({ id: 1, seq: 1, role: 'front', imagePath: 'projects/7/iterations/1.png' }),
+      iteration({ id: 2, seq: 2, role: 'back', imagePath: 'projects/7/iterations/2.png' }),
+    ];
+    const existingContent = overlayContentFixture();
+
+    const putMock = { ok: true, json: async () => ({}) };
+    const pdfBlob = new Blob(['%PDF-1.7 fake'], { type: 'application/pdf' });
+    const pdfMock = { ok: true, blob: async () => pdfBlob };
+    const fetchMock = vi.fn((url: RequestInfo | URL, init?: RequestInit) => {
+      const u = String(url);
+      if (u === '/api/postcards/7' && (!init || !init.method)) {
+        return Promise.resolve({ ok: true, json: async () => ({ content: existingContent }) } as Response);
+      }
+      if (u === '/api/postcards/7' && init?.method === 'PUT') return Promise.resolve(putMock as Response);
+      if (u === '/api/postcards/7/pdf' && init?.method === 'POST') return Promise.resolve(pdfMock as Response);
+      return Promise.resolve({ ok: false, status: 404 } as Response);
+    });
+    vi.stubGlobal('fetch', fetchMock);
+    vi.stubGlobal('URL', { ...URL, createObjectURL: vi.fn().mockReturnValue('blob:fake-pdf-url') });
+    vi.stubGlobal('open', vi.fn());
+
+    renderOutputPane(iterations);
+    // Let the mount-time overlay GET resolve first -- the fix does its own
+    // fresh GET on click regardless, so this just keeps call ordering
+    // predictable for the assertions below.
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledWith('/api/postcards/7'));
+
+    fireEvent.click(screen.getByRole('button', { name: 'PDF' }));
+
+    await waitFor(() => {
+      const putCall = fetchMock.mock.calls.find(
+        ([u, i]) => String(u) === '/api/postcards/7' && (i as RequestInit | undefined)?.method === 'PUT',
+      );
+      expect(putCall).toBeTruthy();
+    });
+
+    const putCall = fetchMock.mock.calls.find(
+      ([u, i]) => String(u) === '/api/postcards/7' && (i as RequestInit | undefined)?.method === 'PUT',
+    )!;
+    const body = JSON.parse((putCall[1] as RequestInit).body as string);
+
+    // The regression itself: previously-saved regions/QR must survive.
+    expect(body.front_regions).toEqual(existingContent.front_regions);
+    expect(body.back_regions).toEqual(existingContent.back_regions);
+    expect(body.front_qr).toEqual(existingContent.front_qr);
+    // Images still come from whichever iterations currently hold the roles.
+    expect(body.front_image).toBe('projects/7/iterations/1.png');
+    expect(body.back_image).toBe('projects/7/iterations/2.png');
+  });
 });
 
 /** A `GET /api/postcards/:projectId` "content exists" response body used by
