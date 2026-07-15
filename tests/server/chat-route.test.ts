@@ -166,6 +166,12 @@ describe('POST /api/projects/:projectId/chat -- streams a scripted turn', () => 
     expect(mockRunTurn).toHaveBeenCalledTimes(1);
     expect(mockRunTurn.mock.calls[0][0]).toEqual({ projectId: 42, message: 'Please help.' });
 
+    // ticket 004-002 AC2: production wiring passes the real,
+    // imaging.ts-backed ImageVisionClient instead of relying on turn.ts's
+    // stub default.
+    const passedOptions = mockRunTurn.mock.calls[0][1];
+    expect(typeof passedOptions.imageVisionClient?.generateImage).toBe('function');
+
     const events = parseSseEvents(res.body as unknown as string);
     expect(events).toEqual([
       { type: 'status', status: 'started' },

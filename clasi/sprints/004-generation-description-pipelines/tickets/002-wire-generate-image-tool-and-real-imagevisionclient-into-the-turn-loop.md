@@ -1,7 +1,7 @@
 ---
 id: '002'
 title: Wire generate_image tool and real ImageVisionClient into the turn loop
-status: open
+status: done
 use-cases:
 - SUC-001
 depends-on:
@@ -43,31 +43,31 @@ exactly -- `turn.ts`'s `dispatchToolCall` call site does not change.
 
 ## Acceptance Criteria
 
-- [ ] `WORKSPACE_TOOL_DEFINITIONS` gains a `generate_image` tool
+- [x] `WORKSPACE_TOOL_DEFINITIONS` gains a `generate_image` tool
       definition (prompt, optional reference image paths, optional
       model params) that a `ProviderAdapter` can see and call, matching
       the shape `dispatchToolCall` already expects at
       `IMAGE_GENERATION_TOOL_NAME`.
-- [ ] The app's production turn-controller construction (wherever
+- [x] The app's production turn-controller construction (wherever
       `runTurn` is invoked outside of tests, e.g. `routes/chat.ts`) is
       updated to pass the real `imaging.ts`-backed `ImageVisionClient`
       instead of relying on the stub default; tests continue to inject
       the stub or a mock unchanged.
-- [ ] A `generate_image` tool call (via a scripted/mock provider turn,
+- [x] A `generate_image` tool call (via a scripted/mock provider turn,
       matching Sprint 003's `SUC-003` test pattern) produces one new
       `Iteration` row with `imagePath` pointing at a real file under
       `projects/<id>/iterations/` containing the fixture-returned image
       bytes.
-- [ ] Two sequential `generate_image` calls on the same project produce
+- [x] Two sequential `generate_image` calls on the same project produce
       two `Iteration` rows with increasing `seq`; the first call's
       `imagePath` file is byte-identical before and after the second
       call (the never-overwritten regression test, sprint.md Success
       Criteria).
-- [ ] A simulated `imaging.generateImage` failure surfaces as a tool-call
+- [x] A simulated `imaging.generateImage` failure surfaces as a tool-call
       error result (per `turn.ts`'s existing `isError` tool-result
       shape) and adds no new `Iteration` row; prior iterations are
       unaffected (UC-006 E1).
-- [ ] `imageVisionStub.ts` is left in place, unmodified, and still the
+- [x] `imageVisionStub.ts` is left in place, unmodified, and still the
       default `runTurn` falls back to when no client is injected (tests
       keep working exactly as Sprint 003 left them).
 
@@ -108,3 +108,51 @@ to note the real implementation now exists at
 `realImageVisionClient.ts` (currently it says "Sprint 004 builds the
 real Image & Vision Service and swaps this stub out" -- make that
 concrete once it's true). No user-facing docs change.
+
+## Testing Notes
+
+Added `server/src/agent/realImageVisionClient.ts`
+(`createRealImageVisionClient`) implementing `ImageVisionClient` against
+ticket 004-001's `services/imaging.generateImage` plus
+`agent-mcp/catalogTools.createIteration` -- prompt in, `imaging
+.generateImage` bytes out, written to
+`projects/<id>/iterations/iter-<seq>.png` via `resolveWorkspacePath`,
+then `createIteration` (unchanged) records the `Iteration` row. `seq` is
+read once up front (an unlocked query) and passed through explicitly to
+`createIteration` so its own internal `directory` lock is never
+double-acquired by this module -- safe because every caller reaches this
+client through `turn.ts`'s `dispatchToolCall`, itself only ever invoked
+while `runTurn` holds the project's `project_turn` lock (see the new
+module's header comment for the full argument). `turn.ts` gained one
+`generate_image` entry in `WORKSPACE_TOOL_DEFINITIONS`
+(`dispatchToolCall` itself is untouched, confirming the plan's minimal-
+diff claim held) and `routes/chat.ts` now builds
+`createRealImageVisionClient()` once at module load and passes it as
+`imageVisionClient` on every `runTurn` call.
+
+Three new/updated test files, all fixture/mock-backed -- no network call,
+no API key, matching `imaging.test.ts`'s and the rest of this sprint's
+convention:
+
+- `tests/server/real-image-vision-client.test.ts` (6 tests, new): unit
+  coverage of `createRealImageVisionClient` against a scratch
+  `WORKSPACE_DIR` -- prompt-to-file-to-Iteration-row, default vs.
+  `modelParams.size` override, `referenceImages`/`background`
+  passthrough, the two-sequential-calls never-overwritten regression
+  (byte-identical first file after the second call, increasing `seq`),
+  a simulated `imaging.generateImage` rejection (no `Iteration` row, no
+  stray file, prior iteration's file untouched), and an unknown-project
+  guard.
+- `tests/server/agent-turn.test.ts` (+3 tests): a `WORKSPACE_TOOL_DEFINITIONS`
+  assertion for the new `generate_image` entry (AC1), and two SUC-003-
+  pattern end-to-end tests driving `runTurn` with the mock adapter and
+  the real client injected -- a successful `generate_image` tool call
+  producing one `Iteration` row plus a real file (AC3), and a simulated
+  imaging failure surfacing as an `isError` tool result with no new
+  `Iteration` row (AC5).
+- `tests/server/chat-route.test.ts` (existing test extended, no new
+  test): asserts the options object passed to the (mocked) `runTurn`
+  carries a real `imageVisionClient.generateImage` function (AC2),
+  without exercising the real client's network path.
+
+`npm test`: 272 server tests (was 263) + 94 client tests, exit 0.
