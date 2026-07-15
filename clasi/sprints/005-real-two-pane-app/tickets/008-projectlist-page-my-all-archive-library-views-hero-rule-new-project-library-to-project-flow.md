@@ -2,7 +2,7 @@
 id: 008
 title: 'ProjectList page: My/All/Archive/Library views, hero rule, new-project, library-to-project
   flow'
-status: in-progress
+status: done
 use-cases:
 - SUC-010
 - SUC-011
