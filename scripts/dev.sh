@@ -20,5 +20,5 @@ export VITE_API_URL="${VITE_API_URL:-http://localhost:$PORT}"
 
 # SQLite mode — no Docker needed
 exec npx concurrently --kill-others-on-fail -n server,client -c green,magenta \
-  "cd server && npx prisma generate && npx prisma migrate dev && npx prisma db seed && npm run dev" \
+  "cd server && npx prisma generate && npx prisma migrate deploy && npx prisma db seed && npm run dev" \
   "cd client && npx wait-on http://localhost:$PORT/api/health && npx vite --host --port $CLIENT_PORT"
