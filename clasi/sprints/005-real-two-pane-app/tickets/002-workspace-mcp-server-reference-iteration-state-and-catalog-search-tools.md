@@ -1,7 +1,7 @@
 ---
 id: '002'
 title: 'Workspace MCP Server: reference, iteration-state, and catalog-search tools'
-status: in-progress
+status: done
 use-cases:
 - SUC-003
 - SUC-007
