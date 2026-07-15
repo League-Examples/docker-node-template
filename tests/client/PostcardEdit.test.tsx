@@ -356,6 +356,103 @@ describe('PostcardEdit -- move/resize handles (AC4)', () => {
   });
 });
 
+describe('PostcardEdit -- alignment-guide crosshairs while dragging (OOP change)', () => {
+  it('renders no alignment guides when nothing is being dragged', async () => {
+    stubFetch(projectFixture());
+    renderPage();
+    await settle();
+
+    expect(screen.queryByTestId('align-guide-top')).not.toBeInTheDocument();
+    expect(screen.queryByTestId('align-guide-bottom')).not.toBeInTheDocument();
+    expect(screen.queryByTestId('align-guide-left')).not.toBeInTheDocument();
+    expect(screen.queryByTestId('align-guide-right')).not.toBeInTheDocument();
+    assertNoLibraryDrawer();
+  });
+
+  it('shows four guide lines at the box edges while moving a text region, and removes them on mouse-up', async () => {
+    const user = userEvent.setup();
+    stubFetch(projectFixture());
+    renderPage();
+    await settle();
+    await drawFrontHeadlineBox(user);
+
+    const preview = screen.getByTestId('postcard-preview');
+    fireEvent.mouseDown(screen.getByTestId('region-move-front_headline'), { clientX: 100, clientY: 50 });
+    fireEvent.mouseMove(preview, { clientX: 150, clientY: 80 });
+
+    // Same jsdom 96px/in fallback as the plain move-handle test above: the
+    // dragged box ends up at left 0.52in/top 0.31in, size unchanged
+    // (1.46in/0.73in) -- the guides must track those same edges, converted
+    // to canvas-relative pixels.
+    const ppi = 96;
+    expect(parseFloat(screen.getByTestId('align-guide-top').style.top)).toBeCloseTo(0.31 * ppi, 5);
+    expect(parseFloat(screen.getByTestId('align-guide-left').style.left)).toBeCloseTo(0.52 * ppi, 5);
+    expect(parseFloat(screen.getByTestId('align-guide-bottom').style.top)).toBeCloseTo((0.31 + 0.73) * ppi, 5);
+    expect(parseFloat(screen.getByTestId('align-guide-right').style.left)).toBeCloseTo((0.52 + 1.46) * ppi, 5);
+
+    fireEvent.mouseUp(preview);
+
+    expect(screen.queryByTestId('align-guide-top')).not.toBeInTheDocument();
+    expect(screen.queryByTestId('align-guide-bottom')).not.toBeInTheDocument();
+    expect(screen.queryByTestId('align-guide-left')).not.toBeInTheDocument();
+    expect(screen.queryByTestId('align-guide-right')).not.toBeInTheDocument();
+    assertNoLibraryDrawer();
+  });
+
+  it('shows four guide lines at the box edges while resizing a text region', async () => {
+    const user = userEvent.setup();
+    stubFetch(projectFixture());
+    renderPage();
+    await settle();
+    await drawFrontHeadlineBox(user);
+
+    const preview = screen.getByTestId('postcard-preview');
+    fireEvent.mouseDown(screen.getByTestId('move-handle-br-front_headline'), { clientX: 500, clientY: 200 });
+    fireEvent.mouseMove(preview, { clientX: 550, clientY: 230 });
+
+    // Same jsdom fallback as the plain resize-handle test above: top-left
+    // corner unchanged (left 1.04in/top 0.52in), size becomes 0.52in/0.31in.
+    const ppi = 96;
+    expect(parseFloat(screen.getByTestId('align-guide-top').style.top)).toBeCloseTo(0.52 * ppi, 5);
+    expect(parseFloat(screen.getByTestId('align-guide-left').style.left)).toBeCloseTo(1.04 * ppi, 5);
+    expect(parseFloat(screen.getByTestId('align-guide-bottom').style.top)).toBeCloseTo((0.52 + 0.31) * ppi, 5);
+    expect(parseFloat(screen.getByTestId('align-guide-right').style.left)).toBeCloseTo((1.04 + 0.52) * ppi, 5);
+
+    fireEvent.mouseUp(preview);
+    expect(screen.queryByTestId('align-guide-top')).not.toBeInTheDocument();
+    assertNoLibraryDrawer();
+  });
+
+  it('shows four guide lines at the box edges while moving the QR box, and removes them on mouse-up', async () => {
+    const user = userEvent.setup();
+    stubFetch(projectFixture());
+    renderPage();
+    await settle();
+    await user.click(screen.getByRole('button', { name: /add qr code/i }));
+
+    const preview = screen.getByTestId('postcard-preview');
+    fireEvent.mouseDown(screen.getByTestId('move-handle-tl-qr'), { clientX: 100, clientY: 50 });
+    fireEvent.mouseMove(preview, { clientX: 150, clientY: 80 });
+
+    // Mirrors the QR move-handle test above: jsdom fallback puts the QR at
+    // left 0.52in/top 0.31in, size unchanged (1.5in/1.5in, QR positions
+    // always carry an explicit height).
+    const ppi = 96;
+    expect(parseFloat(screen.getByTestId('align-guide-top').style.top)).toBeCloseTo(0.31 * ppi, 5);
+    expect(parseFloat(screen.getByTestId('align-guide-left').style.left)).toBeCloseTo(0.52 * ppi, 5);
+    expect(parseFloat(screen.getByTestId('align-guide-bottom').style.top)).toBeCloseTo((0.31 + 1.5) * ppi, 5);
+    expect(parseFloat(screen.getByTestId('align-guide-right').style.left)).toBeCloseTo((0.52 + 1.5) * ppi, 5);
+
+    fireEvent.mouseUp(preview);
+
+    expect(screen.queryByTestId('align-guide-top')).not.toBeInTheDocument();
+    expect(screen.queryByTestId('align-guide-bottom')).not.toBeInTheDocument();
+    expect(screen.queryByTestId('align-guide-left')).not.toBeInTheDocument();
+    expect(screen.queryByTestId('align-guide-right')).not.toBeInTheDocument();
+    assertNoLibraryDrawer();
+  });
+});
+
 describe('PostcardEdit -- QR overlay is optional, addable, deletable, and movable (OOP change)', () => {
   it('shows no QR by default on either face -- an imported/fresh design has no QR data', async () => {
     const user = userEvent.setup();

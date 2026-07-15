@@ -177,6 +177,28 @@ import PostcardQrBaseLayer from '../lib/PostcardQrBaseLayer';
  * Autosave never fires while `buildContentPayload()` returns `null` (no
  * `frontIteration` yet), mirroring `handleGeneratePdf`'s own guard.
  *
+ * **Alignment-guide crosshairs while dragging (OOP change, 2026-07-15)**:
+ * while a box (a text region OR the QR overlay) is actively being MOVED or
+ * RESIZED via `moving` (the shared drag mechanism above), four thin gray
+ * lines extend from the dragged box's four edges to the canvas's borders --
+ * a horizontal line along the top edge and one along the bottom edge (each
+ * spanning the full 6in canvas width), a vertical line along the left edge
+ * and one along the right edge (each spanning the full 4in canvas height) --
+ * so the stakeholder can line boxes up against each other or the canvas
+ * border while dragging. `dragGuide` (computed every render, straight off
+ * `moving` plus the dragged box's own live `position`, via `boxEdgesPx`) is
+ * `null` whenever nothing is being dragged, so the four
+ * `data-testid="align-guide-*"` lines simply don't render then -- including
+ * the instant a drag ends (`handlePreviewMouseUp` clears `moving`). A
+ * height-less (auto-height) text region has no `position.height` to
+ * convert for its bottom edge while it's being MOVED (only a resize ever
+ * sets one) -- that one case falls back to the chrome box's own measured
+ * `offsetHeight`, read off `boxElRefs` (a plain ref map, not state -- it
+ * exists solely for this measurement, and never drives a re-render itself).
+ * The lines are `pointer-events-none` and rendered only by this component --
+ * never in the read-only gallery overlay (`ProjectDetail/PostcardOverlay.tsx`)
+ * and never in the server-side PDF render -- so they're editor chrome only.
+ *
  * **No asset/library browser on this page** -- explicit stakeholder rule.
  * `LibraryDrawer` is never imported here, let alone rendered (verified by
  * construction, not by a runtime flag).
@@ -216,6 +238,41 @@ const DEFAULT_FONT: PostcardRegionFont = { family: 'Arial, sans-serif', size: '1
  * one you could draw from scratch. */
 const MIN_BOX_WIDTH_IN = 0.3;
 const MIN_BOX_HEIGHT_IN = 0.2;
+
+/** The preview canvas's fixed size (`style={{ width: '6in', height: '4in' }}`
+ * below) -- named here so the alignment-guide overlay's `right`-anchored
+ * left-edge math (see `boxEdgesPx`) doesn't repeat the magic number. */
+const CANVAS_WIDTH_IN = 6;
+
+/** Converts one CSS length string (`"1.15in"`) to canvas-relative pixels at
+ * the given px-per-inch ratio (`pxPerInch()`'s return value) -- shared by
+ * the alignment-guide overlay's edge math below. `undefined`/unparseable
+ * input (e.g. a region with no `position.right` when it's positioned via
+ * `left` instead) is treated as 0. */
+function inToPx(value: string | undefined, ppi: number): number {
+  if (!value) return 0;
+  const num = Number.parseFloat(value);
+  return Number.isNaN(num) ? 0 : num * ppi;
+}
+
+/** The dragged box's four edges in canvas-relative pixels, for the
+ * alignment-guide overlay (see the module header's "Alignment guides"
+ * section). `heightPx` is passed in rather than derived from `position`
+ * here because a height-less (auto-height) text region has no
+ * `position.height` to convert -- the caller resolves that case (measuring
+ * the box's real rendered height) before calling this. Left is derived from
+ * `position.left` when present, else from `position.right` (mirrors
+ * `regionBoxStyle`'s own left/right branch). */
+function boxEdgesPx(
+  position: PostcardRegionPosition,
+  ppi: number,
+  heightPx: number,
+): { top: number; left: number; width: number; height: number } {
+  const width = inToPx(position.width, ppi);
+  const left = position.left !== undefined ? inToPx(position.left, ppi) : CANVAS_WIDTH_IN * ppi - inToPx(position.right, ppi) - width;
+  const top = inToPx(position.top, ppi);
+  return { top, left, width, height: heightPx };
+}
 
 /** Default position for a newly-added QR overlay -- identical starting
  * geometry on both faces until moved (long-click-drag on its top-left
@@ -320,6 +377,13 @@ export default function PostcardEdit() {
     startHeight: number;
   } | null>(null);
   const movedRef = useRef(false);
+  // Chrome-box DOM nodes, keyed `region:<name>` / `qr:<side>` -- populated
+  // by callback refs on each region's and the QR's chrome `<button>` below.
+  // Read only by the alignment-guide overlay (see module header), to measure
+  // a height-less (auto-height) text region's real rendered height while
+  // it's being MOVED (its `position.height` stays absent throughout a move,
+  // unlike a resize, which always sets one -- see `handlePreviewMouseMove`).
+  const boxElRefs = useRef<Record<string, HTMLElement | null>>({});
 
   const [pdfBusy, setPdfBusy] = useState(false);
   const [pdfError, setPdfError] = useState('');
@@ -436,6 +500,34 @@ export default function PostcardEdit() {
   // the full module grid, so it shouldn't be called more than once for
   // the same URL within a single render pass.
   const qrGraphic = qr && qr.url.trim() ? buildQrGraphic(normalizeQrUrl(qr.url)) : null;
+
+  // Alignment-guide overlay geometry (see module header) -- four thin lines
+  // spanning the canvas from the CURRENTLY-DRAGGED box's four edges, shown
+  // only while `moving` is set (a move or resize in progress), for either a
+  // text region or the QR box. Recomputed every render, straight off the
+  // box's own live `position` (already updated by `handlePreviewMouseMove`
+  // before this render runs) -- no separate guide state needed. The one
+  // exception is a height-less (auto-height) text region's BOTTOM edge: its
+  // `position.height` stays absent through a move (only a resize ever sets
+  // one), so there's nothing in `position` to convert -- that case falls
+  // back to the chrome box's actual measured `offsetHeight` via `boxElRefs`.
+  let dragGuide: { top: number; left: number; width: number; height: number } | null = null;
+  if (moving) {
+    const ppi = pxPerInch();
+    const draggingRegion = moving.kind === 'region' ? regions.find((r) => r.name === moving.name) : undefined;
+    const draggingQr = moving.kind === 'qr' ? qr : undefined;
+    if (draggingRegion) {
+      const explicit = hasExplicitHeight(draggingRegion.position);
+      const heightPx = explicit
+        ? inToPx(draggingRegion.position.height, ppi)
+        : (boxElRefs.current[`region:${draggingRegion.name}`]?.offsetHeight ?? 0);
+      dragGuide = boxEdgesPx(draggingRegion.position, ppi, heightPx);
+    } else if (draggingQr) {
+      // QR positions always carry an explicit height (module header), so no
+      // measured-height fallback is needed here.
+      dragGuide = boxEdgesPx(draggingQr.position, ppi, inToPx(draggingQr.position.height, ppi));
+    }
+  }
 
   /** Content-JSON payload for the CURRENT editor state -- the single shared
    * builder both `handleGeneratePdf`'s explicit PUT and the debounced
@@ -903,6 +995,13 @@ export default function PostcardEdit() {
                       its own. */}
                   <button
                     type="button"
+                    ref={(el) => {
+                      // Alignment-guide overlay's auto-height fallback
+                      // reads this to measure a height-less region's real
+                      // rendered height while it's being moved (see the
+                      // `dragGuide` computation above).
+                      boxElRefs.current[`region:${region.name}`] = el;
+                    }}
                     data-testid={`postcard-region-box-${region.name}`}
                     aria-label={`Edit ${region.label}`}
                     onClick={() => {
@@ -997,6 +1096,9 @@ export default function PostcardEdit() {
                 />
                 <button
                   type="button"
+                  ref={(el) => {
+                    boxElRefs.current[`qr:${side}`] = el;
+                  }}
                   data-testid="postcard-qr-box"
                   aria-label="QR code — edit or move"
                   onClick={() => {
@@ -1031,6 +1133,42 @@ export default function PostcardEdit() {
                     className="absolute -bottom-1 -right-1 h-2.5 w-2.5 cursor-nwse-resize rounded-sm border border-white bg-amber-600"
                   />
                 </button>
+              </>
+            )}
+
+            {/* Alignment-guide overlay (OOP change) -- four thin gray lines
+                spanning the canvas from the box currently being dragged
+                (move or resize, region or QR)'s four edges, so the
+                stakeholder can line boxes up against each other or the
+                canvas border. Editor chrome only: rendered above every
+                other layer but `pointer-events-none`, so it never
+                intercepts the drag/click it's tracking. Absent whenever
+                nothing is being dragged (`dragGuide` is `null`); see its
+                computation above. Never rendered in the gallery overlay
+                (`PostcardOverlay.tsx`) or the PDF -- this component doesn't
+                touch either. */}
+            {dragGuide && (
+              <>
+                <div
+                  data-testid="align-guide-top"
+                  className="pointer-events-none absolute left-0 h-px w-full bg-slate-400"
+                  style={{ top: dragGuide.top }}
+                />
+                <div
+                  data-testid="align-guide-bottom"
+                  className="pointer-events-none absolute left-0 h-px w-full bg-slate-400"
+                  style={{ top: dragGuide.top + dragGuide.height }}
+                />
+                <div
+                  data-testid="align-guide-left"
+                  className="pointer-events-none absolute top-0 h-full w-px bg-slate-400"
+                  style={{ left: dragGuide.left }}
+                />
+                <div
+                  data-testid="align-guide-right"
+                  className="pointer-events-none absolute top-0 h-full w-px bg-slate-400"
+                  style={{ left: dragGuide.left + dragGuide.width }}
+                />
               </>
             )}
             </div>
