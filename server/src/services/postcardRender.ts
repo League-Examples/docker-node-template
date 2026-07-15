@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import { prisma as defaultPrisma } from './prisma';
+import { renderQrGraphicHtml } from './qrCode';
 
 /**
  * Postcard Render & PDF Service, first half (architecture-update.md Step
@@ -42,11 +43,13 @@ import { prisma as defaultPrisma } from './prisma';
  * old always-on `*_extra_html` overlay. `{ url, position }`, `position`
  * using the exact same shape as a region's `position` (inches -> CSS `in`
  * units, `left`/`right` + `width`/`height`). Rendered as its own
- * absolutely-positioned placeholder `<div data-qr-url="...">` (actual QR
- * *image* generation remains out of scope, matching the placeholder the
- * predecessor's `*_extra_html` overlay already used). Omitted entirely
- * when a face has no QR code -- this is what makes "no QR by default"
- * possible, including for content JSON written before this field existed.
+ * absolutely-positioned `<div data-qr-url="...">` containing a REAL,
+ * scannable QR code (inline SVG, `./qrCode.ts`'s `renderQrGraphicHtml`)
+ * plus a width-matched URL caption directly beneath it (OOP change,
+ * 2026-07-15 -- see `qrCode.ts`'s module header for the rendering
+ * approach). Omitted entirely when a face has no QR code -- this is what
+ * makes "no QR by default" possible, including for content JSON written
+ * before this field existed.
  *
  * **`position.height` (wireframe interaction contract, stakeholder rounds
  * 4/7/8/10)**: optional. When present, the rendered region is given that
@@ -242,36 +245,32 @@ function renderRegion(region: PostcardRegion): string {
 }
 
 /** Builds the inline `style` attribute value for a QR overlay's `<div>`:
- * absolute position (same convention as `regionStyleAttr`) plus the fixed
- * placeholder-box cosmetics the client editor (`PostcardEdit.tsx`) also
- * uses, so the server render matches what the editor showed. */
+ * absolute position (same convention as `regionStyleAttr`) only -- no
+ * placeholder-box cosmetics (border/centering/small gray text) now that
+ * the box holds a real QR graphic + caption instead of placeholder text.
+ * Deliberately no `overflow:hidden`: the QR graphic sizes to
+ * `position.width` (a square, via `qrCode.ts`'s `aspect-ratio:1/1`) and
+ * the caption sits directly beneath it, which can run slightly past
+ * `position.height` for a short/wide box -- letting it overflow visibly
+ * beats clipping the caption's URL text. */
 function qrStyleAttr(position: PostcardRegionPosition): string {
   const parts: string[] = ['position:absolute', `top:${position.top}`];
   if (position.left !== undefined) parts.push(`left:${position.left}`);
   if (position.right !== undefined) parts.push(`right:${position.right}`);
   parts.push(`width:${position.width}`);
   if (position.height !== undefined) parts.push(`height:${position.height}`);
-  parts.push(
-    'border:1px dashed #999',
-    'display:flex',
-    'align-items:center',
-    'justify-content:center',
-    'font-size:8px',
-    'color:#999',
-    'text-align:center',
-    'overflow:hidden'
-  );
   return `${parts.join('; ')};`;
 }
 
-/** Renders a face's QR overlay as an absolutely-positioned placeholder
- * `<div>` carrying the encoded URL as both visible text and a
- * `data-qr-url` attribute (actual QR *image* generation is out of scope --
- * see module header). Returns `''` when `qr` is `undefined` (AC1: no QR by
- * default). */
+/** Renders a face's QR overlay as an absolutely-positioned `<div>`
+ * carrying the encoded URL as a `data-qr-url` attribute (round-trips
+ * unambiguously, same convention as before) and, when a URL is present, a
+ * REAL scannable QR code plus its width-matched caption
+ * (`qrCode.ts`'s `renderQrGraphicHtml`). Returns `''` when `qr` is
+ * `undefined` (AC1: no QR by default). */
 function renderQrOverlay(qr: PostcardQr | undefined): string {
   if (qr === undefined) return '';
-  return `<div class="qr" data-qr-url="${escapeHtml(qr.url)}" style="${escapeHtml(qrStyleAttr(qr.position))}">QR code<br/>${escapeHtml(qr.url)}</div>`;
+  return `<div class="qr" data-qr-url="${escapeHtml(qr.url)}" style="${escapeHtml(qrStyleAttr(qr.position))}">${renderQrGraphicHtml(qr.url)}</div>`;
 }
 
 /** Renders one face ("front" or "back") -- background image, then

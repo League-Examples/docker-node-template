@@ -3,6 +3,7 @@ import { Link, useParams } from 'react-router-dom';
 import ChatPanel from './ProjectDetail/ChatPanel';
 import { fileUrl } from './ProjectDetail/types';
 import type { ProjectDetailDTO } from './ProjectDetail/types';
+import { buildQrGraphic, CAPTION_VIEWBOX_WIDTH, CAPTION_VIEWBOX_HEIGHT } from '../lib/qrCode';
 
 /**
  * `/projects/:id/postcard` -- the real postcard text-region editor (ticket
@@ -37,6 +38,20 @@ import type { ProjectDetailDTO } from './ProjectDetail/types';
  * its own popup. Persisted as a structured `front_qr`/`back_qr` content-
  * JSON object (`{ url, position }`, `postcardRender.ts`'s
  * `PostcardQrSchema`), not the old always-on `*_extra_html` string.
+ *
+ * **Real QR rendering (OOP change, 2026-07-15)**: once a URL is set, the
+ * box renders an actual scannable QR code (`../lib/qrCode.ts`'s
+ * `buildQrGraphic`, backed by the `qrcode` package's synchronous,
+ * canvas-free `create()`) as an inline SVG, with the URL displayed
+ * directly beneath it in a second SVG whose `<text>` carries
+ * `textLength={CAPTION_VIEWBOX_WIDTH}` +
+ * `lengthAdjust="spacingAndGlyphs"` -- both SVGs are `width:100%` of the
+ * same wrapper, so the caption always spans exactly the QR's rendered
+ * width, for both short and long URLs. `server/src/services/qrCode.ts`
+ * renders the identical structure server-side for the PDF (no shared
+ * package between the two workspaces, so the logic is duplicated but
+ * kept in lockstep -- see that file's header). Before a URL is typed, the
+ * box still shows a lightweight placeholder (nothing to encode yet).
  *
  * **Move/resize handles (OOP change)**: both text-region boxes and the QR
  * box carry two distinct corner handles rather than two same-purpose ones.
@@ -119,10 +134,7 @@ const MIN_BOX_HEIGHT_IN = 0.2;
  * rather than the old
  * always-on `*_extra_html` overlay -- OOP change: the QR needed to be
  * addable/deletable/movable like any other element, which an opaque HTML
- * string couldn't represent cleanly. Actual QR *image* generation is still
- * out of scope -- the placeholder box below carries the encoded URL as
- * both visible text and a `data-qr-url` attribute so it round-trips
- * through the content JSON unambiguously. */
+ * string couldn't represent cleanly. */
 const QR_OVERLAY_POSITION: PostcardRegionPosition = {
   top: '1.15in',
   right: '0.5in',
@@ -254,6 +266,10 @@ export default function PostcardEdit() {
 
   const regions = regionsBySide[side];
   const qr = qrBySide[side];
+  // Computed once per render (not per JSX read) -- `buildQrGraphic` walks
+  // the full module grid, so it shouldn't be called more than once for
+  // the same URL within a single render pass.
+  const qrGraphic = qr && qr.url.trim() ? buildQrGraphic(qr.url) : null;
 
   function handleRegionTextChange(name: string, value: string) {
     setRegionText((prev) => ({ ...prev, [name]: value }));
@@ -691,7 +707,7 @@ export default function PostcardEdit() {
                   setDraftQrUrl(qr.url);
                   setEditingQrSide(side);
                 }}
-                className="absolute flex cursor-pointer flex-col items-center justify-center border-2 border-dashed border-amber-500 bg-amber-50/70 p-1 text-center text-[9px] font-semibold text-amber-700 hover:bg-amber-100"
+                className="absolute cursor-pointer border border-dashed border-slate-300 bg-white/80 p-0 text-left hover:border-indigo-400"
                 style={{
                   top: qr.position.top,
                   left: qr.position.left,
@@ -700,10 +716,54 @@ export default function PostcardEdit() {
                   height: qr.position.height,
                 }}
               >
-                <span>QR code overlay</span>
-                <span data-testid="postcard-qr-url" className="mt-0.5 block max-w-full truncate font-normal">
-                  {qr.url}
-                </span>
+                {qrGraphic ? (
+                  /* Real, scannable QR code (fills the box's WIDTH, not
+                     its height -- `aspect-ratio:1/1` keeps it square
+                     regardless of how tall the box is) plus the
+                     width-matched URL caption directly beneath it. */
+                  <div className="flex w-full flex-col gap-1">
+                    <div data-testid="postcard-qr-graphic" className="w-full" style={{ aspectRatio: '1 / 1' }}>
+                      <svg
+                        viewBox={`0 0 ${qrGraphic.size} ${qrGraphic.size}`}
+                        width="100%"
+                        height="100%"
+                        preserveAspectRatio="none"
+                        shapeRendering="crispEdges"
+                      >
+                        <rect width={qrGraphic.size} height={qrGraphic.size} fill="#fff" />
+                        <path d={qrGraphic.path} fill="#000" />
+                      </svg>
+                    </div>
+                    <div
+                      data-testid="postcard-qr-url"
+                      className="w-full"
+                      style={{ aspectRatio: `${CAPTION_VIEWBOX_WIDTH} / ${CAPTION_VIEWBOX_HEIGHT}` }}
+                    >
+                      <svg
+                        viewBox={`0 0 ${CAPTION_VIEWBOX_WIDTH} ${CAPTION_VIEWBOX_HEIGHT}`}
+                        width="100%"
+                        height="100%"
+                        preserveAspectRatio="none"
+                      >
+                        <text
+                          x={0}
+                          y={CAPTION_VIEWBOX_HEIGHT - 10}
+                          fontFamily="Arial, sans-serif"
+                          fontSize={CAPTION_VIEWBOX_HEIGHT - 12}
+                          textLength={CAPTION_VIEWBOX_WIDTH}
+                          lengthAdjust="spacingAndGlyphs"
+                          fill="#333"
+                        >
+                          {qr.url}
+                        </text>
+                      </svg>
+                    </div>
+                  </div>
+                ) : (
+                  <span className="flex h-full w-full flex-col items-center justify-center border-2 border-dashed border-amber-500 bg-amber-50/70 p-1 text-center text-[9px] font-semibold text-amber-700">
+                    Click to set a QR URL
+                  </span>
+                )}
                 {/* Same two-handle mechanism as text regions: top-left
                     moves, bottom-right resizes. */}
                 <span

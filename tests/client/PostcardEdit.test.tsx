@@ -3,6 +3,7 @@ import { render, screen, within, fireEvent, waitFor } from '@testing-library/rea
 import userEvent from '@testing-library/user-event';
 import { MemoryRouter, Routes, Route } from 'react-router-dom';
 import PostcardEdit from '../../client/src/pages/PostcardEdit';
+import { buildQrGraphic, CAPTION_VIEWBOX_WIDTH } from '../../client/src/lib/qrCode';
 
 /**
  * Coverage for `client/src/pages/PostcardEdit.tsx` (ticket 005-012,
@@ -509,6 +510,101 @@ describe('PostcardEdit -- QR overlay is optional, addable, deletable, and movabl
     expect(body).not.toHaveProperty('back_qr');
     assertNoLibraryDrawer();
   });
+
+  it('shows a placeholder (not a real QR graphic) when the box has just been added, before a URL is typed', async () => {
+    const user = userEvent.setup();
+    stubFetch(projectFixture());
+    renderPage();
+    await settle();
+    await user.click(screen.getByRole('button', { name: /add qr code/i }));
+
+    expect(screen.queryByTestId('postcard-qr-graphic')).not.toBeInTheDocument();
+    expect(screen.getByText(/click to set a qr url/i)).toBeInTheDocument();
+    assertNoLibraryDrawer();
+  });
+
+  it('renders an ACTUAL scannable QR code once a URL is set -- not the old static "QR" placeholder', async () => {
+    const user = userEvent.setup();
+    stubFetch(projectFixture());
+    renderPage();
+    await settle();
+    await user.click(screen.getByRole('button', { name: /add qr code/i }));
+    await user.click(screen.getByTestId('postcard-qr-box'));
+    await user.type(
+      within(screen.getByRole('dialog')).getByLabelText(/qr code url/i),
+      'https://example.org/signup{Enter}',
+    );
+
+    // The placeholder is gone, replaced by a real <svg><path> tracing the
+    // URL's own encoded module grid (same `qrcode`-package `create()` call
+    // the production code and this assertion both go through, so this is
+    // checking against the actual encoding, not a fixture).
+    expect(screen.queryByText(/click to set a qr url/i)).not.toBeInTheDocument();
+    const graphic = screen.getByTestId('postcard-qr-graphic');
+    const path = graphic.querySelector('svg path');
+    expect(path).toBeInTheDocument();
+    expect(path).toHaveAttribute('d', buildQrGraphic('https://example.org/signup').path);
+    assertNoLibraryDrawer();
+  });
+
+  it('renders a different QR graphic for a different URL -- proving it is a real encoding, not a static image', async () => {
+    const user = userEvent.setup();
+    stubFetch(projectFixture());
+    renderPage();
+    await settle();
+    await user.click(screen.getByRole('button', { name: /add qr code/i }));
+    await user.click(screen.getByTestId('postcard-qr-box'));
+    await user.type(
+      within(screen.getByRole('dialog')).getByLabelText(/qr code url/i),
+      'https://example.org/a-very-different-and-much-longer-destination-path{Enter}',
+    );
+
+    const path = screen.getByTestId('postcard-qr-graphic').querySelector('svg path');
+    const shortUrlPath = buildQrGraphic('https://example.org/signup').path;
+    expect(path).toHaveAttribute(
+      'd',
+      buildQrGraphic('https://example.org/a-very-different-and-much-longer-destination-path').path,
+    );
+    expect(path?.getAttribute('d')).not.toBe(shortUrlPath);
+    assertNoLibraryDrawer();
+  });
+
+  it.each([
+    ['a short URL', 'https://x.co/a'],
+    ['a long URL', 'https://example.org/a-very-long-path-segment/with/many/nested/parts?and=query&params=too'],
+  ])(
+    'width-matches the URL caption to the QR graphic for %s via textLength/lengthAdjust (not a truncated/wrapped label)',
+    async (_label, url) => {
+      const user = userEvent.setup();
+      stubFetch(projectFixture());
+      renderPage();
+      await settle();
+      await user.click(screen.getByRole('button', { name: /add qr code/i }));
+      await user.click(screen.getByTestId('postcard-qr-box'));
+      await user.type(within(screen.getByRole('dialog')).getByLabelText(/qr code url/i), `${url}{Enter}`);
+
+      // The caption sits in its own element directly below the QR graphic
+      // (document order: graphic first, caption second), and its <text>
+      // is stretched/compressed via `textLength` to exactly the caption
+      // SVG's own viewBox width -- since that SVG (like the QR graphic
+      // above it) is CSS `width:100%` of the same shared wrapper, this is
+      // what makes the rendered caption span exactly the QR's width for
+      // ANY url length, short or long.
+      const captionEl = screen.getByTestId('postcard-qr-url');
+      expect(captionEl).toHaveTextContent(url);
+      const text = captionEl.querySelector('svg text');
+      expect(text).toBeInTheDocument();
+      expect(text).toHaveAttribute('textLength', String(CAPTION_VIEWBOX_WIDTH));
+      expect(text).toHaveAttribute('lengthAdjust', 'spacingAndGlyphs');
+
+      const graphicEl = screen.getByTestId('postcard-qr-graphic');
+      // Document order: the graphic wrapper precedes the caption wrapper.
+      expect(
+        graphicEl.compareDocumentPosition(captionEl) & Node.DOCUMENT_POSITION_FOLLOWING,
+      ).toBeTruthy();
+      assertNoLibraryDrawer();
+    },
+  );
 
   it('a QR resize persists position.width/height into the PUT content JSON', async () => {
     const user = userEvent.setup();

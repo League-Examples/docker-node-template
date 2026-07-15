@@ -16,6 +16,7 @@ import {
   PostcardValidationError,
   type PostcardContent,
 } from '../../server/src/services/postcardRender';
+import { renderQrGraphicHtml, CAPTION_VIEWBOX_WIDTH } from '../../server/src/services/qrCode';
 
 function minimalRegion(overrides: Partial<Record<string, unknown>> = {}) {
   return {
@@ -319,6 +320,79 @@ describe('renderPostcardHtml', () => {
       const html = renderPostcardHtml(content);
       expect(html).not.toContain('href="https://example.org/?a=1&b="x""');
       expect(html).toContain('&amp;b=&quot;x&quot;');
+    });
+
+    describe('real QR graphic + width-matched URL caption (OOP, 2026-07-15)', () => {
+      it('embeds a real <svg><path> tracing the URL\'s own encoded module grid, not a placeholder', () => {
+        const content = parsePostcardContent({
+          front_image: 'front.png',
+          front_qr: {
+            url: 'https://example.org/signup',
+            position: { top: '1.15in', right: '0.5in', width: '1.5in', height: '1.5in' },
+          },
+        });
+        const html = renderPostcardHtml(content);
+        expect(html).not.toContain('QR code<br');
+        expect(html).toContain('<svg');
+        // Same expected markup `renderQrGraphicHtml` itself produces --
+        // asserted against the real function, not a hand-copied fixture,
+        // so this fails if the encoding ever silently changes.
+        expect(html).toContain(renderQrGraphicHtml('https://example.org/signup'));
+      });
+
+      it('renders nothing graphic-wise (still a bare positioned div) when the QR has a blank URL', () => {
+        const content = parsePostcardContent({
+          front_image: 'front.png',
+          front_qr: { url: '', position: { top: '1in', left: '1in', width: '1.5in' } },
+        });
+        const html = renderPostcardHtml(content);
+        expect(html).toContain('data-qr-url=""');
+        expect(html).not.toContain('<svg');
+      });
+
+      it('renders a different module-grid path for a different URL -- a real encoding, not a static image', () => {
+        const shortContent = parsePostcardContent({
+          front_image: 'front.png',
+          front_qr: { url: 'https://x.co/a', position: { top: '1in', left: '1in', width: '1.5in' } },
+        });
+        const longContent = parsePostcardContent({
+          front_image: 'front.png',
+          front_qr: {
+            url: 'https://example.org/a-very-long-path-segment/with/many/nested/parts?and=query&params=too',
+            position: { top: '1in', left: '1in', width: '1.5in' },
+          },
+        });
+        const shortHtml = renderPostcardHtml(shortContent);
+        const longHtml = renderPostcardHtml(longContent);
+        const shortPath = shortHtml.match(/<path d="([^"]*)"/)?.[1];
+        const longPath = longHtml.match(/<path d="([^"]*)"/)?.[1];
+        expect(shortPath).toBeTruthy();
+        expect(longPath).toBeTruthy();
+        expect(shortPath).not.toBe(longPath);
+      });
+
+      it.each([
+        ['a short URL', 'https://x.co/a'],
+        ['a long URL', 'https://example.org/a-very-long-path-segment/with/many/nested/parts?and=query&params=too'],
+      ])('width-matches the URL caption to the QR graphic for %s via textLength/lengthAdjust', (_label, url) => {
+        const content = parsePostcardContent({
+          front_image: 'front.png',
+          front_qr: { url, position: { top: '1in', left: '1in', width: '1.5in' } },
+        });
+        const html = renderPostcardHtml(content);
+        // Both the QR graphic's wrapper and the caption's wrapper are
+        // `width:100%` of the SAME flex-column parent -- this is what
+        // makes the caption's rendered width equal the QR's rendered
+        // width for ANY url length, without either side computing a pixel
+        // value. The caption <text> itself is stretched/compressed via
+        // `textLength` to its own SVG's full viewBox width.
+        expect(html).toContain(`textLength="${CAPTION_VIEWBOX_WIDTH}"`);
+        expect(html).toContain('lengthAdjust="spacingAndGlyphs"');
+        // The caption text is HTML-escaped (attribute-adjacent text
+        // node), so a URL with `&` shows up entity-escaped here too.
+        const escapedUrl = url.replace(/&/g, '&amp;');
+        expect(html).toContain(`>${escapedUrl}</text>`);
+      });
     });
   });
 });
