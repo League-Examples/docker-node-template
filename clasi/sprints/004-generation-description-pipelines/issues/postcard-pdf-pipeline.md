@@ -1,6 +1,9 @@
 ---
-status: pending
+status: in-progress
 sprint: '004'
+tickets:
+- 004-005
+- 004-006
 ---
 
 # Server-side postcard pipeline: content JSON -> HTML -> print PDF

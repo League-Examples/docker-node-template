@@ -1,7 +1,7 @@
 ---
 id: '003'
 title: Agent Runtime, Workspace MCP Server & Versioning
-status: done
+status: closed
 branch: sprint/003-agent-runtime-workspace-mcp-server-versioning
 use-cases:
 - SUC-001

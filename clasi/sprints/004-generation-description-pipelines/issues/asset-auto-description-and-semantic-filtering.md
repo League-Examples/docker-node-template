@@ -1,6 +1,9 @@
 ---
-status: pending
+status: in-progress
 sprint: '004'
+tickets:
+- 004-003
+- 004-004
 ---
 
 # Auto-generate asset descriptions on collection commit; semantic search/filter of the library

@@ -1,6 +1,9 @@
 ---
-status: pending
+status: in-progress
 sprint: '004'
+tickets:
+- 004-001
+- 004-002
 ---
 
 # Image generation service: gpt-image-2 direct, iterations never overwritten

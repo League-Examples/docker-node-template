@@ -1,9 +1,13 @@
 ---
 id: '004'
 title: Generation & Description Pipelines
-status: roadmap
+status: planning-docs
 branch: sprint/004-generation-description-pipelines
-use-cases: []
+use-cases:
+- UC-006
+- UC-008
+- UC-010
+- UC-014
 issues:
 - image-generation-service.md
 - asset-auto-description-and-semantic-filtering.md
@@ -142,12 +146,33 @@ yet mirrored to GitHub.
 
 Before tickets can be created, all of the following must be true:
 
-- [ ] Sprint planning documents are complete (sprint.md, use cases, architecture)
-- [ ] Architecture review passed
-- [ ] Stakeholder has approved the sprint plan
+- [x] Sprint planning documents are complete (sprint.md, use cases, architecture)
+- [x] Architecture review passed (verdict: APPROVE WITH CHANGES)
+- [x] Stakeholder has approved the sprint plan (roadmap approved 2026-07-14;
+      stakeholder said carry on 2026-07-15 -- team-lead-authorized gate
+      per this dispatch)
 
 ## Tickets
 
-(Populated during detail planning.)
-
 Tickets execute serially in the order listed.
+
+| # | Title | Use Cases | Depends On |
+|---|---|---|---|
+| 001 | Image & Vision Service client (imaging.ts) | SUC-001, SUC-002, SUC-004 | -- |
+| 002 | Wire generate_image tool and real ImageVisionClient into the turn loop | SUC-001 | 001 |
+| 003 | Description & Embedding Pipeline (happy path) | SUC-002 | 001 |
+| 004 | Vision-unavailable retry/queue and semantic search verification | SUC-003, SUC-004 | 003 |
+| 005 | Postcard content render: content JSON to HTML | SUC-005 | -- |
+| 006 | Postcard PDF export: bleed, rotation, trim/bleed-box metadata, endpoint | SUC-006 | 005 |
+
+Two independent foundation tracks (001-002-003-004 for generation/
+description; 005-006 for postcard rendering) share no sprint-internal
+dependency on each other -- both trace to the same architecture-update.md
+addendum but touch disjoint code. Listed in this order (generation track
+first) because ticket 001 is the larger, riskier foundation piece (real
+external API integration) worth surfacing early; ticket 006 carries this
+sprint's other major implementation risk (Alpine + `puppeteer-core`
+viability, architecture-update.md Open Question 1) and is deliberately
+sequenced last so its spike, if it requires a fallback, doesn't block
+the generation/description tickets from proceeding in parallel execution
+if the team-lead chooses to interleave them.
