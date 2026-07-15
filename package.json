@@ -1,6 +1,6 @@
 {
   "name": "flyerbot",
-  "version": "0.20260715.4",
+  "version": "0.20260715.5",
   "private": true,
   "scripts": {
     "dev": "./scripts/dev.sh",
