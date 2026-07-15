@@ -254,3 +254,52 @@ describe('findOrCreateOAuthUser — link mode', () => {
     await prisma.user.delete({ where: { id: otherUser.id } });
   });
 });
+
+// ---------------------------------------------------------------------------
+// findOrCreateOAuthUser — concurrent first-user race safety (005-003)
+// ---------------------------------------------------------------------------
+//
+// server/src/routes/auth.ts wraps the create-new-user branch's
+// `count() === 0` check and the subsequent `create()` in a single
+// `prisma.$transaction` so the two statements are atomic. This test fires
+// two brand-new-identity calls concurrently against a table forced empty
+// immediately beforehand, and asserts exactly one ADMIN and one USER
+// result — never two ADMINs (the pre-fix race) and never zero ADMINs.
+
+describe('findOrCreateOAuthUser — concurrent first-user race safety', () => {
+  beforeEach(async () => {
+    // Force a genuinely empty User table for this test, regardless of what
+    // earlier describe blocks in this file (or other test files, in a
+    // fileParallelism:false run) may have left behind.
+    await prisma.userProvider.deleteMany({});
+    await prisma.user.deleteMany({});
+  });
+
+  afterEach(async () => {
+    await prisma.userProvider.deleteMany({});
+    await prisma.user.deleteMany({});
+  });
+
+  it('two simultaneous first-logins yield exactly one ADMIN and one USER, never two ADMINs', async () => {
+    expect(await prisma.user.count()).toBe(0);
+
+    const reqA = makeReq();
+    const reqB = makeReq();
+
+    const [userA, userB] = await Promise.all([
+      findOrCreateOAuthUser(reqA, 'github', 'race-user-a', 'race-a@example.com', 'Race User A'),
+      findOrCreateOAuthUser(reqB, 'gitlab', 'race-user-b', 'race-b@example.com', 'Race User B'),
+    ]);
+
+    expect(userA.id).not.toBe(userB.id);
+
+    const roles = [userA.role, userB.role].sort();
+    expect(roles).toEqual(['ADMIN', 'USER']);
+
+    const totalCount = await prisma.user.count();
+    expect(totalCount).toBe(2);
+
+    const adminCount = await prisma.user.count({ where: { role: 'ADMIN' } });
+    expect(adminCount).toBe(1);
+  });
+});

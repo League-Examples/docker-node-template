@@ -1,7 +1,7 @@
 ---
 id: '003'
 title: First-user-admin race-safety fix
-status: open
+status: done
 use-cases:
 - SUC-013
 depends-on: []
@@ -43,19 +43,19 @@ auto-link, link-mode) is untouched.
 
 ## Acceptance Criteria
 
-- [ ] The create-new-user branch's `count()` + `create()` sequence is
+- [x] The create-new-user branch's `count()` + `create()` sequence is
       wrapped in one `prisma.$transaction`.
-- [ ] **New concurrency test**: two simultaneous calls to
+- [x] **New concurrency test**: two simultaneous calls to
       `findOrCreateOAuthUser` (or the underlying create-new-user logic)
       against an empty `User` table yield exactly one `ADMIN` user and
       one `USER` user — never two `ADMIN`s, never zero.
-- [ ] The existing `findOrCreateOAuthUser` test suite (existing-provider
+- [x] The existing `findOrCreateOAuthUser` test suite (existing-provider
       lookup, email-auto-link, link-mode, single-request first-user case)
       passes unmodified — re-run it explicitly as part of this ticket,
       not just left green by omission (architecture-update.md flags this
       explicitly as a risk: a subtle regression in an unrelated branch
       while adding the wrapper would be high-impact and easy to miss).
-- [ ] No new Prisma model, no schema change, no new dependency.
+- [x] No new Prisma model, no schema change, no new dependency.
 
 ## Implementation Plan
 
