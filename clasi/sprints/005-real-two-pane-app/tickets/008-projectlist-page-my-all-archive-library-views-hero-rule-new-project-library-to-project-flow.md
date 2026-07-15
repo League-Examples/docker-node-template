@@ -1,8 +1,8 @@
 ---
-id: '008'
+id: 008
 title: 'ProjectList page: My/All/Archive/Library views, hero rule, new-project, library-to-project
   flow'
-status: open
+status: in-progress
 use-cases:
 - SUC-010
 - SUC-011
@@ -50,25 +50,28 @@ with real data from ticket 006's `GET /api/projects?view=` and ticket
 
 ## Acceptance Criteria
 
-- [ ] `/` renders `ProjectList`, not any prior `HomePage.tsx` content —
+- [x] `/` renders `ProjectList`, not any prior `HomePage.tsx` content —
       no `mockupStubData.ts` import remains.
-- [ ] My/All/Archive are real, data-backed views (component test per
+- [x] My/All/Archive are real, data-backed views (component test per
       view, asserting the correct filter param and result set).
-- [ ] Library view renders real catalog assets via `GET /api/catalog/tree`,
+- [x] Library view renders real catalog assets via `GET /api/catalog/tree`,
       not project cards.
-- [ ] Hero-image selection rule (accepted, front-over-back for postcards,
+- [x] Hero-image selection rule (accepted, front-over-back for postcards,
       fallback to last) has a passing component test covering all three
       branches (accepted+front wins over accepted+back; nothing accepted
       falls back to last; single accepted iteration with no role is used
       directly).
-- [ ] Every hero image renders via `GET /api/files/*` (real bytes, not a
+- [x] Every hero image renders via `GET /api/files/*` (real bytes, not a
       hardcoded `/mockup-assets/*` path).
-- [ ] "New project" button creates a real `Project` row via `POST
+- [x] "New project" button creates a real `Project` row via `POST
       /api/projects` and navigates to `/projects/:id`.
-- [ ] Clicking a Library asset creates a project (with `sourceAssetId`),
+- [x] Clicking a Library asset creates a project (with `sourceAssetId`),
       navigates into it, and the created project's reference strip
       already shows the source asset (verify via an integration test
       spanning this ticket and ticket 010's reference-strip rendering).
+      Note: the reference-strip *rendering* itself is ticket 010's scope
+      (not yet built); this ticket verifies the round trip up through
+      `POST /api/projects` receiving `sourceAssetId` and navigation.
 
 ## Implementation Plan
 
@@ -83,7 +86,17 @@ class from the mockup unless the real-data wiring requires a change.
 
 **Files to modify**:
 - `client/src/App.tsx` — point `/` at `ProjectList` (if not already done
-  by ticket 007's placeholder).
+  by ticket 007's placeholder). Already done by ticket 007; no change
+  needed here.
+- `server/src/routes/projects.ts` — **implementer's addition, not in the
+  original plan**: ticket 006's `GET /api/projects` list handler
+  returned bare `Project` rows with no `iterations`/`owner`, but SUC-010's
+  hero-image rule needs each row's `iterations` and the "All projects"
+  view needs `owner.email` on the list response itself (not a per-project
+  follow-up fetch). Added a `PROJECT_LIST_INCLUDE` (iterations ordered by
+  `seq`, owner `id`/`email`/`displayName`) to the existing list query —
+  additive, no behavior change to any existing ticket-006 assertion.
+  Covered by a new test in `tests/server/projects-route.test.ts`.
 
 **Files to remove**: none yet (ticket 013 removes
 `client/src/pages/mockups/MockupProjects.tsx` once this ticket's

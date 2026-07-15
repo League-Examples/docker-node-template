@@ -24,6 +24,13 @@ import { LockConflictError } from '../agent-mcp/locks';
  * review; SUC-005's "reopening a project renders [chat history]
  * immediately... not re-fetched separately").
  *
+ * **`GET /api/projects`** also inlines each row's `iterations` and
+ * `owner` (added during ticket 008): `ProjectList`'s hero-image rule
+ * (SUC-010 -- most-recently-accepted iteration, front-over-back for
+ * postcards, fallback to the last iteration) and its "All projects"
+ * owner label both need that data on the list response itself, not a
+ * follow-up per-project fetch (see `PROJECT_LIST_INCLUDE` below).
+ *
  * **`requireAuth` only** -- matching every other new/relaxed route in
  * this sprint (architecture-001's shared-trust model: no per-user
  * isolation below USER/ADMIN).
@@ -56,6 +63,17 @@ const PROJECT_DETAIL_INCLUDE = {
   chatMessages: { orderBy: { createdAt: 'asc' as const } },
 };
 
+/** `GET /projects`'s own, slimmer include -- ticket 008's project-list
+ * home page needs each row's `iterations` to compute its hero image
+ * (SUC-010's accepted/front-over-back/fallback-to-last rule) and its
+ * `owner` to label cards in the "All" view, but not the full
+ * `references`/`chatMessages` fan-out `PROJECT_DETAIL_INCLUDE` carries --
+ * those are `ProjectDetail`-only concerns. */
+const PROJECT_LIST_INCLUDE = {
+  owner: { select: { id: true, email: true, displayName: true } },
+  iterations: { orderBy: { seq: 'asc' as const } },
+};
+
 projectsRouter.get('/projects', requireAuth, async (req, res) => {
   const userId = (req.user as any).id;
   const view = req.query.view === 'all' || req.query.view === 'archive' ? req.query.view : 'mine';
@@ -70,6 +88,7 @@ projectsRouter.get('/projects', requireAuth, async (req, res) => {
   const projects = await defaultPrisma.project.findMany({
     where,
     orderBy: { id: 'desc' },
+    include: PROJECT_LIST_INCLUDE,
   });
 
   res.status(200).json({ projects });

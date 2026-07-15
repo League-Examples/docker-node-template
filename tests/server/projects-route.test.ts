@@ -252,6 +252,21 @@ describe('GET /api/projects -- view filtering', () => {
     expect(ids).toContain(archived.id);
     expect(ids).not.toContain(active.id);
   });
+
+  it('inlines each project\'s iterations and owner (ticket 008 hero-image rule)', async () => {
+    const project = await makeProject(userAId, `${marker}-list-hero`);
+    const iteration = await makeIteration(project.id, `projects/${project.id}/iterations/iter-1.png`, 1);
+
+    const agent = await loginAsUserA();
+    const res = await agent.get('/api/projects?view=mine');
+    expect(res.status).toBe(200);
+
+    const row = res.body.projects.find((p: any) => p.id === project.id);
+    expect(row).toBeDefined();
+    expect(row.iterations.map((i: any) => i.id)).toEqual([iteration.id]);
+    expect(row.owner.id).toBe(userAId);
+    expect(row.owner.email).toBe(`${marker}-a@example.com`);
+  });
 });
 
 describe('GET /api/projects/:id', () => {
