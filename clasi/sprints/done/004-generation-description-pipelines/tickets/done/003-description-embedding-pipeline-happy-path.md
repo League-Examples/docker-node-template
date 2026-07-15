@@ -1,7 +1,7 @@
 ---
 id: '003'
 title: Description & Embedding Pipeline (happy path)
-status: open
+status: done
 use-cases:
 - SUC-002
 depends-on:
@@ -59,27 +59,27 @@ retry path on top of this).
 
 ## Acceptance Criteria
 
-- [ ] Committing a test asset via any `add_asset_to_collection` call
+- [x] Committing a test asset via any `add_asset_to_collection` call
       produces an `AssetDescription` row with `isPhotograph`, `isLogo`,
       `style`, and `peopleReal` all populated and a non-empty
       `description` (fixture-backed vision response, no live network
       call in tests).
-- [ ] The same commit produces exactly one `Embedding` row for that
+- [x] The same commit produces exactly one `Embedding` row for that
       asset (`ownerType: 'asset'`, `ownerId` matching), retrievable via
       the existing `nearestNeighbors` (`search.ts`, unmodified).
-- [ ] `keywordSearch` against a token present in the fixture-generated
+- [x] `keywordSearch` against a token present in the fixture-generated
       `description` or `tags` returns `{ ownerType: 'asset', ownerId }`
       for that asset.
-- [ ] `addAssetToCollection`'s return value, timing, and existing
+- [x] `addAssetToCollection`'s return value, timing, and existing
       locking/versioning behavior are unchanged when the description
       pipeline succeeds -- verified by re-running Sprint 003's existing
       `addAssetToCollection` tests unmodified and green.
-- [ ] A simulated `classifyAndDescribe` failure during a commit does
+- [x] A simulated `classifyAndDescribe` failure during a commit does
       **not** throw out of `addAssetToCollection` -- the call still
       returns the created `Asset` successfully, with no
       `AssetDescription`/`Embedding` row written (the happy-path half of
       what ticket 004 verifies end-to-end).
-- [ ] The pipeline call happens after the directory lock is released
+- [x] The pipeline call happens after the directory lock is released
       (verified by a test asserting the lock is not held during the
       simulated vision-model call, e.g. a concurrent lock-acquisition
       attempt on the same directory succeeds while the pipeline call is
@@ -116,3 +116,61 @@ updated to describe the new post-lock-release pipeline call.
 Cross-reference architecture-update.md's R2 (pending-description-as-
 absent-row) in the new module's own header, since that's the design
 decision this ticket's failure path implements.
+
+## Testing Notes
+
+Implemented `server/src/services/description.ts` (`describeAsset`,
+`embedText`, `EMBEDDING_MODEL`, `EMBEDDING_DIMENSION`) and wired it into
+`server/src/agent-mcp/catalogTools.ts`'s `addAssetToCollection`: after the
+existing lock-release/`versioning.recordChange` block, a new try/catch
+reads the asset's bytes off the Workspace Filesystem itself (or uses a
+caller-supplied `options.describeAsset.input`, which every test uses
+instead) and calls `describeAsset`, logging and swallowing any failure
+rather than letting it propagate. `describeAsset` itself never catches --
+only `addAssetToCollection` does, matching R2 ("pending description as
+absent row"): a failed call simply leaves the `Asset` with no
+`AssetDescription` row, the state ticket 004's retry path targets.
+
+**Embedding-vector convention**: no real embedding API is named anywhere
+in spec/architecture-001/architecture-update.md, and nothing in the
+codebase had ever populated a real `Embedding` row before this ticket, so
+none existed to reuse. Established one here: `embedText` is a
+deterministic, dependency-free "hashing trick" bag-of-words vector
+(FNV-1a token hashing into `EMBEDDING_DIMENSION` signed buckets,
+L2-normalized) over the classification's `description` + `tags`, packed
+into the same little-endian Float32 `Buffer` encoding `search.ts`'s own
+test fixtures already use. `Embedding.model` is recorded as
+`EMBEDDING_MODEL` (`'local-hash-embed-v1'`) so a future real
+embedding-API model stays distinguishable in the same column -- documented
+in `description.ts`'s module header for ticket 004/future knowledge-entry
+embedding work to match or replace.
+
+**Pre-existing `sqlite-vec` limitation surfaced, not fixed**: `search.ts`'s
+`VecEmbeddings` mirror table is `CREATE VIRTUAL TABLE IF NOT EXISTS`,
+fixed at whichever dimension first created it, and persists across test
+runs (global cleanup deletes rows, not the table). The test database
+already had it pinned at 4 dimensions from `search.test.ts`'s own KNN
+fixtures, which collided with this ticket's real (larger) embedding
+dimension the first time `nearestNeighbors` ran against both. Rather than
+touch `search.ts` (explicitly out of scope -- "search.ts, unmodified"),
+the new test file forces the brute-force fallback path
+(`FORCE_VECTOR_FALLBACK=1`, ticket 002-005's own test-only knob) for its
+one `nearestNeighbors` verification call; `describeAsset` itself never
+calls `nearestNeighbors`, so this is a test-only accommodation with no
+effect on production behavior. `search.ts`'s own `ensureVecTable` comment
+already flags this exact multi-dimension limitation as future work.
+
+**Coverage** (`tests/server/description-pipeline.test.ts`, 9 new tests):
+`embedText` determinism/normalization/similarity-ordering (3 tests); the
+five acceptance criteria above via `addAssetToCollection` (AssetDescription
++ Embedding + FTS5 happy path, unchanged return/locking/versioning,
+simulated-failure swallow via both an injected failing `fetchImpl` and the
+default missing-file-on-disk path, and the lock-released-before-vision-call
+timing proof via a gated `fetchImpl` + concurrent `acquireLock`); plus one
+direct `describeAsset` unit test confirming it propagates failures rather
+than swallowing them itself. Sprint 003's existing
+`tests/server/agent-mcp-catalog-tools.test.ts` (25 tests) was left
+unmodified and stays green -- confirming AC4.
+
+Full suite: `npm test` exit 0 -- 281 server tests (was 272 + 9 new) / 94
+client tests (unchanged), plus a clean `npx tsc --noEmit` in `server/`.

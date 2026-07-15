@@ -2,11 +2,14 @@ import fs from 'fs/promises';
 import path from 'path';
 import { createPatch, applyPatch } from 'diff';
 import { z } from 'zod';
+import pino from 'pino';
 import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { prisma as defaultPrisma } from '../services/prisma';
 import { resolveWorkspacePath } from '../services/workspaceDirectorySync';
 import { versioningService as defaultVersioningService } from '../services/versioning';
 import { indexKnowledgeEntry } from '../services/search';
+import { describeAsset, retryPendingDescriptions } from '../services/description';
+import type { DescribeAssetOptions, RetryPendingDescriptionsOptions } from '../services/description';
 import { acquireLock, releaseLock } from './locks';
 import type { VersioningRecorder } from './fsTools';
 import type { KnowledgeEntryModel } from '../generated/prisma/models/KnowledgeEntry';
@@ -76,6 +79,34 @@ function textResult(data: unknown) {
   return { content: [{ type: 'text' as const, text: JSON.stringify(data, null, 2) }] };
 }
 
+/** The minimal logger shape `add_asset_to_collection`'s pipeline-failure
+ * log line depends on -- narrow enough for a test to inject a plain stub,
+ * mirroring `imaging.ts`'s `ImagingLogger`. */
+export interface CatalogToolsLogger {
+  error(obj: Record<string, unknown>, msg?: string): void;
+}
+
+const defaultLogger: CatalogToolsLogger = pino({
+  level: process.env.NODE_ENV === 'test' ? 'silent' : process.env.LOG_LEVEL || 'info',
+});
+
+const MIME_BY_EXTENSION: Record<string, string> = {
+  '.png': 'image/png',
+  '.jpg': 'image/jpeg',
+  '.jpeg': 'image/jpeg',
+  '.webp': 'image/webp',
+  '.heic': 'image/heic',
+};
+
+/** Best-effort MIME type for an asset's stored path, for the vision-model
+ * payload built below -- mirrors `imaging.ts`'s own `mimeTypeForPath`
+ * table (not reused directly: that one is private to `imaging.ts`, and
+ * duplicating this small lookup avoids widening that module's exports for
+ * a four-line table). */
+function mimeTypeForAssetPath(assetPath: string): string {
+  return MIME_BY_EXTENSION[path.extname(assetPath).toLowerCase()] ?? 'image/png';
+}
+
 /** Thrown when a version-checked write's supplied `version` no longer
  * matches the stored row -- the reject-and-surface conflict this sprint's
  * R3 requires, distinguishable from other errors so callers can catch it
@@ -107,6 +138,28 @@ export interface CatalogToolsOptions {
   /** Prisma client used for every catalog read/write. Defaults to the
    * shared app singleton; test-injectable. */
   prismaClient?: any;
+  /** `add_asset_to_collection` only: options forwarded to the Description
+   * & Embedding Pipeline's `describeAsset` call after the directory lock
+   * is released. Production callers leave this unset -- the tool reads
+   * the asset's bytes off the Workspace Filesystem itself and lets
+   * `imaging.ts` fall back to its env-var credentials. Tests set
+   * `describeAsset.input` (fixture bytes/URL) and
+   * `describeAsset.imagingOptions.fetchImpl` (a stub) so no real
+   * filesystem read or network call ever happens in the suite. */
+  describeAsset?: Partial<DescribeAssetOptions>;
+  /** `add_asset_to_collection` only: options forwarded to the
+   * opportunistic-retry pass's `retryPendingDescriptions` call for any
+   * other still-pending `Asset` already in the same `Collection` (ticket
+   * 004-004). Production callers leave this unset -- `retryPendingDescriptions`
+   * reads each pending asset's bytes off the Workspace Filesystem itself
+   * by default. Tests set `retryPendingDescriptions.loadInput` to a stub
+   * returning fixture bytes so the opportunistic pass never touches the
+   * real filesystem either. */
+  retryPendingDescriptions?: Partial<RetryPendingDescriptionsOptions>;
+  /** Free-text log line target for a swallowed description-pipeline
+   * failure (see `add_asset_to_collection`'s header). Defaults to a
+   * pino instance silent under `NODE_ENV=test`; test-injectable. */
+  logger?: CatalogToolsLogger;
 }
 
 /** The Lock/Versioning `resourceKey` for a project-scoped write --
@@ -376,14 +429,47 @@ export interface AddAssetToCollectionArgs {
  * under `directoryId`, this tool creates one (using `collectionKind`,
  * default `'stock-art'`) rather than erroring -- an agent proposing a
  * never-seen collection name (e.g. a newly agreed-on grouping) shouldn't
- * need a separate round-trip tool call first. No `AssetDescription` row is
- * created (no vision-model call this sprint, Sprint 004 scope). */
+ * need a separate round-trip tool call first.
+ *
+ * **Description & Embedding Pipeline hand-off (ticket 004-003, first real
+ * implementation)**: once the `Asset` row is created and the directory
+ * lock released (the `finally` block below, unchanged), this tool reads
+ * the asset's image bytes off the Workspace Filesystem itself (the file
+ * was already placed there before this call, by whichever tool wrote it)
+ * and calls `description.describeAsset` -- *after* the lock release, so
+ * the vision-model network call this triggers never holds up other
+ * writers to the same directory (architecture-update.md Step 3, UC-008
+ * E4). That call is wrapped in try/catch: a failure (network error,
+ * timeout, malformed vision response, or a missing/unreadable asset file)
+ * is logged and swallowed, never thrown out of this function -- the
+ * `Asset` row this call already created and returned is unaffected. Per
+ * architecture-update.md Step 6 **R2** ("pending description as absent
+ * row"), an `Asset` left with no `AssetDescription` row *is* the
+ * pending-retry state; ticket 004 builds the retry path that re-invokes
+ * `describeAsset` against exactly that "asset with no description" query.
+ * Tests bypass the filesystem read entirely by supplying
+ * `options.describeAsset.input` directly (fixture bytes/URL) alongside a
+ * stub `fetchImpl`, so no real file or network access ever happens in the
+ * suite.
+ *
+ * **Opportunistic retry (ticket 004-004)**: after that hand-off (success or
+ * swallowed failure), this tool also runs a best-effort
+ * `description.retryPendingDescriptions` pass scoped to this asset's
+ * `Collection` (excluding the asset just created) -- so any *other*
+ * still-pending asset already in the collection gets a free retry attempt
+ * piggybacked on this write, without a separate scheduled-job cycle. Like
+ * the main pipeline call, this pass is wrapped in try/catch: a failure here
+ * (or within the retry pass itself) is logged and swallowed, never thrown
+ * out of this function -- it never blocks or fails this commit, leaving
+ * those other assets pending for the next opportunistic or scheduled
+ * retry. */
 export async function addAssetToCollection(
   args: AddAssetToCollectionArgs,
   options: CatalogToolsOptions = {}
 ): Promise<AssetModel> {
   const prismaClient = options.prismaClient ?? defaultPrisma;
   const versioning = options.versioning ?? defaultVersioningService;
+  const logger = options.logger ?? defaultLogger;
 
   const directory = await prismaClient.workspaceDirectory.findUnique({ where: { id: args.directoryId } });
   if (!directory) throw new Error(`add_asset_to_collection: no WorkspaceDirectory with id ${args.directoryId}`);
@@ -415,6 +501,36 @@ export async function addAssetToCollection(
   }
 
   versioning.recordChange(resolveWorkspacePath(resourceKey));
+
+  try {
+    const describeOptions = options.describeAsset ?? {};
+    const input = describeOptions.input ?? {
+      imageBytes: await fs.readFile(resolveWorkspacePath(asset.path)),
+      mimeType: mimeTypeForAssetPath(asset.path),
+    };
+    await describeAsset(asset, { ...describeOptions, prismaClient, input });
+  } catch (err) {
+    logger.error(
+      { err, assetId: asset.id, path: asset.path },
+      'add_asset_to_collection: description pipeline failed; Asset committed without AssetDescription (pending retry, architecture-update.md R2)'
+    );
+  }
+
+  try {
+    await retryPendingDescriptions({
+      prismaClient,
+      collectionId: asset.collectionId,
+      excludeAssetId: asset.id,
+      logger,
+      ...options.retryPendingDescriptions,
+    });
+  } catch (err) {
+    logger.error(
+      { err, assetId: asset.id, collectionId: asset.collectionId },
+      'add_asset_to_collection: opportunistic description-retry pass failed; other pending Assets left for the next retry'
+    );
+  }
+
   return asset;
 }
 
@@ -567,8 +683,13 @@ export interface CreateAgentPageArgs {
   filename: string;
   /** Self-contained page definition -- markup/schema plus an optional
    * small script (generic mechanism only; no postcard-specific
-   * content-generation logic, per this ticket's scope). */
-  content: string;
+   * content-generation logic, per this ticket's scope). A `Buffer` is
+   * accepted (ticket 006, `postcard.pdf`) and written verbatim with no
+   * text-encoding pass -- `fs.writeFile`'s default `'utf8'` encoding for
+   * string content would corrupt arbitrary binary bytes (any byte outside
+   * the 7-bit ASCII range gets re-encoded as multi-byte UTF-8), which a
+   * PDF's binary stream data cannot tolerate. */
+  content: string | Buffer;
   contentType?: string;
 }
 
@@ -602,7 +723,11 @@ export async function createAgentPage(
   await acquireLock('directory', resourceKey, options.lockHolder, prismaClient);
   try {
     await fs.mkdir(path.dirname(resolved), { recursive: true });
-    await fs.writeFile(resolved, args.content, 'utf8');
+    if (Buffer.isBuffer(args.content)) {
+      await fs.writeFile(resolved, args.content);
+    } else {
+      await fs.writeFile(resolved, args.content, 'utf8');
+    }
 
     const seq = await nextIterationSeq(prismaClient, args.projectId);
     iteration = await prismaClient.iteration.create({

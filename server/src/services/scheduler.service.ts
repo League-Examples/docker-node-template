@@ -105,6 +105,11 @@ export class SchedulerService {
     const defaults = [
       { name: 'daily-backup', frequency: 'daily' },
       { name: 'weekly-backup', frequency: 'weekly' },
+      // ticket 004-004: retries Assets left pending (no AssetDescription
+      // row) after a vision-model failure -- hourly is coarse-grained but
+      // acceptable per architecture-update.md R2, since a pending asset is
+      // already findable via filename/path search while it waits.
+      { name: 'description-retry', frequency: 'hourly' },
     ];
     for (const def of defaults) {
       await this.prisma.scheduledJob.upsert({

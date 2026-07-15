@@ -1,7 +1,7 @@
 ---
 id: '005'
 title: 'Postcard content render: content JSON to HTML'
-status: open
+status: done
 use-cases:
 - SUC-005
 depends-on: []
@@ -57,29 +57,76 @@ provenance rows.
 
 ## Acceptance Criteria
 
-- [ ] Submitting content with only `front_image` + `front_regions`
+- [x] Submitting content with only `front_image` + `front_regions`
       (no `back_image`) persists `postcard-content.json` and produces an
       HTML render showing only the front face.
-- [ ] Submitting content with both `front_image`/`front_regions` and
+- [x] Submitting content with both `front_image`/`front_regions` and
       `back_image`/`back_regions` produces an HTML render with both
       faces present.
-- [ ] Each region's rendered position/font in the HTML matches the
+- [x] Each region's rendered position/font in the HTML matches the
       submitted `position`/`font` values from the content JSON.
-- [ ] A submitted `front_extra_html`/`back_extra_html` value (e.g. a QR
+- [x] A submitted `front_extra_html`/`back_extra_html` value (e.g. a QR
       `<img>` tag) appears verbatim in the corresponding face's rendered
       output.
-- [ ] Re-submitting content JSON for the same project overwrites the
+- [x] Re-submitting content JSON for the same project overwrites the
       previous `postcard-content.json`/`postcard.html` (verified: the
       file's content changes, not a second file) while still producing a
       new `Iteration` provenance row each time (`create_agent_page`'s
       existing, unmodified behavior).
-- [ ] Submitting content whose `front_image`/`back_image` does not match
+- [x] Submitting content whose `front_image`/`back_image` does not match
       any existing `Iteration.imagePath` for the project returns a clear
       validation error rather than silently rendering a broken image
       reference.
-- [ ] The route is not reachable without the same test/admin-harness
+- [x] The route is not reachable without the same test/admin-harness
       gate Sprint 003's `chat.ts` uses (no unauthenticated or
       general-user access this sprint).
+
+## Testing Notes
+
+Implemented as planned: `server/src/services/postcardRender.ts` (Zod
+content-JSON validation via `parsePostcardContent`, the
+`Iteration.imagePath` cross-check via `resolvePostcardImages`, and HTML
+templating via `renderPostcardHtml`) plus
+`server/src/routes/postcards.ts`'s single `PUT /api/postcards/:projectId`
+handler, which folds the ticket's three-step flow (validate -> persist
+content JSON -> render -> persist HTML) into one request -- the
+"implementer's call" the ticket flagged, since a separate `GET .../html`
+step would only re-read content this handler already has validated in
+memory. Auth gate is `requireAuth` + `requireAdmin`, matching
+`routes/chat.ts`. Mounted in `server/src/app.ts` alongside `chatRouter`.
+
+Content-JSON shape (front/back images, regions with
+name/label/style/text/rows/position/font, front/back `extra_html`)
+verified directly against the predecessor's
+`marketing/projects/Robot-Riot-Postcard/postcard-content.json` and
+`postcard.html`; `position` accepts `left` OR `right` (matching the
+predecessor's QR-caption regions) plus an optional `height` (wireframe
+rounds 4/7/8/10's "exact drawn size, clipped overflow" contract --
+rendered as CSS `height` + `overflow:hidden` on that region only). Region
+text-to-HTML paragraph rendering (blank-line-separated `<p>`s, single
+newlines within a paragraph as `<br />`) was checked to match the
+predecessor's render byte-for-byte against its own fixture text.
+
+Tests: `tests/server/postcard-render.test.ts` (18 unit tests against the
+service layer directly -- shape validation, the image cross-check with a
+stub Prisma client, and HTML-template edge cases including HTML-escaping
+of region text vs. verbatim `extra_html`/region `style`) and
+`tests/server/postcard-route.test.ts` (12 integration tests against the
+real HTTP route, Prisma test DB, and a scratch `WORKSPACE_DIR` --
+front-only, front+back, region position/font fidelity, QR `extra_html`,
+re-submission overwrite + fresh-`Iteration`-per-write, the bad-image-
+reference 400, malformed-body 400, and the auth-gate 401/403). One
+non-obvious fixture requirement: the route calls `create_agent_page`
+without injecting a fake `VersioningRecorder` (matching production
+wiring), so the route test also points `WORKSPACE_GIT_ROOT` at its
+scratch directory (alongside `WORKSPACE_DIR`) before importing `app.ts` --
+otherwise the real `WorkspaceVersioningService` singleton's
+`recordChange` throws "Path escapes WORKSPACE_GIT_ROOT" for every write.
+`recordChange` only queues the path (no git command runs unless
+`commitTurn` is called, which nothing in this route does), so this is a
+safe, git-op-free env var for the test.
+
+`npm test`: 320 server tests / 94 client tests, exit 0.
 
 ## Implementation Plan
 

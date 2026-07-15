@@ -15,6 +15,9 @@
  * the resulting row exists in the DB with a corresponding `ChatMessage`
  * history entry.
  */
+import fs from 'fs/promises';
+import os from 'os';
+import path from 'path';
 import { describe, it, expect, beforeAll, afterAll, afterEach } from 'vitest';
 import { prisma } from '../../server/src/services/prisma';
 import {
@@ -22,6 +25,7 @@ import {
   chatMessageToProviderMessage,
   TurnLockTimeoutError,
   IMAGE_GENERATION_TOOL_NAME,
+  WORKSPACE_TOOL_DEFINITIONS,
   type TurnEvent,
   type TurnVersioningService,
   type WorkspaceToolHandler,
@@ -29,7 +33,10 @@ import {
 import { createMockAdapter, type MockProviderScript } from '../../server/src/agent/providers/mock';
 import { createKnowledgeEntry } from '../../server/src/agent-mcp/catalogTools';
 import { acquireLock, releaseLock } from '../../server/src/agent-mcp/locks';
+import { resolveWorkspacePath } from '../../server/src/services/workspaceDirectorySync';
+import { createRealImageVisionClient } from '../../server/src/agent/realImageVisionClient';
 import type { ImageVisionClient } from '../../server/src/agent/imageVisionStub';
+import type { GenerateImageResult as ImagingGenerateImageResult } from '../../server/src/services/imaging';
 
 const marker = `t005turn${Date.now()}`;
 
@@ -425,5 +432,111 @@ describe('runTurn -- image-generation calls route through the stub ImageVisionCl
     expect(calls[0]).toMatchObject({ prompt: 'a red postcard', projectId: projectAId });
     expect(result.toolCalls[0]).toMatchObject({ name: IMAGE_GENERATION_TOOL_NAME });
     expect((result.toolCalls[0].result as any).imagePath).toContain('outputs/test.png');
+  });
+});
+
+// ---------------------------------------------------------------------------
+// generate_image tool definition + real ImageVisionClient wiring (ticket
+// 004-002, completes image-generation-service.md).
+// ---------------------------------------------------------------------------
+
+describe('WORKSPACE_TOOL_DEFINITIONS -- generate_image (AC1)', () => {
+  it('advertises a generate_image tool definition matching IMAGE_GENERATION_TOOL_NAME', () => {
+    const def = WORKSPACE_TOOL_DEFINITIONS.find((d) => d.name === IMAGE_GENERATION_TOOL_NAME);
+    expect(def).toBeDefined();
+    expect(def!.inputSchema).toMatchObject({ type: 'object', required: ['prompt'] });
+    expect((def!.inputSchema as any).properties.prompt).toBeDefined();
+  });
+});
+
+describe('runTurn -- generate_image routes through the real ImageVisionClient end-to-end (SUC-003 pattern, AC3)', () => {
+  let testRoot: string;
+  let previousWorkspaceDir: string | undefined;
+
+  beforeAll(async () => {
+    testRoot = await fs.mkdtemp(path.join(os.tmpdir(), 'flyerbot-agent-turn-real-image-vision-test-'));
+    previousWorkspaceDir = process.env.WORKSPACE_DIR;
+    process.env.WORKSPACE_DIR = testRoot;
+    await fs.mkdir(resolveWorkspacePath(`projects/${projectAId}`), { recursive: true });
+  });
+
+  afterAll(async () => {
+    if (previousWorkspaceDir === undefined) {
+      delete process.env.WORKSPACE_DIR;
+    } else {
+      process.env.WORKSPACE_DIR = previousWorkspaceDir;
+    }
+    await fs.rm(testRoot, { recursive: true, force: true });
+  });
+
+  afterEach(async () => {
+    await prisma.iteration.deleteMany({ where: { projectId: projectAId } });
+  });
+
+  function fixtureImage(bytes: string): ImagingGenerateImageResult {
+    return { bytes: Buffer.from(bytes), model: 'gpt-image-2', size: '1024x1024', quality: 'high' };
+  }
+
+  it('a generate_image tool call produces one new Iteration row with a real file containing the fixture bytes', async () => {
+    const generateImage = () => Promise.resolve(fixtureImage('real-client-fixture-bytes'));
+    const realClient = createRealImageVisionClient({ generateImage, versioning: makeVersioningSpy() });
+
+    const script: MockProviderScript = [
+      {
+        kind: 'tool_calls',
+        calls: [{ id: 'img-1', name: IMAGE_GENERATION_TOOL_NAME, args: { prompt: 'a postcard mascot' } }],
+      },
+      { kind: 'message', content: 'Generated the image.' },
+    ];
+
+    const result = await runTurn(
+      { projectId: projectAId, message: 'Please generate an image.' },
+      { provider: createMockAdapter(script), imageVisionClient: realClient, versioning: makeVersioningSpy() }
+    );
+
+    const toolResult = result.toolCalls[0].result as { imagePath: string };
+    expect(toolResult.imagePath).toBe(`projects/${projectAId}/iterations/iter-1.png`);
+
+    const iterations = await prisma.iteration.findMany({ where: { projectId: projectAId } });
+    expect(iterations).toHaveLength(1);
+    expect(iterations[0]).toMatchObject({ seq: 1, imagePath: toolResult.imagePath, promptUsed: 'a postcard mascot' });
+
+    const written = await fs.readFile(resolveWorkspacePath(toolResult.imagePath));
+    expect(written.equals(Buffer.from('real-client-fixture-bytes'))).toBe(true);
+  });
+
+  it('a simulated imaging failure surfaces as a tool-call error result and adds no new Iteration row (AC5, UC-006 E1)', async () => {
+    const generateImage = () => Promise.reject(new Error('simulated OpenAI failure'));
+    const realClient = createRealImageVisionClient({ generateImage, versioning: makeVersioningSpy() });
+
+    const script: MockProviderScript = [
+      {
+        kind: 'tool_calls',
+        calls: [{ id: 'img-err-1', name: IMAGE_GENERATION_TOOL_NAME, args: { prompt: 'this will fail' } }],
+      },
+      { kind: 'message', content: 'Something went wrong generating the image.' },
+    ];
+    const events: TurnEvent[] = [];
+
+    const result = await runTurn(
+      { projectId: projectAId, message: 'Please generate an image.' },
+      {
+        provider: createMockAdapter(script),
+        imageVisionClient: realClient,
+        versioning: makeVersioningSpy(),
+        onEvent: (event) => events.push(event),
+      }
+    );
+
+    expect(result.toolCalls[0]).toMatchObject({ name: IMAGE_GENERATION_TOOL_NAME });
+    expect((result.toolCalls[0].result as any).error).toContain('simulated OpenAI failure');
+    expect(
+      events.some(
+        (e) => e.type === 'tool_call_finished' && e.name === IMAGE_GENERATION_TOOL_NAME && e.isError === true
+      )
+    ).toBe(true);
+
+    const iterations = await prisma.iteration.findMany({ where: { projectId: projectAId } });
+    expect(iterations).toHaveLength(0);
   });
 });

@@ -2,6 +2,7 @@ import { Router, type Response } from 'express';
 import { requireAuth } from '../middleware/requireAuth';
 import { requireAdmin } from '../middleware/requireAdmin';
 import { runTurn, type TurnEvent } from '../agent/turn';
+import { createRealImageVisionClient } from '../agent/realImageVisionClient';
 
 /**
  * Agent Runtime SSE chat API (architecture-update.md Step 3's Agent
@@ -20,6 +21,14 @@ import { runTurn, type TurnEvent } from '../agent/turn';
  * not necessarily an admin).
  */
 export const chatRouter = Router();
+
+/** The real, `imaging.ts`-backed `ImageVisionClient` (ticket 004-002) --
+ * built once at module load (it only closes over the shared app Prisma/
+ * Versioning singletons; no API key is read and no network call is made
+ * until a `generate_image` tool call actually invokes it), passed to
+ * every `runTurn` call below instead of relying on `turn.ts`'s stub
+ * default. */
+const imageVisionClient = createRealImageVisionClient();
 
 function writeEvent(res: Response, event: TurnEvent) {
   res.write(`data: ${JSON.stringify(event)}\n\n`);
@@ -46,7 +55,7 @@ chatRouter.post('/projects/:projectId/chat', requireAuth, requireAdmin, async (r
   try {
     await runTurn(
       { projectId, message },
-      { onEvent: (event) => writeEvent(res, event) }
+      { onEvent: (event) => writeEvent(res, event), imageVisionClient }
     );
   } catch (err: any) {
     // `runTurn` already emits a `type: 'error'` event for any failure

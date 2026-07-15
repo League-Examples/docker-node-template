@@ -297,15 +297,38 @@ export const WORKSPACE_TOOL_DEFINITIONS: ProviderToolDefinition[] = [
       required: ['projectId', 'filename', 'content'],
     },
   },
+  {
+    name: 'generate_image',
+    description:
+      'Generate a new image via the Image & Vision Service and record it as a new Iteration on the project. Always inserts a new Iteration -- never overwrites an existing one.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        prompt: { type: 'string', description: 'The prompt text describing the desired image.' },
+        referenceImages: {
+          type: 'array',
+          items: { type: 'string' },
+          description:
+            'Optional filesystem paths to reference images for an edit-style generation. Note: nest under modelParams.referenceImages -- this call site only forwards prompt and modelParams.',
+        },
+        modelParams: {
+          description:
+            'Optional free-form model parameters (e.g. size, referenceImages, background), passed through unmodified to the Image & Vision Service.',
+        },
+      },
+      required: ['prompt'],
+    },
+  },
 ];
 
-/** Not a registered Workspace MCP Server tool -- a second dispatch target
- * this turn controller recognizes for the stub `ImageVisionClient` (AC8).
- * No tool definition of this name is included in
- * `WORKSPACE_TOOL_DEFINITIONS` this sprint (no real image-generation tool
- * exists yet); it is wired here so Sprint 004 only needs to register the
- * real tool definition and swap the stub client, not touch this call
- * site's shape. */
+/** Not a registered Workspace MCP Server tool by itself -- a second
+ * dispatch target this turn controller recognizes for the injected
+ * `ImageVisionClient` (Sprint 003 AC8). Ticket 004-002 added a matching
+ * `generate_image` entry to `WORKSPACE_TOOL_DEFINITIONS` above (so a
+ * `ProviderAdapter` can see and call it) and wired the real,
+ * `imaging.ts`-backed client (`realImageVisionClient.ts`) into
+ * production (`routes/chat.ts`) -- this constant and the dispatch shape
+ * below are unchanged from Sprint 003. */
 export const IMAGE_GENERATION_TOOL_NAME = 'generate_image';
 
 // ---------------------------------------------------------------------------

@@ -5,10 +5,14 @@
  *
  * The Agent Runtime's turn controller (`turn.ts`) routes any
  * image-generation step in the loop through this interface instead of a
- * real OpenAI/OpenRouter API call. Sprint 004 builds the real Image &
- * Vision Service and swaps this stub out for an implementation of the
- * exact same interface -- `turn.ts`'s call site (`imageVisionClient
- * .generateImage(...)`) does not change.
+ * real OpenAI/OpenRouter API call. Sprint 004 ticket 002 built the real
+ * implementation of this exact interface at `./realImageVisionClient.ts`
+ * (`createRealImageVisionClient`, backed by ticket 004-001's `services/
+ * imaging.ts`), wired into production in `routes/chat.ts` -- `turn.ts`'s
+ * call site (`imageVisionClient.generateImage(...)`) did not change. This
+ * stub remains in place, unmodified, as `runTurn`'s default `Image
+ * VisionClient` when no client is injected (every test continues to get
+ * it, or an explicit mock/the real client, exactly as before).
  */
 
 export interface GenerateImageInput {

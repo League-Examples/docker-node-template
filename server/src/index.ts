@@ -4,6 +4,7 @@ import { initPrisma } from './services/prisma.js';
 import { initConfigCache } from './services/config.js';
 import { ServiceRegistry } from './services/service.registry.js';
 import { prisma } from './services/prisma.js';
+import { registerDescriptionRetryJob } from './services/description.js';
 
 const port = parseInt(process.env.PORT || '3000', 10);
 
@@ -17,6 +18,9 @@ initPrisma().then(() => initConfigCache()).then(async () => {
   registry.scheduler.registerHandler('weekly-backup', async () => {
     await registry.backups.createBackup();
   });
+  // ticket 004-004: hourly scheduled retry pass for Assets left pending
+  // (no AssetDescription row) after a vision-model failure.
+  registerDescriptionRetryJob(registry.scheduler);
   registry.scheduler.startTicking();
 
   app.listen(port, '0.0.0.0', () => {

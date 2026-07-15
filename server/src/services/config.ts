@@ -18,6 +18,9 @@ export const CONFIG_KEYS: ConfigKeyMeta[] = [
   // AI Services
   { key: 'ANTHROPIC_API_KEY', group: 'AI Services', label: 'Claude API Key', isSecret: true, requiresRestart: false },
   { key: 'OPENAI_API_KEY', group: 'AI Services', label: 'OpenAI API Key', isSecret: true, requiresRestart: false },
+  { key: 'OPENROUTER_API', group: 'AI Services', label: 'OpenRouter API Key', isSecret: true, requiresRestart: false },
+  { key: 'OPENROUTER_MODEL', group: 'AI Services', label: 'OpenRouter Model', isSecret: false, requiresRestart: false },
+  { key: 'IMAGE_MODEL', group: 'AI Services', label: 'Image Generation Model', isSecret: false, requiresRestart: false },
 ];
 
 const CONFIG_KEY_SET = new Set(CONFIG_KEYS.map((k) => k.key));
