@@ -1,13 +1,13 @@
 ---
 id: '011'
 title: NewProject page
-status: open
+status: in-progress
 use-cases:
 - SUC-004
 depends-on:
 - '006'
 - '007'
-- '009'
+- 009
 github-issue: ''
 issue: real-two-pane-app.md
 completes_issue: true
@@ -48,22 +48,58 @@ general guidelines").
 
 ## Acceptance Criteria
 
-- [ ] "New project" button (`ProjectList`, ticket 008) creates a real
+- [x] "New project" button (`ProjectList`, ticket 008) creates a real
       `Project` row via `POST /api/projects` and navigates to
       `/projects/:id`.
-- [ ] A freshly-created project's `ProjectDetail` page renders: blank/
+- [x] A freshly-created project's `ProjectDetail` page renders: blank/
       empty project-details header, empty output area (no iterations),
       chat box.
-- [ ] The chat panel's opening state matches the guideline-questions
+- [x] The chat panel's opening state matches the guideline-questions
       framing (style / output type / goal) — either a real Claude-driven
       opening message (if the turn is invoked) or, at minimum, an
       empty-state prompt consistent with the mockup's framing if no turn
       has started yet.
-- [ ] As the conversation proceeds and Claude calls `create_project`'s
+- [x] As the conversation proceeds and Claude calls `create_project`'s
       update path (Sprint 003, unchanged) to fill `detailsHeader`, the
       header renders the updated values on the next `GET
       /api/projects/:id` refresh.
-- [ ] No `mockupStubData.ts` import remains in the promoted page.
+- [x] No `mockupStubData.ts` import remains in the promoted page.
+
+## Implementation Notes (deviation from the stated files-to-modify)
+
+The "New project" button was already wired to `POST /api/projects` +
+navigation in ticket 008 (`ProjectList.tsx`'s `handleNewProject`) -- no
+change needed there this ticket. `ProjectDetail/index.tsx` (ticket 009)
+already rendered correctly for zero iterations/references/chat history,
+confirming the "thin" approach the Implementation Plan anticipated.
+
+The one genuinely net-new piece: `ProjectDetail/index.tsx` had no
+project-details header at all yet (style / output type / goal). Added:
+
+- `client/src/pages/ProjectDetail/ProjectDetailsHeader.tsx` (new) --
+  promoted from `MockupNewProject.tsx`'s disabled style/output-type/goal
+  form fields into a *read-only* summary of `project.detailsHeader`
+  (`data-testid="project-details-header"`). Renders a single blank-state
+  line when no field is set yet; once any field is present, renders all
+  three with "Not set yet" placeholders for whichever are still missing.
+  Wired into `ProjectDetail/index.tsx` above `ReferenceStrip`.
+- `client/src/pages/ProjectDetail/ChatPanel.tsx` (modified) -- added a
+  static, non-persisted `data-testid="chat-empty-state"` bubble (the same
+  copy as `mockupStubData.ts`'s `STUB_NEW_PROJECT_CHAT_MESSAGES`) shown
+  whenever `initialMessages` produces zero bubbles, satisfying the
+  "empty-state prompt consistent with the mockup's framing" AC without
+  auto-invoking a real turn on mount.
+- No separate `client/src/pages/NewProject.tsx` file was created --
+  per the ticket's Description, both entry points converge on
+  `ProjectDetail` once the `Project` row exists, and `ProjectDetail`
+  already renders the mockup's blank-project layout end to end (header +
+  empty outputs + chat) once the header piece above was added. This is
+  the "confirm ProjectDetail already handles the empty-project case"
+  branch the Implementation Plan explicitly allowed.
+- `tests/client/NewProject.test.tsx` (new) -- component coverage for the
+  blank/partial/filled details-header states and the chat empty-state
+  prompt, plus an integration test for the full button-click -> POST ->
+  navigate -> empty-`ProjectDetail`-renders sequence (mocked network).
 
 ## Implementation Plan
 

@@ -3,6 +3,7 @@ import { useParams } from 'react-router-dom';
 import OutputPane from './OutputPane';
 import ChatPanel from './ChatPanel';
 import ReferenceStrip from './ReferenceStrip';
+import ProjectDetailsHeader from './ProjectDetailsHeader';
 import LibraryDrawer from './LibraryDrawer';
 import type { IterationDTO, ProjectDetailDTO, ReferenceDTO, SearchCatalogMatch } from './types';
 
@@ -26,6 +27,17 @@ import type { IterationDTO, ProjectDetailDTO, ReferenceDTO, SearchCatalogMatch }
  * the drawer via `searchCatalogMatches`, without opening a second SSE
  * connection (see `ChatPanel.tsx`'s and `LibraryDrawer.tsx`'s own header
  * comments for the full rationale).
+ *
+ * **Ticket 011 (SUC-004, "New project")**: this same route *is* the
+ * "new project" experience -- there is no separate `/projects/new` route
+ * or `NewProject.tsx` component (see this ticket's Description: both the
+ * `ProjectList` "New project" button and Claude's own `create_project`
+ * chat path converge here once the row exists, and a fresh project simply
+ * renders with empty `iterations`/`references`/`chatMessages`). This
+ * ticket's one net-new piece is `ProjectDetailsHeader` below -- promoted
+ * from `MockupNewProject.tsx`'s disabled style/output-type/goal fields
+ * into a read-only summary of `project.detailsHeader`, which Claude fills
+ * progressively via chat rather than the user filling in a form.
  */
 
 export default function ProjectDetail() {
@@ -126,6 +138,7 @@ export default function ProjectDetail() {
 
   return (
     <div className="relative flex h-full min-h-0 flex-col bg-slate-50 text-slate-800">
+      <ProjectDetailsHeader detailsHeader={project.detailsHeader} />
       <ReferenceStrip references={project.references} onRemove={(id) => void handleRemoveReference(id)} />
 
       <OutputPane

@@ -25,6 +25,15 @@ import type { ChatMessageDTO } from './types';
  * `ProjectDetail/index.tsx` forwards `search_catalog` results down to
  * `LibraryDrawer.tsx` from there. The stream itself is never duplicated:
  * `postSseStream` is still only ever invoked from `handleSend` below.
+ *
+ * **Ticket 011 (SUC-004)**: when `initialMessages` produces zero bubbles --
+ * always true for a freshly-created project, since it has no chat history
+ * yet -- this component renders a static, non-persisted empty-state bubble
+ * matching `MockupNewProject.tsx`'s opening line (style / output type /
+ * goal). This is a client-only placeholder, not a real turn: no
+ * `POST /api/projects/:id/chat` fires on mount. It disappears the moment
+ * `messages` gains its first real entry (the user's own first send, or a
+ * real Claude opening message on a future reload).
  */
 
 export type ChatBubbleFrom = 'user' | 'assistant';
@@ -68,6 +77,14 @@ const TOOL_STATUS_LABELS: Record<string, string> = {
 function toolStatusLabel(name: string): string {
   return TOOL_STATUS_LABELS[name] ?? `${name.replace(/_/g, ' ')}…`;
 }
+
+/** Ticket 011 (SUC-004): the same guideline-questions opening line
+ * `mockupStubData.ts`'s `STUB_NEW_PROJECT_CHAT_MESSAGES` used, shown as a
+ * static empty-state prompt whenever there's no chat history yet -- see
+ * this component's header comment. */
+const EMPTY_STATE_PROMPT =
+  "Let's start your new project. What style are you going for, what kind of output do you need — a Facebook " +
+  'image, a logo, or a postcard — and what are you trying to achieve?';
 
 /** Only `role: 'user'|'assistant'` rows with non-empty `content` render as
  * bubbles -- `runTurn` also persists `role: 'assistant'` bookkeeping rows
@@ -152,6 +169,13 @@ export default function ChatPanel({ projectId, initialMessages, onToolCallFinish
   return (
     <section className="flex flex-1 min-h-0 flex-col bg-white">
       <div data-testid="chat-messages" className="flex-1 overflow-y-auto p-4 space-y-3">
+        {messages.length === 0 && (
+          <div data-testid="chat-empty-state" className="text-left">
+            <span className="inline-block max-w-[80%] rounded-lg bg-slate-100 px-3 py-2 text-sm text-slate-800">
+              {EMPTY_STATE_PROMPT}
+            </span>
+          </div>
+        )}
         {messages.map((message) => (
           <div key={message.id} className={message.from === 'user' ? 'text-right' : 'text-left'}>
             <span
