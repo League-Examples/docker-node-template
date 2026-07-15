@@ -1,7 +1,7 @@
 ---
 id: '005'
 title: Real Two-Pane App
-status: roadmap
+status: planning-docs
 branch: sprint/005-real-two-pane-app
 use-cases: []
 issues:
@@ -104,19 +104,39 @@ Web App Structure section:
 ### In Scope
 
 - Promotion of all six mockup pages (plus the project-list/home page) to
-  live components against Sprints 002-004's backend.
+  live components, backed by whatever backend completion (routes, MCP
+  tools, schema, auth fixes) a working, stakeholder-demoable end-to-end
+  application actually requires — see **Scope correction** below.
 - Removal of `mockupStubData.ts` and the `/mockups/*` stub routes (or
   their conversion into real routes, whichever the ticket-level plan
   picks — decided during detail planning).
 - Client-side interaction logic for every wireframe-review rule listed
   above.
 
+### Scope correction (2026-07-15)
+
+An earlier version of this section said this sprint was "UI wiring and
+interaction-behavior fidelity, not new domain logic" and that any
+backend gap found should be "flagged back rather than silently added
+here." The stakeholder corrected this directly: the mandate is "a
+working application — do whatever you have to do to get a working
+application." Backend work is fully in scope wherever a working,
+stakeholder-demoable end-to-end app needs it. `architecture-update.md`'s
+own Scope Correction note and Step 1-2 enumerate the concrete gaps this
+pulled in against the actual server routes (not assumed complete):
+workspace file-serving (nothing served real image bytes to the browser
+at all), `catalog.ts`/`projects.ts` read/write routes, reference and
+iteration-state catalog tools, conversational/semantic catalog search
+(`search_catalog`, assembled from already-existing `embedText`/
+`nearestNeighbors`/`keywordSearch`), and the first-user-admin race fix.
+
 ### Out of Scope
 
-- Any new backend capability not already built in Sprints 002-004 —
-  this sprint is UI wiring and interaction-behavior fidelity, not new
-  domain logic. If a gap is found (e.g. a missing MCP tool), it is
-  flagged back rather than silently added here.
+The two items below remain genuinely out of scope — not because of the
+old backend constraint above, but because the stakeholder has not asked
+for them and nothing in this sprint's promoted pages needs them to be
+demoable end-to-end:
+
 - Subproject UI beyond what UC-009 already implies is needed for the
   logo-for-a-postcard case — deeper subproject-specific UI, if any, is
   deferred pending stakeholder input (architecture-001 Open Question 4).
@@ -136,12 +156,19 @@ live OpenAI/OpenRouter calls in CI — reuse Sprint 004's fixture approach.
 ## Architecture Notes
 
 Implements architecture-001's Web App Structure section directly, module
-by module (Client App). No new modules are introduced; this sprint
-consumes the API Gateway, Agent Runtime, Catalog & Knowledge Store, and
-Image & Vision Service surfaces built in Sprints 002-004 without changing
-their boundaries. If UI wiring surfaces a genuine backend gap, that is an
-architecture-update addendum for this sprint (detail planning) rather
-than scope creep into ad hoc backend changes.
+by module (Client App), and completes the API Gateway module's route
+surface (`catalog.ts`/`files.ts`/`projects.ts`, alongside the existing
+`chat.ts`). No new top-level modules are introduced — see
+`architecture-update.md`'s Scope Correction note: this sprint delivers
+whatever backend completion (routes, MCP tools, schema, auth fixes) a
+working, stakeholder-demoable end-to-end application requires, verified
+against the actual server routes rather than assumed complete. The prior
+"flag genuine backend gaps rather than build them" framing has been
+retracted (see `sprint.md`'s own Scope correction note above and
+`architecture-update.md`'s Scope Correction note) — every gap found
+during planning (workspace file-serving, reference/iteration-state
+tools, conversational catalog search, first-user-admin race safety) is
+built in this sprint's tickets, not deferred.
 
 ## GitHub Issues
 
@@ -152,12 +179,26 @@ yet mirrored to GitHub.
 
 Before tickets can be created, all of the following must be true:
 
-- [ ] Sprint planning documents are complete (sprint.md, use cases, architecture)
-- [ ] Architecture review passed
-- [ ] Stakeholder has approved the sprint plan
+- [x] Sprint planning documents are complete (sprint.md, use cases, architecture)
+- [x] Architecture review passed
+- [x] Stakeholder has approved the sprint plan
 
 ## Tickets
 
-(Populated during detail planning.)
+Tickets execute serially in the order listed below (dependency order).
 
-Tickets execute serially in the order listed.
+| # | Title | Depends on |
+|---|---|---|
+| 001 | Iteration accepted/role schema migration | — |
+| 002 | Workspace MCP Server: reference, iteration-state, and catalog-search tools | 001 |
+| 003 | First-user-admin race-safety fix | — |
+| 004 | Workspace file-serving route (`GET /api/files/*`) | — |
+| 005 | API Gateway: `catalog.ts` (tree browse + FTS5 search) | — |
+| 006 | API Gateway: `projects.ts` (CRUD, references, iteration-state) + chat/postcards auth-gate relaxation | 001, 002 |
+| 007 | Client shell: `AppLayout` full-bleed mode + admin-console link + routing scaffold | 006 |
+| 008 | `ProjectList` page: My/All/Archive/Library views, hero rule, new-project, library-to-project flow | 004, 005, 006, 007 |
+| 009 | `ProjectDetail` page part 1: output pane + chat panel SSE | 004, 006, 007 |
+| 010 | `ProjectDetail` page part 2: library drawer (literal + conversational filter) + references | 002, 004, 005, 009 |
+| 011 | `NewProject` page | 006, 007, 009 |
+| 012 | `PostcardEdit` page: text editor promotion | 004, 006, 008, 009 |
+| 013 | Cleanup: remove mockups, update `AppLayout` tests, full walkthrough integration test | 008, 009, 010, 011, 012 |
