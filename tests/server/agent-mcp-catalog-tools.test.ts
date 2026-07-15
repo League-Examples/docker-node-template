@@ -29,6 +29,7 @@ import {
   addReference,
   removeReference,
   setIterationState,
+  removeIteration,
   searchCatalog,
   registerCatalogTools,
   VersionConflictError,
@@ -159,7 +160,7 @@ async function makeProject(title: string) {
 }
 
 describe('registerCatalogTools / createWorkspaceMcpServer -- tool surface', () => {
-  it('registers exactly the eleven catalog tools (seven from ticket 003 + four from ticket 005-002) alongside the four fs tools -- no other tools', async () => {
+  it('registers exactly the twelve catalog tools (seven from ticket 003 + four from ticket 005-002 + remove_iteration OOP follow-up) alongside the four fs tools -- no other tools', async () => {
     const server = createWorkspaceMcpServer();
     const names = Object.keys((server as any)._registeredTools ?? {}).sort();
     expect(names).toEqual(
@@ -178,6 +179,7 @@ describe('registerCatalogTools / createWorkspaceMcpServer -- tool surface', () =
         'add_reference',
         'remove_reference',
         'set_iteration_state',
+        'remove_iteration',
         'search_catalog',
       ].sort()
     );
@@ -200,6 +202,7 @@ describe('registerCatalogTools / createWorkspaceMcpServer -- tool surface', () =
         'add_reference',
         'remove_reference',
         'set_iteration_state',
+        'remove_iteration',
         'search_catalog',
       ].sort()
     );
@@ -522,15 +525,15 @@ describe('create_agent_page', () => {
       { projectId: project.id, filename: 'postcard.html', content: '<html>hello</html>', contentType: 'text/html' },
       { versioning }
     );
-    cleanup.iterationIds.push(result.iteration.id);
+    cleanup.iterationIds.push(result.iteration!.id);
 
     expect(result.path).toBe(`projects/${project.id}/outputs/postcard.html`);
     const written = await fs.readFile(resolveWorkspacePath(result.path), 'utf8');
     expect(written).toBe('<html>hello</html>');
 
-    expect(result.iteration.imagePath).toBe(result.path);
-    expect(result.iteration.promptUsed).toBe('agent-page:postcard.html');
-    expect(result.iteration.modelParams).toMatchObject({ kind: 'agent-page', filename: 'postcard.html' });
+    expect(result.iteration!.imagePath).toBe(result.path);
+    expect(result.iteration!.promptUsed).toBe('agent-page:postcard.html');
+    expect(result.iteration!.modelParams).toMatchObject({ kind: 'agent-page', filename: 'postcard.html' });
     expect(versioning.calls).toHaveLength(1);
   });
 
@@ -553,10 +556,103 @@ describe('create_agent_page', () => {
       { projectId: project.id, filename: 'page.html', content: 'x' },
       { versioning: spyVersioning() }
     );
-    cleanup.iterationIds.push(result.iteration.id);
+    cleanup.iterationIds.push(result.iteration!.id);
 
     const count = await prisma.lock.count({
       where: { resourceType: 'directory', resourceKey: `projects/${project.id}/outputs/page.html` },
+    });
+    expect(count).toBe(0); // released after completion
+  });
+
+  it('recordIteration: false writes the file and still locks/versions, but records no Iteration row (OOP follow-up, 2026-07-15)', async () => {
+    const project = await makeProject(`${marker}-agent-page-no-iteration-project`);
+    const versioning = spyVersioning();
+
+    const result = await createAgentPage(
+      {
+        projectId: project.id,
+        filename: 'postcard-content.json',
+        content: '{"front_image":"x"}',
+        contentType: 'application/json',
+        recordIteration: false,
+      },
+      { versioning }
+    );
+
+    expect(result.iteration).toBeNull();
+    expect(result.path).toBe(`projects/${project.id}/outputs/postcard-content.json`);
+    const written = await fs.readFile(resolveWorkspacePath(result.path), 'utf8');
+    expect(written).toBe('{"front_image":"x"}');
+    expect(versioning.calls).toHaveLength(1);
+
+    const count = await prisma.iteration.count({ where: { projectId: project.id } });
+    expect(count).toBe(0);
+  });
+
+  it('recordIteration defaults to true when omitted, preserving the MCP tool contract for agents', async () => {
+    const project = await makeProject(`${marker}-agent-page-default-record-project`);
+    const result = await createAgentPage(
+      { projectId: project.id, filename: 'page.html', content: 'x' },
+      { versioning: spyVersioning() }
+    );
+    cleanup.iterationIds.push(result.iteration!.id);
+
+    expect(result.iteration).not.toBeNull();
+    expect(result.iteration!.promptUsed).toBe('agent-page:page.html');
+  });
+});
+
+describe('remove_iteration', () => {
+  it('deletes the Iteration row and its backing file', async () => {
+    const project = await makeProject(`${marker}-remove-iteration-project`);
+    const relPath = `${marker}/agent-mcp-remove-iteration.png`;
+    await fs.mkdir(path.dirname(resolveWorkspacePath(relPath)), { recursive: true });
+    await fs.writeFile(resolveWorkspacePath(relPath), 'fake-image-bytes');
+
+    const iteration = await createIteration(
+      { projectId: project.id, imagePath: relPath, promptUsed: 'p' },
+      { versioning: spyVersioning() }
+    );
+
+    const result = await removeIteration({ iterationId: iteration.id }, { versioning: spyVersioning() });
+    expect(result).toEqual({ id: iteration.id, deleted: true });
+
+    const gone = await prisma.iteration.findUnique({ where: { id: iteration.id } });
+    expect(gone).toBeNull();
+
+    await expect(fs.access(resolveWorkspacePath(relPath))).rejects.toThrow();
+  });
+
+  it('does not throw when the backing file is already missing', async () => {
+    const project = await makeProject(`${marker}-remove-iteration-missing-file-project`);
+    const iteration = await createIteration(
+      { projectId: project.id, imagePath: `${marker}/does-not-exist.png`, promptUsed: 'p' },
+      { versioning: spyVersioning() }
+    );
+
+    await expect(removeIteration({ iterationId: iteration.id }, { versioning: spyVersioning() })).resolves.toEqual({
+      id: iteration.id,
+      deleted: true,
+    });
+  });
+
+  it('rejects an id with no matching Iteration', async () => {
+    await expect(
+      removeIteration({ iterationId: -1 }, { versioning: spyVersioning() })
+    ).rejects.toThrow(/no Iteration with id/);
+  });
+
+  it('acquires and releases a Lock row around the delete', async () => {
+    const project = await makeProject(`${marker}-remove-iteration-lock-project`);
+    const iteration = await createIteration(
+      { projectId: project.id, imagePath: `${marker}/lockcheck.png`, promptUsed: 'p' },
+      { versioning: spyVersioning() }
+    );
+
+    await removeIteration({ iterationId: iteration.id }, { versioning: spyVersioning() });
+
+    const count = await prisma.lock.count({
+      where: { resourceType: 'directory', resourceKey: `projects/${project.id}` },
     });
     expect(count).toBe(0); // released after completion
   });

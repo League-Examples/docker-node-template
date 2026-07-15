@@ -702,10 +702,26 @@ export interface CreateAgentPageArgs {
    * PDF's binary stream data cannot tolerate. */
   content: string | Buffer;
   contentType?: string;
+  /** When `false`, skips creating the `Iteration` provenance row for this
+   * write -- the file is still written, locked, and versioned normally.
+   * Defaults to `true`, preserving the existing MCP `create_agent_page`
+   * tool contract for agents (every agent-authored page still gets a
+   * gallery-visible `Iteration` row; the exposed MCP tool never passes
+   * this argument). Sprint 005 OOP follow-up (2026-07-15): `postcards.ts`'s
+   * PUT/PDF routes pass `false` here -- `postcard-content.json`/
+   * `postcard.html`/`postcard.pdf` are pipeline output *files*, not
+   * gallery-worthy iterations, and recording one Iteration per autosave/
+   * PDF-generate call was polluting the iteration gallery with
+   * broken-image rows (see `postcards.ts`'s own module header, and
+   * `routes/projects.ts`'s `PROJECT_DETAIL_INCLUDE`/`PROJECT_LIST_INCLUDE`
+   * for the read-side filter that also guards against any legacy rows). */
+  recordIteration?: boolean;
 }
 
 export interface CreateAgentPageResult {
-  iteration: IterationModel;
+  /** `null` when `recordIteration: false` was passed -- no `Iteration` row
+   * was created for this write. */
+  iteration: IterationModel | null;
   /** Workspace-relative path the page was written to. */
   path: string;
 }
@@ -713,15 +729,18 @@ export interface CreateAgentPageResult {
 /** `create_agent_page` -- writes a page-definition file to
  * `projects/<id>/outputs/<filename>`, resolved through
  * `resolveWorkspacePath` (ticket 002's path-containment guarantee, reused
- * not re-derived) and locked/released via `locks.ts`, plus a minimal
- * output-metadata record folded into `Iteration` (architecture-001 Agent
- * Runtime Details: "no separate top-level entity needed"). */
+ * not re-derived) and locked/released via `locks.ts`, plus (by default) a
+ * minimal output-metadata record folded into `Iteration` (architecture-001
+ * Agent Runtime Details: "no separate top-level entity needed") -- unless
+ * the caller passes `recordIteration: false` (see `CreateAgentPageArgs`'s
+ * own doc comment). */
 export async function createAgentPage(
   args: CreateAgentPageArgs,
   options: CatalogToolsOptions = {}
 ): Promise<CreateAgentPageResult> {
   const prismaClient = options.prismaClient ?? defaultPrisma;
   const versioning = options.versioning ?? defaultVersioningService;
+  const recordIteration = args.recordIteration ?? true;
 
   const project = await prismaClient.project.findUnique({ where: { id: args.projectId } });
   if (!project) throw new Error(`create_agent_page: no Project with id ${args.projectId}`);
@@ -730,7 +749,7 @@ export async function createAgentPage(
   const resolved = resolveWorkspacePath(relPath);
   const resourceKey = relPath;
 
-  let iteration: IterationModel;
+  let iteration: IterationModel | null = null;
   await acquireLock('directory', resourceKey, options.lockHolder, prismaClient);
   try {
     await fs.mkdir(path.dirname(resolved), { recursive: true });
@@ -740,16 +759,18 @@ export async function createAgentPage(
       await fs.writeFile(resolved, args.content, 'utf8');
     }
 
-    const seq = await nextIterationSeq(prismaClient, args.projectId);
-    iteration = await prismaClient.iteration.create({
-      data: {
-        projectId: args.projectId,
-        seq,
-        imagePath: resourceKey,
-        promptUsed: `agent-page:${args.filename}`,
-        modelParams: { kind: 'agent-page', filename: args.filename, contentType: args.contentType ?? null },
-      },
-    });
+    if (recordIteration) {
+      const seq = await nextIterationSeq(prismaClient, args.projectId);
+      iteration = await prismaClient.iteration.create({
+        data: {
+          projectId: args.projectId,
+          seq,
+          imagePath: resourceKey,
+          promptUsed: `agent-page:${args.filename}`,
+          modelParams: { kind: 'agent-page', filename: args.filename, contentType: args.contentType ?? null },
+        },
+      });
+    }
   } finally {
     await releaseLock('directory', resourceKey, prismaClient);
   }
@@ -930,6 +951,69 @@ export async function setIterationState(
 }
 
 // ---------------------------------------------------------------------------
+// remove_iteration
+// ---------------------------------------------------------------------------
+
+export interface RemoveIterationArgs {
+  iterationId: number;
+}
+
+export interface RemoveIterationResult {
+  id: number;
+  deleted: true;
+}
+
+/** `remove_iteration` -- deletes exactly the targeted `Iteration` row
+ * (OOP follow-up, 2026-07-15: `OutputPane.tsx`'s per-row Delete control,
+ * with a client-side confirmation popup before this ever fires). Lock
+ * pattern: same as `set_iteration_state` -- locks the owning project's
+ * `projects/<id>` resourceKey (looked up from the row itself, since the
+ * caller only supplies `iterationId`) around the delete; `Iteration` has no
+ * `version` field, so there is no optimistic-lock check to perform.
+ *
+ * Also attempts to remove the backing image file at the iteration's
+ * `imagePath`, but only *after* the row is deleted and the lock released,
+ * and only best-effort: an already-missing file (or any other filesystem
+ * error) is swallowed, never thrown out of this function -- the row
+ * deletion this call already committed is the operation the caller is
+ * waiting on, not the on-disk cleanup. */
+export async function removeIteration(
+  args: RemoveIterationArgs,
+  options: CatalogToolsOptions = {}
+): Promise<RemoveIterationResult> {
+  const prismaClient = options.prismaClient ?? defaultPrisma;
+  const versioning = options.versioning ?? defaultVersioningService;
+  const logger = options.logger ?? defaultLogger;
+
+  const existing = await prismaClient.iteration.findUnique({ where: { id: args.iterationId } });
+  if (!existing) throw new Error(`remove_iteration: no Iteration with id ${args.iterationId}`);
+
+  const project = await prismaClient.project.findUnique({ where: { id: existing.projectId } });
+  if (!project) throw new Error(`remove_iteration: no Project with id ${existing.projectId}`);
+
+  const resourceKey = projectResourceKey(project);
+  await acquireLock('directory', resourceKey, options.lockHolder, prismaClient);
+  try {
+    await prismaClient.iteration.delete({ where: { id: args.iterationId } });
+  } finally {
+    await releaseLock('directory', resourceKey, prismaClient);
+  }
+
+  versioning.recordChange(resolveWorkspacePath(resourceKey));
+
+  try {
+    await fs.unlink(resolveWorkspacePath(existing.imagePath));
+  } catch (err) {
+    logger.error(
+      { err, iterationId: args.iterationId, imagePath: existing.imagePath },
+      'remove_iteration: backing file removal failed or file already absent; Iteration row deletion is unaffected'
+    );
+  }
+
+  return { id: args.iterationId, deleted: true };
+}
+
+// ---------------------------------------------------------------------------
 // search_catalog
 // ---------------------------------------------------------------------------
 
@@ -1049,9 +1133,9 @@ export async function searchCatalog(
 /** Registers `create_knowledge_entry`, `propose_correction`,
  * `resolve_correction`, `add_asset_to_collection`, `create_project`,
  * `create_iteration`, `create_agent_page`, `add_reference`,
- * `remove_reference`, `set_iteration_state`, `search_catalog` -- and no
- * others -- on `server` (expected to be the `workspaceMcpServer` instance
- * from `./server.ts`). */
+ * `remove_reference`, `set_iteration_state`, `remove_iteration`,
+ * `search_catalog` -- and no others -- on `server` (expected to be the
+ * `workspaceMcpServer` instance from `./server.ts`). */
 export function registerCatalogTools(server: McpServer, options: CatalogToolsOptions = {}) {
   server.tool(
     'create_knowledge_entry',
@@ -1174,6 +1258,15 @@ export function registerCatalogTools(server: McpServer, options: CatalogToolsOpt
       role: z.enum(['front', 'back']).nullable().optional(),
     },
     async (args) => textResult(await setIterationState(args, options))
+  );
+
+  server.tool(
+    'remove_iteration',
+    'Delete an Iteration row by id, and best-effort remove its backing image file.',
+    {
+      iterationId: z.number().int(),
+    },
+    async (args) => textResult(await removeIteration(args, options))
   );
 
   server.tool(

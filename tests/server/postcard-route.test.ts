@@ -116,11 +116,11 @@ beforeAll(async () => {
 });
 
 afterAll(async () => {
-  // Delete every Iteration under a tracked project, not just the ones this
-  // file created directly via `makeIteration` -- the route itself creates
-  // further Iteration rows on every `create_agent_page` call
-  // (postcard-content.json + postcard.html, per submission), which would
-  // otherwise be left behind and violate the Project FK below.
+  // Delete every Iteration under a tracked project -- covers the ones this
+  // file created directly via `makeIteration` (the route no longer creates
+  // any of its own since `recordIteration: false`, OOP follow-up
+  // 2026-07-15, but this blanket cleanup is harmless either way and
+  // guards against the Project FK below).
   await prisma.iteration.deleteMany({ where: { projectId: { in: cleanup.projectIds } } });
   await prisma.project.deleteMany({ where: { id: { in: cleanup.projectIds } } });
   await prisma.user.deleteMany({ where: { id: { in: [adminUserId, regularUserId, ownerId] } } });
@@ -219,6 +219,25 @@ describe('PUT /api/postcards/:projectId -- front-only render (AC1)', () => {
     expect(html).toContain(`data-side="front"`);
     expect(html).not.toContain(`data-side="back"`);
     expect(html).toContain(`projects/${project.id}/iterations/iter-1.png`);
+  });
+
+  it('does not create Iteration rows for the persisted postcard-content.json/postcard.html (OOP follow-up, 2026-07-15)', async () => {
+    const project = await makeProject(`${marker}-no-iteration-rows`);
+    await makeIteration(project.id, `projects/${project.id}/iterations/iter-1.png`, 1);
+    const countBefore = await prisma.iteration.count({ where: { projectId: project.id } });
+
+    const agent = await loginAsAdmin();
+    const res = await agent.put(`/api/postcards/${project.id}`).send({
+      front_image: `projects/${project.id}/iterations/iter-1.png`,
+      front_regions: [region()],
+    });
+    expect(res.status).toBe(200);
+
+    const countAfter = await prisma.iteration.count({ where: { projectId: project.id } });
+    expect(countAfter).toBe(countBefore);
+
+    const iterations = await prisma.iteration.findMany({ where: { projectId: project.id } });
+    expect(iterations.every((it) => !it.promptUsed.startsWith('agent-page:'))).toBe(true);
   });
 });
 
@@ -340,7 +359,7 @@ describe('PUT /api/postcards/:projectId -- front_qr/back_qr overlay (OOP: addabl
 });
 
 describe('PUT /api/postcards/:projectId -- re-submission overwrites (AC5)', () => {
-  it('overwrites the persisted files in place while recording a fresh Iteration each time', async () => {
+  it('overwrites the persisted files in place, without recording any Iteration rows (OOP follow-up, 2026-07-15)', async () => {
     const project = await makeProject(`${marker}-resubmit`);
     await makeIteration(project.id, `projects/${project.id}/iterations/iter-1.png`, 1);
     await makeIteration(project.id, `projects/${project.id}/iterations/iter-2.png`, 2);
@@ -372,13 +391,12 @@ describe('PUT /api/postcards/:projectId -- re-submission overwrites (AC5)', () =
     const content = JSON.parse(await fs.readFile(resolveWorkspacePath(second.body.contentPath), 'utf8'));
     expect(content.front_image).toBe(`projects/${project.id}/iterations/iter-2.png`);
 
-    // create_agent_page's existing, unmodified behavior: each call inserts
-    // a fresh Iteration provenance row (two files x two submissions = 4).
+    // `postcards.ts` now passes `recordIteration: false` to every
+    // `create_agent_page` call -- neither submission adds an Iteration row,
+    // only the two fixture rows created above remain.
     const iterationCountAfterSecond = await prisma.iteration.count({ where: { projectId: project.id } });
-    expect(iterationCountAfterSecond).toBe(iterationCountAfterFirst + 2);
-
-    const allIterations = await prisma.iteration.findMany({ where: { projectId: project.id } });
-    for (const it of allIterations) cleanup.iterationIds.push(it.id);
+    expect(iterationCountAfterSecond).toBe(iterationCountAfterFirst);
+    expect(iterationCountAfterSecond).toBe(2);
   });
 });
 

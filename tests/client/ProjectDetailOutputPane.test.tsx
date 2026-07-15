@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, afterEach } from 'vitest';
-import { render, screen, fireEvent, waitFor } from '@testing-library/react';
+import { render, screen, fireEvent, waitFor, within } from '@testing-library/react';
 import { MemoryRouter, Routes, Route } from 'react-router-dom';
 import OutputPane, { applyIterationPatch } from '../../client/src/pages/ProjectDetail/OutputPane';
 import type { IterationDTO } from '../../client/src/pages/ProjectDetail/types';
@@ -531,6 +531,91 @@ describe('OutputPane -- rendered-text overlay on the gallery (OOP change, 2026-0
     // Existing gallery controls remain -- this feature only adds an overlay.
     expect(screen.getByLabelText('Iteration 1 accepted')).toBeInTheDocument();
     expect(screen.getByLabelText('Iteration 1 side')).toBeInTheDocument();
+  });
+});
+
+describe('OutputPane -- delete an iteration, with a confirmation popup (OOP change, 2026-07-15)', () => {
+  it('clicking Delete opens the confirmation popup, not an immediate delete', async () => {
+    // The component always fires a GET /api/postcards/:id on mount (the
+    // rendered-text-overlay hydration, unrelated to this feature) -- stub
+    // it so the only thing worth asserting is that opening the popup never
+    // fires a DELETE.
+    const fetchMock = vi.fn().mockResolvedValue({ ok: true, json: async () => ({ content: null }) });
+    vi.stubGlobal('fetch', fetchMock);
+
+    renderOutputPane([iteration({ id: 1, seq: 1 })]);
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledWith('/api/postcards/7'));
+    fetchMock.mockClear();
+
+    expect(screen.queryByTestId('delete-confirm-1')).not.toBeInTheDocument();
+    fireEvent.click(screen.getByLabelText('Delete iteration 1'));
+
+    expect(screen.getByTestId('delete-confirm-1')).toBeInTheDocument();
+    expect(screen.getByText('Delete this iteration?')).toBeInTheDocument();
+    // No DELETE fired yet -- opening the popup is not itself a delete.
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it('confirming calls DELETE and removes the row via onIterationsChange', async () => {
+    const iterations = [
+      iteration({ id: 1, seq: 1 }),
+      iteration({ id: 2, seq: 2 }),
+    ];
+    const onIterationsChange = vi.fn();
+    const fetchMock = vi.fn().mockResolvedValue({ ok: true });
+    vi.stubGlobal('fetch', fetchMock);
+
+    renderOutputPane(iterations, onIterationsChange);
+    fireEvent.click(screen.getByLabelText('Delete iteration 1'));
+
+    const popup = screen.getByTestId('delete-confirm-1');
+    fireEvent.click(within(popup).getByRole('button', { name: 'Delete' }));
+
+    await waitFor(() => {
+      expect(fetchMock).toHaveBeenCalledWith(
+        '/api/projects/7/iterations/1',
+        expect.objectContaining({ method: 'DELETE' }),
+      );
+    });
+
+    await waitFor(() => expect(onIterationsChange).toHaveBeenCalled());
+    const next = onIterationsChange.mock.calls[0][0] as IterationDTO[];
+    expect(next.map((it) => it.id)).toEqual([2]);
+
+    // The popup closes once the delete resolves.
+    await waitFor(() => expect(screen.queryByTestId('delete-confirm-1')).not.toBeInTheDocument());
+  });
+
+  it('Cancel closes the popup without calling DELETE or touching state', async () => {
+    const onIterationsChange = vi.fn();
+    const fetchMock = vi.fn().mockResolvedValue({ ok: true, json: async () => ({ content: null }) });
+    vi.stubGlobal('fetch', fetchMock);
+
+    renderOutputPane([iteration({ id: 1, seq: 1 })], onIterationsChange);
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledWith('/api/postcards/7'));
+    fetchMock.mockClear();
+
+    fireEvent.click(screen.getByLabelText('Delete iteration 1'));
+
+    const popup = screen.getByTestId('delete-confirm-1');
+    fireEvent.click(within(popup).getByRole('button', { name: 'Cancel' }));
+
+    expect(screen.queryByTestId('delete-confirm-1')).not.toBeInTheDocument();
+    expect(fetchMock).not.toHaveBeenCalled();
+    expect(onIterationsChange).not.toHaveBeenCalled();
+  });
+
+  it('surfaces an error rather than silently failing when the delete request fails', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue({ ok: false, status: 500 }));
+
+    renderOutputPane([iteration({ id: 1, seq: 1 })]);
+    fireEvent.click(screen.getByLabelText('Delete iteration 1'));
+    fireEvent.click(within(screen.getByTestId('delete-confirm-1')).getByRole('button', { name: 'Delete' }));
+
+    await screen.findByText(/failed to delete iteration/i);
+    // The popup still closes even on failure -- the error text is the
+    // durable signal, not a stuck-open popup.
+    expect(screen.queryByTestId('delete-confirm-1')).not.toBeInTheDocument();
   });
 });
 

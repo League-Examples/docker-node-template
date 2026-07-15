@@ -35,6 +35,7 @@ const mockCreateProject = vi.hoisted(() => vi.fn());
 const mockAddReference = vi.hoisted(() => vi.fn());
 const mockRemoveReference = vi.hoisted(() => vi.fn());
 const mockSetIterationState = vi.hoisted(() => vi.fn());
+const mockRemoveIteration = vi.hoisted(() => vi.fn());
 
 vi.mock('../../server/src/agent-mcp/catalogTools', async (importOriginal) => {
   const actual = await importOriginal<typeof import('../../server/src/agent-mcp/catalogTools')>();
@@ -55,6 +56,10 @@ vi.mock('../../server/src/agent-mcp/catalogTools', async (importOriginal) => {
     setIterationState: (...args: Parameters<typeof actual.setIterationState>) => {
       mockSetIterationState(...args);
       return actual.setIterationState(...args);
+    },
+    removeIteration: (...args: Parameters<typeof actual.removeIteration>) => {
+      mockRemoveIteration(...args);
+      return actual.removeIteration(...args);
     },
   };
 });
@@ -173,6 +178,7 @@ beforeEach(() => {
   mockAddReference.mockClear();
   mockRemoveReference.mockClear();
   mockSetIterationState.mockClear();
+  mockRemoveIteration.mockClear();
 });
 
 async function loginAsUserA() {
@@ -267,6 +273,31 @@ describe('GET /api/projects -- view filtering', () => {
     expect(row.owner.id).toBe(userAId);
     expect(row.owner.email).toBe(`${marker}-a@example.com`);
   });
+
+  it('excludes agent-page output rows from the list response\'s iterations too (OOP follow-up, 2026-07-15)', async () => {
+    const project = await makeProject(userAId, `${marker}-list-agent-page-filter`);
+    const realIteration = await makeIteration(project.id, `projects/${project.id}/iterations/real.png`, 1);
+    const agentPageIteration = await prisma.iteration.create({
+      data: {
+        projectId: project.id,
+        seq: 2,
+        imagePath: `projects/${project.id}/outputs/postcard-content.json`,
+        promptUsed: 'agent-page:postcard-content.json',
+        modelParams: { kind: 'agent-page', filename: 'postcard-content.json' },
+      },
+    });
+    cleanup.iterationIds.push(agentPageIteration.id);
+
+    const agent = await loginAsUserA();
+    const res = await agent.get('/api/projects?view=mine');
+    expect(res.status).toBe(200);
+
+    const row = res.body.projects.find((p: any) => p.id === project.id);
+    expect(row).toBeDefined();
+    const ids = row.iterations.map((i: any) => i.id);
+    expect(ids).toContain(realIteration.id);
+    expect(ids).not.toContain(agentPageIteration.id);
+  });
 });
 
 describe('GET /api/projects/:id', () => {
@@ -304,6 +335,29 @@ describe('GET /api/projects/:id', () => {
     const agent = await loginAsUserA();
     const res = await agent.get('/api/projects/not-a-number');
     expect(res.status).toBe(400);
+  });
+
+  it('excludes agent-page output rows (promptUsed starting agent-page:) from iterations (OOP follow-up, 2026-07-15)', async () => {
+    const project = await makeProject(userAId, `${marker}-detail-agent-page-filter`);
+    const realIteration = await makeIteration(project.id, `projects/${project.id}/iterations/real.png`, 1);
+    const agentPageIteration = await prisma.iteration.create({
+      data: {
+        projectId: project.id,
+        seq: 2,
+        imagePath: `projects/${project.id}/outputs/postcard.html`,
+        promptUsed: 'agent-page:postcard.html',
+        modelParams: { kind: 'agent-page', filename: 'postcard.html' },
+      },
+    });
+    cleanup.iterationIds.push(agentPageIteration.id);
+
+    const agent = await loginAsUserA();
+    const res = await agent.get(`/api/projects/${project.id}`);
+
+    expect(res.status).toBe(200);
+    const ids = res.body.iterations.map((i: any) => i.id);
+    expect(ids).toContain(realIteration.id);
+    expect(ids).not.toContain(agentPageIteration.id);
   });
 });
 
@@ -477,6 +531,59 @@ describe('PATCH /api/projects/:id/iterations/:iterId -- set_iteration_state excl
     const res = await agent.patch(`/api/projects/${projectB.id}/iterations/${iter.id}`).send({ accepted: true });
     expect(res.status).toBe(404);
     expect(mockSetIterationState).not.toHaveBeenCalled();
+  });
+});
+
+describe('DELETE /api/projects/:id/iterations/:iterId -- remove_iteration (OOP follow-up, 2026-07-15)', () => {
+  it('deletes the Iteration row through the remove_iteration tool, not raw Prisma', async () => {
+    const project = await makeProject(userAId, `${marker}-iter-delete`);
+    const iter = await makeIteration(project.id, `projects/${project.id}/iterations/a.png`, 1);
+
+    const agent = await loginAsUserA();
+    const res = await agent.delete(`/api/projects/${project.id}/iterations/${iter.id}`);
+
+    expect(res.status).toBe(200);
+    expect(res.body).toEqual({ id: iter.id, deleted: true });
+    expect(mockRemoveIteration).toHaveBeenCalledTimes(1);
+    expect(mockRemoveIteration.mock.calls[0][0]).toMatchObject({ iterationId: iter.id });
+
+    const gone = await prisma.iteration.findUnique({ where: { id: iter.id } });
+    expect(gone).toBeNull();
+  });
+
+  it('returns 404 for an iteration id that does not belong to the named project, without calling remove_iteration', async () => {
+    const projectA = await makeProject(userAId, `${marker}-iter-delete-mismatch-a`);
+    const projectB = await makeProject(userAId, `${marker}-iter-delete-mismatch-b`);
+    const iter = await makeIteration(projectA.id, `projects/${projectA.id}/iterations/a.png`, 1);
+
+    const agent = await loginAsUserA();
+    const res = await agent.delete(`/api/projects/${projectB.id}/iterations/${iter.id}`);
+
+    expect(res.status).toBe(404);
+    expect(mockRemoveIteration).not.toHaveBeenCalled();
+
+    const stillThere = await prisma.iteration.findUnique({ where: { id: iter.id } });
+    expect(stillThere).not.toBeNull();
+  });
+
+  it('returns 404 for an iteration id that does not exist at all', async () => {
+    const project = await makeProject(userAId, `${marker}-iter-delete-missing`);
+    const agent = await loginAsUserA();
+    const res = await agent.delete(`/api/projects/${project.id}/iterations/999999999`);
+    expect(res.status).toBe(404);
+    expect(mockRemoveIteration).not.toHaveBeenCalled();
+  });
+
+  it('returns 400 for a non-numeric project or iteration id', async () => {
+    const agent = await loginAsUserA();
+    const res = await agent.delete('/api/projects/not-a-number/iterations/1');
+    expect(res.status).toBe(400);
+    expect(mockRemoveIteration).not.toHaveBeenCalled();
+  });
+
+  it('rejects an unauthenticated request with 401', async () => {
+    const res = await request(app).delete('/api/projects/1/iterations/1');
+    expect(res.status).toBe(401);
   });
 });
 

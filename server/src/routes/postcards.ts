@@ -28,17 +28,27 @@ import { renderPostcardPdf } from '../services/postcardPdf';
  *     both are pure/read-only, so a bad request never reaches a write.
  *  2. Persist the validated content as `postcard-content.json` via the
  *     **existing** `create_agent_page` Workspace MCP Server tool (Sprint
- *     003, called in-process, unmodified) -- keeps the write on the one
- *     moderated path (D9) even though this route isn't agent-loop-
- *     triggered.
+ *     003, called in-process) -- keeps the write on the one moderated path
+ *     (D9) even though this route isn't agent-loop-triggered.
  *  3. Render `postcard.html` from that same validated content
  *     (`renderPostcardHtml`) and persist it the same way.
  *
  * `create_agent_page` overwrites the file at its path on each call, so
  * re-submitting for the same project naturally replaces the previous
- * `postcard-content.json`/`postcard.html` while still recording a fresh
- * `Iteration` provenance row each time (that tool's existing, unmodified
- * behavior) -- no extra bookkeeping needed here.
+ * `postcard-content.json`/`postcard.html` -- no extra bookkeeping needed
+ * here.
+ *
+ * **`recordIteration: false` (OOP follow-up, 2026-07-15)**: all three
+ * `create_agent_page` calls in this file (content JSON + HTML here, PDF
+ * below) pass `recordIteration: false` -- these three files are pipeline
+ * *outputs*, not gallery-worthy iterations, and recording an `Iteration`
+ * row per autosave/PDF-generate call was polluting `OutputPane.tsx`'s
+ * iteration gallery with broken-image rows pointing at an HTML/JSON/PDF
+ * file instead of an image (`catalogTools.ts`'s `CreateAgentPageArgs` doc
+ * comment has the full rationale). `routes/projects.ts`'s
+ * `PROJECT_DETAIL_INCLUDE`/`PROJECT_LIST_INCLUDE` also filter out any
+ * `agent-page:`-prefixed `Iteration` row defensively, in case an older
+ * build's rows are still in the database.
  *
  * **Auth gate: `requireAuth` only** (ticket 006 -- `requireAdmin` dropped
  * from both routes below), matching `routes/chat.ts`. Sprint 005 now
@@ -119,12 +129,14 @@ postcardsRouter.put('/postcards/:projectId', requireAuth, async (req, res) => {
     filename: 'postcard-content.json',
     content: JSON.stringify(content, null, 2),
     contentType: 'application/json',
+    recordIteration: false,
   });
   const htmlResult = await createAgentPage({
     projectId,
     filename: 'postcard.html',
     content: html,
     contentType: 'text/html',
+    recordIteration: false,
   });
 
   res.status(200).json({
@@ -239,6 +251,7 @@ postcardsRouter.post('/postcards/:projectId/pdf', requireAuth, async (req, res) 
     filename: 'postcard.pdf',
     content: pdfBytes,
     contentType: 'application/pdf',
+    recordIteration: false,
   });
 
   res.status(200);

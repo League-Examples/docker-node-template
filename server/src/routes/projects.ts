@@ -1,7 +1,14 @@
 import { Router } from 'express';
 import { requireAuth } from '../middleware/requireAuth';
 import { prisma as defaultPrisma } from '../services/prisma';
-import { createProject, addReference, removeReference, setIterationState, VersionConflictError } from '../agent-mcp/catalogTools';
+import {
+  createProject,
+  addReference,
+  removeReference,
+  setIterationState,
+  removeIteration,
+  VersionConflictError,
+} from '../agent-mcp/catalogTools';
 import { LockConflictError } from '../agent-mcp/locks';
 
 /**
@@ -57,8 +64,24 @@ function toolErrorMessage(err: unknown): string {
   return err instanceof Error ? err.message : 'Unexpected error';
 }
 
+/** Excludes `create_agent_page`'s agent-page output rows (`promptUsed`
+ * prefixed `agent-page:`, e.g. `postcard-content.json`/`postcard.html`/
+ * `postcard.pdf`) from both includes below (OOP follow-up, 2026-07-15).
+ * `postcards.ts` no longer creates these going forward (its
+ * `create_agent_page` calls pass `recordIteration: false`), but this
+ * filter also guards against any rows an older build already wrote --
+ * without it, `OutputPane.tsx`'s gallery and `ProjectList.tsx`'s hero-image
+ * rule would render them as broken images (they point at an HTML/JSON/PDF
+ * file, not an image). SQLite's Prisma driver translates `startsWith` to a
+ * `LIKE 'agent-page:%'` clause, so this runs entirely in the query, not as
+ * an application-level post-filter. */
+const EXCLUDE_AGENT_PAGE_ITERATIONS = {
+  where: { promptUsed: { not: { startsWith: 'agent-page:' } } },
+  orderBy: { seq: 'asc' as const },
+};
+
 const PROJECT_DETAIL_INCLUDE = {
-  iterations: { orderBy: { seq: 'asc' as const } },
+  iterations: EXCLUDE_AGENT_PAGE_ITERATIONS,
   // `asset: { select: ... } }` added by ticket 009 (deviation from ticket
   // 006's original shape, documented in that ticket's file): the
   // ProjectDetail reference strip renders a small thumbnail per attached
@@ -76,7 +99,7 @@ const PROJECT_DETAIL_INCLUDE = {
  * those are `ProjectDetail`-only concerns. */
 const PROJECT_LIST_INCLUDE = {
   owner: { select: { id: true, email: true, displayName: true } },
-  iterations: { orderBy: { seq: 'asc' as const } },
+  iterations: EXCLUDE_AGENT_PAGE_ITERATIONS,
 };
 
 projectsRouter.get('/projects', requireAuth, async (req, res) => {
@@ -274,4 +297,33 @@ projectsRouter.patch('/projects/:id/iterations/:iterId', requireAuth, async (req
   }
 
   res.status(200).json(updated);
+});
+
+/** OOP follow-up (2026-07-15): `OutputPane.tsx`'s per-row Delete control,
+ * gated behind a client-side confirmation popup before this ever fires.
+ * Same project-membership confirmation as the PATCH handler above, then
+ * delegates to `remove_iteration` (R1) -- not a raw Prisma delete. */
+projectsRouter.delete('/projects/:id/iterations/:iterId', requireAuth, async (req, res) => {
+  const projectId = Number.parseInt(String(req.params.id), 10);
+  const iterId = Number.parseInt(String(req.params.iterId), 10);
+  if (Number.isNaN(projectId) || Number.isNaN(iterId)) {
+    res.status(400).json({ error: 'Invalid project or iteration id' });
+    return;
+  }
+
+  const existing = await defaultPrisma.iteration.findUnique({ where: { id: iterId } });
+  if (!existing || existing.projectId !== projectId) {
+    res.status(404).json({ error: `No iteration with id ${iterId} for project ${projectId}` });
+    return;
+  }
+
+  let result;
+  try {
+    result = await removeIteration({ iterationId: iterId });
+  } catch (err) {
+    res.status(statusForToolError(err)).json({ error: toolErrorMessage(err) });
+    return;
+  }
+
+  res.status(200).json(result);
 });

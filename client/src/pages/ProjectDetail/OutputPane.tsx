@@ -19,6 +19,23 @@ import PostcardOverlay from './PostcardOverlay';
  * of a page reload (which re-fetches from the server and would show the
  * identical result regardless).
  *
+ * **Delete an iteration, with a confirmation popup (OOP change,
+ * 2026-07-15)**: each row's control bar carries a Delete button. Clicking
+ * it does not delete immediately -- it shows an inline confirmation popup
+ * over the row ("Delete this iteration?" with Delete / Cancel), matching
+ * the ticket's explicit request for a confirmation step before an
+ * irreversible action. Only one row's popup is open at a time
+ * (`confirmDeleteId`). Confirming calls `DELETE
+ * /api/projects/:id/iterations/:iterId` (`routes/projects.ts`'s new route,
+ * -> `remove_iteration`) and, on success, removes the row from local state
+ * via the same parent-owned `onIterationsChange` callback every other
+ * mutation in this file already uses -- no separate re-fetch. Deleting a
+ * front/back-role iteration is not specially guarded: `frontIteration`/
+ * `backIteration` below are recomputed from whatever `iterations` remains
+ * after the delete, so the PDF button's disabled-until-marked gate and the
+ * gallery's overlay routing both naturally fall back to "no side marked"
+ * rather than throwing or pointing at a deleted row.
+ *
  * **Rendered-text overlay on the gallery (OOP change, 2026-07-15)**: a
  * `GET /api/postcards/:projectId` call on mount (mirrors
  * `PostcardEdit.tsx`'s own load-on-mount fetch) reads back whatever
@@ -84,10 +101,20 @@ async function patchIteration(
   return res.json();
 }
 
+async function deleteIteration(projectId: number, iterationId: number): Promise<void> {
+  const res = await fetch(`/api/projects/${projectId}/iterations/${iterationId}`, { method: 'DELETE' });
+  if (!res.ok) throw new Error(`HTTP ${res.status}`);
+}
+
 export default function OutputPane({ projectId, projectTitle, iterations, onIterationsChange }: OutputPaneProps) {
   const [patchError, setPatchError] = useState('');
   const [pdfBusy, setPdfBusy] = useState(false);
   const [pdfError, setPdfError] = useState('');
+
+  // Iteration-delete confirmation popup (see module header): at most one
+  // row's popup is open at a time, keyed by that iteration's id.
+  const [confirmDeleteId, setConfirmDeleteId] = useState<number | null>(null);
+  const [deleteError, setDeleteError] = useState('');
 
   // Rendered-text overlay source (see module header). `null` covers both
   // "nothing saved yet" and a transient fetch/parse error -- either way the
@@ -140,6 +167,18 @@ export default function OutputPane({ projectId, projectTitle, iterations, onIter
     }
   }
 
+  async function handleDeleteConfirmed(iteration: IterationDTO) {
+    setDeleteError('');
+    try {
+      await deleteIteration(projectId, iteration.id);
+      onIterationsChange(iterations.filter((existing) => existing.id !== iteration.id));
+    } catch {
+      setDeleteError('Failed to delete iteration -- please try again.');
+    } finally {
+      setConfirmDeleteId(null);
+    }
+  }
+
   /** PDF button (round trip, no separate text-editor visit required):
    * PUTs a content JSON built from whichever iterations currently hold
    * `role: 'front'`/`'back'` (`postcards.ts`'s content-JSON shape,
@@ -189,6 +228,7 @@ export default function OutputPane({ projectId, projectTitle, iterations, onIter
         <div>
           <h1 className="text-lg font-semibold text-slate-800">{projectTitle}</h1>
           {patchError && <p className="mt-1 text-xs text-red-600">{patchError}</p>}
+          {deleteError && <p className="mt-1 text-xs text-red-600">{deleteError}</p>}
         </div>
         <div className="ml-auto flex flex-shrink-0 items-center gap-2">
           {pdfError && <span className="text-xs text-red-600">{pdfError}</span>}
@@ -227,7 +267,7 @@ export default function OutputPane({ projectId, projectTitle, iterations, onIter
               <div
                 key={iteration.id}
                 data-testid={`iteration-row-${iteration.id}`}
-                className="mx-auto w-full max-w-[800px] rounded border border-slate-200 bg-slate-100"
+                className="relative mx-auto w-full max-w-[800px] rounded border border-slate-200 bg-slate-100"
               >
                 {/* Media fits within 800x800, aspect ratio preserved,
                     centered within the row. */}
@@ -275,7 +315,41 @@ export default function OutputPane({ projectId, projectTitle, iterations, onIter
                       <option value="back">Back</option>
                     </select>
                   </label>
+                  <button
+                    type="button"
+                    aria-label={`Delete iteration ${iteration.seq}`}
+                    onClick={() => setConfirmDeleteId(iteration.id)}
+                    className="rounded border border-red-300 px-2 py-1 text-xs font-semibold text-red-600 hover:bg-red-50"
+                  >
+                    Delete
+                  </button>
                 </div>
+                {confirmDeleteId === iteration.id && (
+                  <div
+                    data-testid={`delete-confirm-${iteration.id}`}
+                    className="absolute inset-0 z-10 flex items-center justify-center bg-slate-900/40"
+                  >
+                    <div className="rounded border border-slate-300 bg-white p-4 text-center shadow-lg">
+                      <p className="mb-3 text-sm font-medium text-slate-700">Delete this iteration?</p>
+                      <div className="flex justify-center gap-2">
+                        <button
+                          type="button"
+                          onClick={() => void handleDeleteConfirmed(iteration)}
+                          className="rounded bg-red-600 px-3 py-1.5 text-sm font-semibold text-white hover:bg-red-700"
+                        >
+                          Delete
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setConfirmDeleteId(null)}
+                          className="rounded border border-slate-300 px-3 py-1.5 text-sm text-slate-600 hover:bg-slate-50"
+                        >
+                          Cancel
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                )}
               </div>
             );
           })}

@@ -297,7 +297,7 @@ describe('POST /api/postcards/:projectId/pdf -- back-only content (front_image r
 });
 
 describe('POST /api/postcards/:projectId/pdf -- re-generation overwrites in place', () => {
-  it('overwrites the persisted postcard.pdf on a second call, recording a fresh Iteration each time', async () => {
+  it('overwrites the persisted postcard.pdf on a second call, without recording any Iteration rows (OOP follow-up, 2026-07-15)', async () => {
     mockRenderPostcardPdf.mockReset();
     mockRenderPostcardPdf
       .mockResolvedValueOnce(Buffer.from('first-pdf'))
@@ -318,13 +318,14 @@ describe('POST /api/postcards/:projectId/pdf -- re-generation overwrites in plac
     const second = await agent.post(`/api/postcards/${project.id}/pdf`);
     expect(Buffer.from(second.body)).toEqual(Buffer.from('second-pdf'));
     const countAfterSecond = await prisma.iteration.count({ where: { projectId: project.id } });
-    expect(countAfterSecond).toBe(countAfterFirst + 1);
+    // `postcards.ts` passes `recordIteration: false` to `create_agent_page`
+    // for postcard.pdf too -- neither PDF generation adds an Iteration row,
+    // only the one fixture row created above remains.
+    expect(countAfterSecond).toBe(countAfterFirst);
+    expect(countAfterSecond).toBe(1);
 
     const persistedPath = resolveWorkspacePath(`projects/${project.id}/outputs/postcard.pdf`);
     const persisted = await fs.readFile(persistedPath);
     expect(persisted).toEqual(Buffer.from('second-pdf'));
-
-    const allIterations = await prisma.iteration.findMany({ where: { projectId: project.id } });
-    for (const it of allIterations) cleanup.iterationIds.push(it.id);
   });
 });
