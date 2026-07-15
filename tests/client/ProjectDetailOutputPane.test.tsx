@@ -73,11 +73,28 @@ describe('OutputPane -- vertical, one-per-row gallery (round 1 regression)', () 
     expect(list.className).toMatch(/flex-col/);
     expect(list.className).not.toMatch(/flex-row/);
 
+    // Most-recent iteration first: highest seq at the top, regardless of the
+    // order the API supplied them in (stakeholder review correction).
     const images = screen.getAllByRole('img');
     expect(images).toHaveLength(3);
-    expect(images[0]).toHaveAttribute('src', '/api/files/projects/7/iterations/1.png');
+    expect(images[0]).toHaveAttribute('src', '/api/files/projects/7/iterations/3.png');
     expect(images[1]).toHaveAttribute('src', '/api/files/projects/7/iterations/2.png');
-    expect(images[2]).toHaveAttribute('src', '/api/files/projects/7/iterations/3.png');
+    expect(images[2]).toHaveAttribute('src', '/api/files/projects/7/iterations/1.png');
+  });
+
+  it('orders iterations most-recent-first even when the API returns them ascending', () => {
+    const iterations = [
+      iteration({ id: 1, seq: 1, imagePath: 'projects/7/iterations/1.png' }),
+      iteration({ id: 2, seq: 2, imagePath: 'projects/7/iterations/2.png' }),
+      iteration({ id: 3, seq: 3, imagePath: 'projects/7/iterations/3.png' }),
+    ];
+    renderOutputPane(iterations);
+    const images = screen.getAllByRole('img');
+    expect(images.map((img) => img.getAttribute('src'))).toEqual([
+      '/api/files/projects/7/iterations/3.png',
+      '/api/files/projects/7/iterations/2.png',
+      '/api/files/projects/7/iterations/1.png',
+    ]);
   });
 
   it('shows "No iterations yet" for an empty gallery, not a broken render', () => {

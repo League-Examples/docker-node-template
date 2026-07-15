@@ -74,6 +74,11 @@ export default function OutputPane({ projectId, projectTitle, iterations, onIter
   const backIteration = iterations.find((iteration) => iteration.role === 'back');
   const hasMarkedSide = Boolean(frontIteration || backIteration);
 
+  // Display most-recent iteration first (highest seq at the top). The API
+  // returns iterations in `seq asc`; the gallery shows them newest-first
+  // per stakeholder review (post-004 OOP correction).
+  const orderedIterations = [...iterations].sort((a, b) => b.seq - a.seq);
+
   async function handleAcceptedChange(iteration: IterationDTO, checked: boolean) {
     setPatchError('');
     try {
@@ -169,7 +174,7 @@ export default function OutputPane({ projectId, projectTitle, iterations, onIter
         // Iterations stack vertically, one per row -- not side by side
         // (round 1's "not back and forth, not doubled up" regression).
         <div className="flex flex-col gap-4">
-          {iterations.map((iteration) => (
+          {orderedIterations.map((iteration) => (
             <div
               key={iteration.id}
               data-testid={`iteration-row-${iteration.id}`}
