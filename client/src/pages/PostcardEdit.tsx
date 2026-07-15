@@ -621,7 +621,7 @@ export default function PostcardEdit() {
                   }
                   openRegionEditor(region);
                 }}
-                className="absolute cursor-pointer overflow-hidden border border-dashed border-indigo-400 bg-indigo-50/60 p-1 text-left text-[9px] leading-tight hover:bg-indigo-100"
+                className="absolute cursor-pointer border border-dashed border-indigo-400 bg-indigo-50/60 text-left text-[9px] leading-tight hover:bg-indigo-100"
                 style={{
                   top: region.position.top,
                   left: region.position.left,
@@ -630,8 +630,21 @@ export default function PostcardEdit() {
                   height: region.position.height,
                 }}
               >
-                <span className="block font-semibold text-indigo-700">{region.label}</span>
-                <span data-testid={`postcard-region-text-${region.name}`}>{regionText[region.name]}</span>
+                {/* Text content, clipped to the box bounds (round-10: overflow
+                    clipped, not shown). overflow-hidden lives here, not on the
+                    button, so the label tag below can straddle the top border. */}
+                <span
+                  data-testid={`postcard-region-text-${region.name}`}
+                  className="absolute inset-0 overflow-hidden p-1 pt-2"
+                >
+                  {regionText[region.name]}
+                </span>
+                {/* Label tag: sits centered on the top border at the upper-left,
+                    left-aligned -- white background + solid border laid over the
+                    dashed box outline. */}
+                <span className="pointer-events-none absolute left-1 top-0 -translate-y-1/2 rounded-sm border border-solid border-indigo-500 bg-white px-1 font-semibold text-indigo-700">
+                  {region.label}
+                </span>
                 {/* Two distinct corner handles: top-left drags to move the
                     box, bottom-right drags to resize it (top-left corner
                     stays fixed, width/height follow the pointer). */}

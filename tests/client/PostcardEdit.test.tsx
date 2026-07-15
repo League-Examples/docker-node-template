@@ -160,8 +160,10 @@ describe('PostcardEdit -- drag-to-draw a new box (AC3)', () => {
     // jsdom fallback: 96px/in. (240-100)x(120-50) from (100,50).
     expect(box).toHaveStyle({ left: '1.04in', top: '0.52in', width: '1.46in', height: '0.73in' });
     // The drawn box carries an explicit height -- postcardRender.ts clips
-    // overflow at that height rather than growing the box to fit text.
-    expect(box).toHaveClass('overflow-hidden');
+    // overflow at that height rather than growing the box to fit text. The
+    // clip lives on the inner text layer (so the label tag can straddle the
+    // box's top border without being clipped).
+    expect(screen.getByTestId('postcard-region-text-front_headline')).toHaveClass('overflow-hidden');
     assertNoLibraryDrawer();
   });
 });
