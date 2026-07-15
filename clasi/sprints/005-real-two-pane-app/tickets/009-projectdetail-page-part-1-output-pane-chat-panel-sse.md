@@ -1,7 +1,7 @@
 ---
-id: '009'
+id: 009
 title: 'ProjectDetail page part 1: output pane + chat panel SSE'
-status: open
+status: in-progress
 use-cases:
 - SUC-001
 - SUC-005
@@ -66,27 +66,27 @@ mostly-independent piece of the same page).
 
 ## Acceptance Criteria
 
-- [ ] Real `Iteration` rows render via `GET /api/files/*`, no
+- [x] Real `Iteration` rows render via `GET /api/files/*`, no
       `STUB_OUTPUT_ITERATIONS`.
-- [ ] Media respects the 800x800-max-and-centered rule (component test).
-- [ ] Vertical, one-per-row layout (component test, regression against
+- [x] Media respects the 800x800-max-and-centered rule (component test).
+- [x] Vertical, one-per-row layout (component test, regression against
       round-1's "not back and forth, not doubled up").
-- [ ] Checking Accepted on one iteration persists via `PATCH`, unchecks
+- [x] Checking Accepted on one iteration persists via `PATCH`, unchecks
       the previously-accepted iteration (server-enforced exclusivity,
       client reflects it after the round trip), and survives a reload.
-- [ ] Setting Front/Back via the pulldown persists and shows the same
+- [x] Setting Front/Back via the pulldown persists and shows the same
       exclusivity behavior; reload confirms persistence.
-- [ ] PDF button is disabled until a side is marked; clicking it with a
+- [x] PDF button is disabled until a side is marked; clicking it with a
       marked side opens a real PDF response in a new window.
-- [ ] Chat panel is wired to the real SSE endpoint via `fetch()` + a
+- [x] Chat panel is wired to the real SSE endpoint via `fetch()` + a
       `ReadableStream` reader — **no `EventSource` usage anywhere in this
       component** (verify by grep in code review, not just by the test
       passing).
-- [ ] A non-admin authenticated user can start and continue a turn
+- [x] A non-admin authenticated user can start and continue a turn
       (integration test against the relaxed gate from ticket 006).
-- [ ] Reopening a project with prior chat history renders it immediately
+- [x] Reopening a project with prior chat history renders it immediately
       from `GET /api/projects/:id`'s `chatMessages`, not a second fetch.
-- [ ] A turn-lock-timeout or provider error surfaces visibly in the chat
+- [x] A turn-lock-timeout or provider error surfaces visibly in the chat
       panel (sprint.md Success Criteria: "no unhandled agent-runtime
       failure surfaced silently").
 
@@ -121,3 +121,46 @@ convention. An explicit test asserting the component does *not* construct
 an `EventSource`.
 
 **Documentation updates**: None.
+
+## Implementation Notes / Deviations
+
+- **Files created** matched the plan (`client/src/pages/ProjectDetail/OutputPane.tsx`,
+  `.../ChatPanel.tsx`, `client/src/lib/sse.ts` as the shared `fetch()` +
+  `ReadableStream` SSE utility for ticket 012 to reuse) plus
+  `client/src/pages/ProjectDetail/types.ts` (shared DTOs) and
+  `client/src/pages/ProjectDetail/index.tsx` replacing the ticket 007
+  placeholder `client/src/pages/ProjectDetail.tsx` (deleted -- `import
+  ProjectDetail from './pages/ProjectDetail'` in `App.tsx` now resolves to
+  the directory's `index.tsx`, no `App.tsx` change needed).
+- **State management deviates from the plan's "TanStack Query-backed"
+  suggestion**: `ProjectList.tsx` (ticket 008) already established this
+  codebase's real convention -- plain `fetch()` + `useState`/`useEffect`,
+  no TanStack Query usage anywhere in `client/src` despite
+  `QueryClientProvider` wrapping the app. Followed that existing
+  convention instead for consistency (team-lead direction: "Follow
+  existing client fetch/streaming conventions").
+- **`server/src/routes/projects.ts` `PROJECT_DETAIL_INCLUDE.references`
+  extended** to `include: { asset: { select: { id, path } } }` (previously
+  a bare `Reference` row with `assetId` only, no path). The reference
+  strip (render + remove of already-attached references, explicitly this
+  ticket's scope per the Description above) needs an asset's workspace
+  path to render a `GET /api/files/*` thumbnail -- the bare row from
+  ticket 006 couldn't do that. Purely additive (a new nested field on an
+  existing response key); `tests/server/projects-route.test.ts` (ticket
+  006's own coverage) still passes unmodified.
+- **PDF button flow**: `POST /api/postcards/:id/pdf` (ticket 006) has no
+  request body -- it re-reads whatever `postcard-content.json` was most
+  recently `PUT`. So "calls `POST /api/postcards/:id/pdf` using front/back
+  image paths resolved from `Iteration.role`" is implemented as PUT (with
+  `front_image`/`back_image` built from the iterations currently holding
+  those roles) immediately followed by the POST, then the returned PDF
+  blob is opened via `URL.createObjectURL` + `window.open`.
+- **Reference strip placement**: lives in `ProjectDetail/index.tsx` (matching
+  `MockupMain.tsx`'s original structure, above `OutputPane`/`ChatPanel`),
+  not inside `ChatPanel.tsx` — the description's "here just render/remove
+  the attached references" bullet is grouped under the chat-panel section
+  in this ticket's prose, but the reference strip is a page-level concern
+  in the wireframe it's promoted from. `ChatPanel.tsx` itself only handles
+  message send/receive; the seam for ticket 010's drawer (which *adds*
+  references by double-click) is a comment at the bottom of `index.tsx`'s
+  JSX.

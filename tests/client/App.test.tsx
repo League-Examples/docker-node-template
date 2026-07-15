@@ -43,7 +43,31 @@ function navigateTo(path: string) {
 
 describe('App routing scaffold (005-007)', () => {
   beforeEach(() => {
-    vi.stubGlobal('fetch', vi.fn().mockResolvedValue({ ok: false }));
+    // `/api/projects/42` gets a real fixture so the "/projects/:id" case
+    // below exercises ProjectDetail's real content (ticket 005-009
+    // replaced the ticket-007 placeholder); every other fetch keeps the
+    // original "fail closed" stub so ProjectList/PostcardEdit render
+    // their own error/empty states rather than hanging on a promise that
+    // never resolves.
+    vi.stubGlobal(
+      'fetch',
+      vi.fn((input: RequestInfo | URL) => {
+        if (String(input) === '/api/projects/42') {
+          return Promise.resolve({
+            ok: true,
+            json: async () => ({
+              id: 42,
+              title: 'Project 42',
+              status: 'active',
+              iterations: [],
+              references: [],
+              chatMessages: [],
+            }),
+          } as Response);
+        }
+        return Promise.resolve({ ok: false } as Response);
+      }),
+    );
   });
 
   afterEach(() => {
@@ -70,10 +94,10 @@ describe('App routing scaffold (005-007)', () => {
     expect(screen.getByTestId('user-menu-trigger')).toBeInTheDocument();
   });
 
-  it('resolves "/projects/:id" inside the AppLayout shell', () => {
+  it('resolves "/projects/:id" inside the AppLayout shell', async () => {
     navigateTo('/projects/42');
     render(<App />);
-    expect(screen.getByText('Project 42')).toBeInTheDocument();
+    expect(await screen.findByText('Project 42')).toBeInTheDocument();
     expect(screen.getByTestId('user-menu-trigger')).toBeInTheDocument();
   });
 

@@ -59,7 +59,12 @@ function toolErrorMessage(err: unknown): string {
 
 const PROJECT_DETAIL_INCLUDE = {
   iterations: { orderBy: { seq: 'asc' as const } },
-  references: { orderBy: { id: 'asc' as const } },
+  // `asset: { select: ... } }` added by ticket 009 (deviation from ticket
+  // 006's original shape, documented in that ticket's file): the
+  // ProjectDetail reference strip renders a small thumbnail per attached
+  // reference, which needs the Asset's `path` for `GET /api/files/*` --
+  // the bare `Reference` row alone (assetId only) can't render an image.
+  references: { orderBy: { id: 'asc' as const }, include: { asset: { select: { id: true, path: true } } } },
   chatMessages: { orderBy: { createdAt: 'asc' as const } },
 };
 
