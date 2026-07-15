@@ -56,3 +56,21 @@ export function buildQrGraphic(text: string): QrGraphic {
  * very long URL. */
 export const CAPTION_VIEWBOX_WIDTH = 400;
 export const CAPTION_VIEWBOX_HEIGHT = 44;
+
+/** Prepend `https://` when the user typed a bare host with no scheme, so the
+ * QR always encodes a navigable absolute URL. An existing `http://` or
+ * `https://` (any case) is left untouched; empty input stays empty. Mirrors
+ * `server/src/services/qrCode.ts`'s helper of the same name. */
+export function normalizeQrUrl(input: string): string {
+  const trimmed = input.trim();
+  if (trimmed === '') return '';
+  if (/^https?:\/\//i.test(trimmed)) return trimmed;
+  return `https://${trimmed}`;
+}
+
+/** Strip the scheme for DISPLAY -- the caption beneath the QR shows the bare
+ * URL (no `http://`/`https://`) even though the QR itself encodes the full
+ * one. Mirrors `server/src/services/qrCode.ts`'s helper of the same name. */
+export function displayQrUrl(url: string): string {
+  return url.replace(/^https?:\/\//i, '');
+}

@@ -67,8 +67,23 @@ function buildQrPath(text: string): { size: number; path: string } {
  * `width`/`height` 100% of its container) with dark modules drawn as one
  * `<path>` -- crisp at any raster resolution (Chromium's 256dpi postcard
  * render included), unlike a rasterized PNG would be at arbitrary sizes. */
+/** Prepend `https://` when a URL has no scheme, so the QR encodes a
+ * navigable absolute URL. Mirrors `client/src/lib/qrCode.ts`'s helper. */
+function normalizeQrUrl(input: string): string {
+  const trimmed = input.trim();
+  if (trimmed === '') return '';
+  if (/^https?:\/\//i.test(trimmed)) return trimmed;
+  return `https://${trimmed}`;
+}
+
+/** Strip the scheme for DISPLAY -- the caption shows the bare URL even though
+ * the QR encodes the full one. Mirrors `client/src/lib/qrCode.ts`'s helper. */
+function displayQrUrl(url: string): string {
+  return url.replace(/^https?:\/\//i, '');
+}
+
 function qrGraphicSvg(url: string): string {
-  const { size, path } = buildQrPath(url);
+  const { size, path } = buildQrPath(normalizeQrUrl(url));
   return `<svg viewBox="0 0 ${size} ${size}" width="100%" height="100%" preserveAspectRatio="none" shape-rendering="crispEdges" xmlns="http://www.w3.org/2000/svg"><rect width="${size}" height="${size}" fill="#fff"/><path d="${path}" fill="#000"/></svg>`;
 }
 
@@ -88,7 +103,7 @@ export const CAPTION_VIEWBOX_HEIGHT = 44;
  * stretch or compress (never wrap, never overflow) to fill the SVG's full
  * width. */
 function qrCaptionSvg(url: string): string {
-  const escaped = escapeXml(url);
+  const escaped = escapeXml(displayQrUrl(url));
   return `<svg viewBox="0 0 ${CAPTION_VIEWBOX_WIDTH} ${CAPTION_VIEWBOX_HEIGHT}" width="100%" height="100%" preserveAspectRatio="none" xmlns="http://www.w3.org/2000/svg"><text x="0" y="${CAPTION_VIEWBOX_HEIGHT - 10}" font-family="Arial, sans-serif" font-size="${CAPTION_VIEWBOX_HEIGHT - 12}" textLength="${CAPTION_VIEWBOX_WIDTH}" lengthAdjust="spacingAndGlyphs" fill="#333">${escaped}</text></svg>`;
 }
 

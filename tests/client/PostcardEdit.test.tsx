@@ -3,7 +3,7 @@ import { render, screen, within, fireEvent, waitFor } from '@testing-library/rea
 import userEvent from '@testing-library/user-event';
 import { MemoryRouter, Routes, Route } from 'react-router-dom';
 import PostcardEdit from '../../client/src/pages/PostcardEdit';
-import { buildQrGraphic, CAPTION_VIEWBOX_WIDTH } from '../../client/src/lib/qrCode';
+import { buildQrGraphic, displayQrUrl, CAPTION_VIEWBOX_WIDTH } from '../../client/src/lib/qrCode';
 
 /**
  * Coverage for `client/src/pages/PostcardEdit.tsx` (ticket 005-012,
@@ -383,8 +383,44 @@ describe('PostcardEdit -- QR overlay is optional, addable, deletable, and movabl
     await user.type(urlInput, 'https://example.org/signup{Enter}');
 
     expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
-    expect(screen.getByTestId('postcard-qr-url')).toHaveTextContent('https://example.org/signup');
+    // The caption displays the bare URL -- the scheme is stripped for display.
+    expect(screen.getByTestId('postcard-qr-url')).toHaveTextContent('example.org/signup');
+    expect(screen.getByTestId('postcard-qr-url')).not.toHaveTextContent('https://');
     assertNoLibraryDrawer();
+  });
+
+  it('prepends https:// to a scheme-less URL (encoded in the QR) but displays it bare', async () => {
+    const user = userEvent.setup();
+    let putBody: any = null;
+    stubFetch(projectFixture(), (url, init) => {
+      if (url === '/api/postcards/7' && init?.method === 'PUT') {
+        putBody = JSON.parse(String(init.body));
+        return { ok: true, json: async () => ({}) } as Response;
+      }
+      if (url === '/api/postcards/7/pdf' && init?.method === 'POST') {
+        return { ok: true, blob: async () => new Blob(['%PDF'], { type: 'application/pdf' }) } as unknown as Response;
+      }
+      return undefined;
+    });
+    renderPage();
+    await settle();
+    await user.click(screen.getByRole('button', { name: /add qr code/i }));
+    await user.click(screen.getByTestId('postcard-qr-box'));
+    await user.type(
+      within(screen.getByRole('dialog')).getByLabelText(/qr code url/i),
+      'example.org/promo{Enter}',
+    );
+
+    // Displayed caption is bare (no scheme)...
+    expect(screen.getByTestId('postcard-qr-url')).toHaveTextContent('example.org/promo');
+    expect(screen.getByTestId('postcard-qr-url')).not.toHaveTextContent('https://');
+
+    // ...but the stored/persisted URL carries the prepended https:// scheme.
+    vi.stubGlobal('URL', { ...URL, createObjectURL: () => 'blob:x', revokeObjectURL: () => {} });
+    vi.stubGlobal('open', vi.fn());
+    await user.click(screen.getByRole('button', { name: /generate pdf/i }));
+    await waitFor(() => expect(putBody).not.toBeNull());
+    expect(putBody.front_qr.url).toBe('https://example.org/promo');
   });
 
   it('the popup carries a Delete button that removes the QR from the current face', async () => {
@@ -591,7 +627,8 @@ describe('PostcardEdit -- QR overlay is optional, addable, deletable, and movabl
       // what makes the rendered caption span exactly the QR's width for
       // ANY url length, short or long.
       const captionEl = screen.getByTestId('postcard-qr-url');
-      expect(captionEl).toHaveTextContent(url);
+      // Caption shows the scheme-stripped URL (the QR still encodes the full one).
+      expect(captionEl).toHaveTextContent(displayQrUrl(url));
       const text = captionEl.querySelector('svg text');
       expect(text).toBeInTheDocument();
       expect(text).toHaveAttribute('textLength', String(CAPTION_VIEWBOX_WIDTH));

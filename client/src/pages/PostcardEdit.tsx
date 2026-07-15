@@ -3,7 +3,7 @@ import { Link, useParams } from 'react-router-dom';
 import ChatPanel from './ProjectDetail/ChatPanel';
 import { fileUrl } from './ProjectDetail/types';
 import type { ProjectDetailDTO } from './ProjectDetail/types';
-import { buildQrGraphic, CAPTION_VIEWBOX_WIDTH, CAPTION_VIEWBOX_HEIGHT } from '../lib/qrCode';
+import { buildQrGraphic, normalizeQrUrl, displayQrUrl, CAPTION_VIEWBOX_WIDTH, CAPTION_VIEWBOX_HEIGHT } from '../lib/qrCode';
 
 /**
  * `/projects/:id/postcard` -- the real postcard text-region editor (ticket
@@ -269,7 +269,7 @@ export default function PostcardEdit() {
   // Computed once per render (not per JSX read) -- `buildQrGraphic` walks
   // the full module grid, so it shouldn't be called more than once for
   // the same URL within a single render pass.
-  const qrGraphic = qr && qr.url.trim() ? buildQrGraphic(qr.url) : null;
+  const qrGraphic = qr && qr.url.trim() ? buildQrGraphic(normalizeQrUrl(qr.url)) : null;
 
   function handleRegionTextChange(name: string, value: string) {
     setRegionText((prev) => ({ ...prev, [name]: value }));
@@ -754,7 +754,7 @@ export default function PostcardEdit() {
                           lengthAdjust="spacingAndGlyphs"
                           fill="#333"
                         >
-                          {qr.url}
+                          {displayQrUrl(qr.url)}
                         </text>
                       </svg>
                     </div>
@@ -912,7 +912,7 @@ export default function PostcardEdit() {
                   setQrBySide((prev) => {
                     const current = prev[targetSide];
                     if (!current) return prev;
-                    return { ...prev, [targetSide]: { ...current, url: draftQrUrl } };
+                    return { ...prev, [targetSide]: { ...current, url: normalizeQrUrl(draftQrUrl) } };
                   });
                   setEditingQrSide(null);
                 }

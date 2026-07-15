@@ -388,9 +388,10 @@ describe('renderPostcardHtml', () => {
         // `textLength` to its own SVG's full viewBox width.
         expect(html).toContain(`textLength="${CAPTION_VIEWBOX_WIDTH}"`);
         expect(html).toContain('lengthAdjust="spacingAndGlyphs"');
-        // The caption text is HTML-escaped (attribute-adjacent text
-        // node), so a URL with `&` shows up entity-escaped here too.
-        const escapedUrl = url.replace(/&/g, '&amp;');
+        // The caption shows the scheme-stripped URL (the QR still encodes
+        // the full one), HTML-escaped (attribute-adjacent text node), so a
+        // URL with `&` shows up entity-escaped here too.
+        const escapedUrl = url.replace(/^https?:\/\//i, '').replace(/&/g, '&amp;');
         expect(html).toContain(`>${escapedUrl}</text>`);
       });
     });
