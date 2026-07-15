@@ -1,7 +1,6 @@
 import fs from 'fs/promises';
 import { Router } from 'express';
 import { requireAuth } from '../middleware/requireAuth';
-import { requireAdmin } from '../middleware/requireAdmin';
 import { prisma as defaultPrisma } from '../services/prisma';
 import { createAgentPage } from '../agent-mcp/catalogTools';
 import { resolveWorkspacePath } from '../services/workspaceDirectorySync';
@@ -41,11 +40,11 @@ import { renderPostcardPdf } from '../services/postcardPdf';
  * `Iteration` provenance row each time (that tool's existing, unmodified
  * behavior) -- no extra bookkeeping needed here.
  *
- * **Auth gate chosen: `requireAuth` + `requireAdmin`**, matching
- * `routes/chat.ts` (ticket 005 AC6 there; this ticket's AC7). No client UI
- * consumes this route yet -- Sprint 005 wires one in, and is expected to
- * revisit this gate once it does (a normal, authenticated project-owner
- * user is not necessarily an admin).
+ * **Auth gate: `requireAuth` only** (ticket 006 -- `requireAdmin` dropped
+ * from both routes below), matching `routes/chat.ts`. Sprint 005 now
+ * wires a real client UI to both routes (SUC-008/SUC-009), the follow-up
+ * this file's original gate anticipated: a normal, authenticated
+ * project-owner user is not necessarily an admin.
  *
  * **`POST /api/postcards/:projectId/pdf`** (ticket 006): the second half
  * of the pipeline. Reads back whatever `postcard-content.json` the PUT
@@ -65,7 +64,7 @@ import { renderPostcardPdf } from '../services/postcardPdf';
  */
 export const postcardsRouter = Router();
 
-postcardsRouter.put('/postcards/:projectId', requireAuth, requireAdmin, async (req, res) => {
+postcardsRouter.put('/postcards/:projectId', requireAuth, async (req, res) => {
   const projectId = Number.parseInt(String(req.params.projectId), 10);
   if (Number.isNaN(projectId)) {
     res.status(400).json({ error: 'Invalid project id' });
@@ -133,7 +132,7 @@ function faceOnlyHtml(content: PostcardContent, side: 'front' | 'back'): string 
   return renderPostcardHtml({ ...content, front_image: undefined });
 }
 
-postcardsRouter.post('/postcards/:projectId/pdf', requireAuth, requireAdmin, async (req, res) => {
+postcardsRouter.post('/postcards/:projectId/pdf', requireAuth, async (req, res) => {
   const projectId = Number.parseInt(String(req.params.projectId), 10);
   if (Number.isNaN(projectId)) {
     res.status(400).json({ error: 'Invalid project id' });

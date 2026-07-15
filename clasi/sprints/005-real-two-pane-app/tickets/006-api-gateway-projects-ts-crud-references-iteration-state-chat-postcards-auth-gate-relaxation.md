@@ -2,7 +2,7 @@
 id: '006'
 title: 'API Gateway: projects.ts (CRUD, references, iteration-state) + chat/postcards
   auth-gate relaxation'
-status: open
+status: done
 use-cases:
 - SUC-003
 - SUC-004
@@ -67,33 +67,33 @@ shared-trust model. No other line in either file changes.
 
 ## Acceptance Criteria
 
-- [ ] `GET /api/projects?view=mine` returns only the requesting user's
+- [x] `GET /api/projects?view=mine` returns only the requesting user's
       non-archived projects; `view=all` returns every user's; `view=archive`
       returns only `status: 'archived'` projects.
-- [ ] `GET /api/projects/:id` response includes `iterations`, `references`,
+- [x] `GET /api/projects/:id` response includes `iterations`, `references`,
       and `chatMessages` — verify a project with prior chat history
       returns those messages in the same response (no second endpoint
       needed).
-- [ ] `POST /api/projects` with no `sourceAssetId` creates a project via
+- [x] `POST /api/projects` with no `sourceAssetId` creates a project via
       the `create_project` tool (verify no direct `prisma.project.create`
       call in this file).
-- [ ] `POST /api/projects` with `sourceAssetId` creates the project *and*
+- [x] `POST /api/projects` with `sourceAssetId` creates the project *and*
       a `Reference` row pointing at that asset in the same request (one
       round trip for SUC-011's "clicking a Library asset creates a
       project ... reference strip already shows the source asset").
-- [ ] `POST`/`DELETE /api/projects/:id/references[/:refId]` round-trip
+- [x] `POST`/`DELETE /api/projects/:id/references[/:refId]` round-trip
       correctly through `add_reference`/`remove_reference`.
-- [ ] `PATCH /api/projects/:id/iterations/:iterId` round-trips through
+- [x] `PATCH /api/projects/:id/iterations/:iterId` round-trips through
       `set_iteration_state`, including the exclusivity behavior (verify
       via an integration test, not just unit-testing the tool in
       isolation).
-- [ ] `chat.ts` and `postcards.ts`'s routes are `requireAuth`-only —
+- [x] `chat.ts` and `postcards.ts`'s routes are `requireAuth`-only —
       a non-admin authenticated user can start a chat turn and submit/
       request a postcard PDF. **Update the existing tests in both files
       that asserted `requireAdmin` gating** to reflect the new,
       intentionally wider gate (do not leave them passing against a
       narrower gate than production now has).
-- [ ] Every write handler in `projects.ts` is verified (by code
+- [x] Every write handler in `projects.ts` is verified (by code
       inspection in the PR/ticket notes, or a targeted test) to call a
       Workspace MCP Server tool function, not raw Prisma.
 

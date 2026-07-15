@@ -3,7 +3,9 @@
  * back the currently-persisted `postcard-content.json`, rendering
  * front(+back) HTML for `postcardPdf.ts` to rasterize, persisting
  * `postcard.pdf` via `create_agent_page`, and streaming the PDF bytes back
- * in the response.
+ * in the response. Also covers this same ticket's auth-gate relaxation to
+ * `requireAuth`-only (see `server/src/routes/postcards.ts`'s module
+ * header).
  *
  * `postcardPdf.ts`'s `renderPostcardPdf` is mocked entirely here (no real
  * Chromium, no real raster/pad/assemble pipeline -- that's
@@ -159,10 +161,13 @@ describe('POST /api/postcards/:projectId/pdf -- auth gate', () => {
     expect(res.status).toBe(401);
   });
 
-  it('rejects a non-admin authenticated request with 403', async () => {
+  it('allows a non-admin authenticated request past the auth gate (ticket 006: requireAdmin dropped)', async () => {
     const agent = await loginAsUser();
-    const res = await agent.post('/api/postcards/1/pdf');
-    expect(res.status).toBe(403);
+    // No `postcard-content.json` submitted for this project yet -- the
+    // gate itself no longer rejects a non-admin caller, so this resolves
+    // to the route's own "no content submitted yet" 404, not a 401/403.
+    const res = await agent.post('/api/postcards/999999999/pdf');
+    expect(res.status).toBe(404);
   });
 });
 
@@ -218,6 +223,28 @@ describe('POST /api/postcards/:projectId/pdf -- front-only PDF', () => {
     const persistedPath = resolveWorkspacePath(`projects/${project.id}/outputs/postcard.pdf`);
     const persisted = await fs.readFile(persistedPath);
     expect(persisted).toEqual(FAKE_PDF_BYTES);
+  });
+});
+
+describe('POST /api/postcards/:projectId/pdf -- non-admin authenticated user (ticket 006)', () => {
+  it('a USER-role authenticated caller can request and receive a postcard PDF end to end', async () => {
+    mockRenderPostcardPdf.mockReset();
+    mockRenderPostcardPdf.mockResolvedValue(FAKE_PDF_BYTES);
+
+    const project = await makeProject(`${marker}-nonadmin`);
+    await makeIteration(project.id, `projects/${project.id}/iterations/iter-1.png`, 1);
+
+    const agent = await loginAsUser();
+    const putRes = await agent.put(`/api/postcards/${project.id}`).send({
+      front_image: `projects/${project.id}/iterations/iter-1.png`,
+      front_regions: [],
+    });
+    expect(putRes.status).toBe(200);
+
+    const pdfRes = await agent.post(`/api/postcards/${project.id}/pdf`);
+    expect(pdfRes.status).toBe(200);
+    expect(pdfRes.headers['content-type']).toMatch(/application\/pdf/);
+    expect(Buffer.from(pdfRes.body)).toEqual(FAKE_PDF_BYTES);
   });
 });
 

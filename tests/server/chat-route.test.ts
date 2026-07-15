@@ -1,8 +1,8 @@
 /**
- * Coverage for the Agent Runtime's SSE chat API (ticket 005 AC6):
- * `server/src/routes/chat.ts`'s auth gate (`requireAuth` + `requireAdmin`
- * -- documented choice, see that file's module header) and its
- * translation of `turn.ts`'s `TurnEvent`s into `data:` SSE frames.
+ * Coverage for the Agent Runtime's SSE chat API (ticket 005 AC6,
+ * relaxed to `requireAuth`-only in ticket 006 -- see
+ * `server/src/routes/chat.ts`'s module header) and its translation of
+ * `turn.ts`'s `TurnEvent`s into `data:` SSE frames.
  *
  * `runTurn` itself (context reconstruction, provider loop, tool dispatch,
  * persistence, locking) is covered end-to-end by
@@ -112,11 +112,22 @@ describe('POST /api/projects/:projectId/chat -- auth gate', () => {
     expect(mockRunTurn).not.toHaveBeenCalled();
   });
 
-  it('rejects a non-admin authenticated request with 403', async () => {
+  it('allows a non-admin authenticated request past the auth gate (ticket 006: requireAdmin dropped)', async () => {
+    mockRunTurn.mockImplementation(async (_input: any, options: any) => {
+      options.onEvent({ type: 'status', status: 'completed' });
+      return {
+        finalMessage: 'ok',
+        messages: [],
+        toolCalls: [],
+        commit: { committed: true, pushed: false },
+        consultedKnowledge: [],
+      };
+    });
+
     const agent = await loginAsUser();
-    const res = await agent.post('/api/projects/1/chat').send({ message: 'hi' });
-    expect(res.status).toBe(403);
-    expect(mockRunTurn).not.toHaveBeenCalled();
+    const res = await bufferedPost(agent, '/api/projects/1/chat').send({ message: 'hi' });
+    expect(res.status).toBe(200);
+    expect(mockRunTurn).toHaveBeenCalledTimes(1);
   });
 
   it('rejects a missing message with 400 for an admin request', async () => {

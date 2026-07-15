@@ -2,7 +2,8 @@
  * Coverage for the Postcard Render & PDF Service's first half (ticket
  * 005): `server/src/services/postcardRender.ts`'s content-JSON
  * validation/HTML templating, and `server/src/routes/postcards.ts`'s
- * `PUT /api/postcards/:projectId` route -- auth gate (AC7), the
+ * `PUT /api/postcards/:projectId` route -- auth gate (AC7, relaxed to
+ * `requireAuth`-only in ticket 006 -- see that file's module header), the
  * validate-then-persist-then-render-then-persist flow (AC1-5), and the
  * bad-image-reference validation error (AC6).
  *
@@ -178,10 +179,18 @@ describe('PUT /api/postcards/:projectId -- auth gate (AC7)', () => {
     expect(res.status).toBe(401);
   });
 
-  it('rejects a non-admin authenticated request with 403', async () => {
+  it('allows a non-admin authenticated user to submit a postcard (ticket 006: requireAdmin dropped)', async () => {
+    const project = await makeProject(`${marker}-nonadmin-put`);
+    await makeIteration(project.id, `projects/${project.id}/iterations/iter-1.png`, 1);
+
     const agent = await loginAsUser();
-    const res = await agent.put('/api/postcards/1').send({ front_image: 'x' });
-    expect(res.status).toBe(403);
+    const res = await agent.put(`/api/postcards/${project.id}`).send({
+      front_image: `projects/${project.id}/iterations/iter-1.png`,
+      front_regions: [],
+    });
+
+    expect(res.status).toBe(200);
+    expect(res.body.contentPath).toBe(`projects/${project.id}/outputs/postcard-content.json`);
   });
 });
 
