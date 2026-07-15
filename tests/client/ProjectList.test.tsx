@@ -171,6 +171,32 @@ describe('ProjectList hero-image selection rule (SUC-010)', () => {
     expect(img).toHaveAttribute('src', '/api/files/projects/1/iterations/1.png');
   });
 
+  it('shows the front even when only the back is accepted (front always wins)', async () => {
+    stubFetch({
+      projects: (view) =>
+        view === 'mine'
+          ? [
+              {
+                id: 3,
+                title: 'Postcard C',
+                status: 'active',
+                detailsHeader: { outputType: 'Postcard' },
+                iterations: [
+                  { id: 30, seq: 21, imagePath: 'projects/3/iterations/21.png', accepted: false, role: 'front' },
+                  { id: 31, seq: 22, imagePath: 'projects/3/iterations/22.png', accepted: true, role: 'back' },
+                ],
+              },
+            ]
+          : [],
+    });
+    renderPage();
+
+    const card = (await screen.findByText('Postcard C')).closest('a')!;
+    const img = card.querySelector('img');
+    expect(img).toHaveAttribute('src', '/api/files/projects/3/iterations/21.png');
+    expect(within(card).getByText('Front — Iteration 21')).toBeInTheDocument();
+  });
+
   it('falls back to the last iteration overall when nothing is accepted', async () => {
     stubFetch({
       projects: (view) =>

@@ -93,14 +93,23 @@ interface CatalogDirectory {
 export function selectHeroIteration(iterations: IterationSummary[]): IterationSummary | null {
   if (!iterations || iterations.length === 0) return null;
 
+  // A postcard's hero is ALWAYS its front face: if any iteration is marked
+  // `role: 'front'`, it wins outright, regardless of accepted state (a
+  // postcard whose back is the only accepted side must still show the front
+  // on the project list -- stakeholder correction).
+  const fronts = iterations.filter((iteration) => iteration.role === 'front');
+  if (fronts.length > 0) {
+    return fronts.reduce((latest, current) => (current.seq > latest.seq ? current : latest));
+  }
+
   const accepted = iterations.filter((iteration) => iteration.accepted);
   if (accepted.length === 0) {
     // Nothing accepted -- fall back to the last iteration overall.
     return iterations.reduce((latest, current) => (current.seq > latest.seq ? current : latest));
   }
 
-  // Front/unmarked accepted iterations always win over an accepted back --
-  // a postcard's hero is never its back (round 6). Only fall back to an
+  // No explicit front: accepted/unmarked wins over an accepted back -- a
+  // postcard's hero is never its back (round 6). Only fall back to an
   // accepted back iteration if it's the only accepted one there is.
   const nonBack = accepted.filter((iteration) => iteration.role !== 'back');
   const pool = nonBack.length > 0 ? nonBack : accepted;
@@ -112,6 +121,12 @@ export function selectHeroIteration(iterations: IterationSummary[]): IterationSu
 function heroCaption(iteration: IterationSummary | null): string {
   if (!iteration) return 'No iterations yet';
   const roleLabel = iteration.role === 'front' ? 'Front — ' : iteration.role === 'back' ? 'Back — ' : '';
+  // A front hero shown because it's the front (not because it's accepted)
+  // shouldn't read "nothing accepted" -- that caption only applies to the
+  // non-front fallback.
+  if (iteration.role === 'front' && !iteration.accepted) {
+    return `${roleLabel}Iteration ${iteration.seq}`;
+  }
   const acceptedLabel = iteration.accepted ? 'accepted' : 'last — nothing accepted';
   return `${roleLabel}Iteration ${iteration.seq} (${acceptedLabel})`;
 }
