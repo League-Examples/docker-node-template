@@ -1,6 +1,8 @@
 ---
-status: pending
+status: in-progress
 sprint: '003'
+tickets:
+- 003-001
 ---
 
 # Workspace git versioning + GitHub

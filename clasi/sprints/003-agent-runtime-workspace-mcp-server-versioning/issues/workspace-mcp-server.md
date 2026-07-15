@@ -1,6 +1,9 @@
 ---
-status: pending
+status: in-progress
 sprint: '003'
+tickets:
+- 003-002
+- 003-003
 ---
 
 # Workspace MCP server: moderated fs + typed catalog tools + locks

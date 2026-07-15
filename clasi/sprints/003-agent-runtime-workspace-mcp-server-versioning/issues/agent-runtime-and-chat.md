@@ -1,6 +1,9 @@
 ---
-status: pending
+status: in-progress
 sprint: '003'
+tickets:
+- 003-004
+- 003-005
 ---
 
 # Agent runtime (Claude Agent SDK) + per-project chat

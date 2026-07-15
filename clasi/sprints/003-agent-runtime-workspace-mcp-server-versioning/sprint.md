@@ -1,9 +1,14 @@
 ---
 id: '003'
 title: Agent Runtime, Workspace MCP Server & Versioning
-status: roadmap
+status: ticketed
 branch: sprint/003-agent-runtime-workspace-mcp-server-versioning
-use-cases: []
+use-cases:
+- SUC-001
+- SUC-002
+- SUC-003
+- SUC-004
+- SUC-005
 issues:
 - workspace-mcp-server.md
 - agent-runtime-and-chat.md
@@ -140,12 +145,19 @@ yet mirrored to GitHub.
 
 Before tickets can be created, all of the following must be true:
 
-- [ ] Sprint planning documents are complete (sprint.md, use cases, architecture)
-- [ ] Architecture review passed
-- [ ] Stakeholder has approved the sprint plan
+- [x] Sprint planning documents are complete (sprint.md, use cases, architecture)
+- [x] Architecture review passed
+- [x] Stakeholder has approved the sprint plan
 
 ## Tickets
 
-(Populated during detail planning.)
+All five tickets are created (status: open) in `tickets/`. Tickets
+execute serially in this order:
 
-Tickets execute serially in the order listed.
+| # | Title | Depends on | Issue | Path |
+|---|---|---|---|---|
+| 001 | Workspace Versioning Service: batched git commit + config-gated push | -- | `workspace-git-versioning.md` | `tickets/001-workspace-versioning-service-batched-git-commit-config-gated-push.md` |
+| 002 | Workspace MCP Server: filesystem tools, path containment, locking | 001 | `workspace-mcp-server.md` | `tickets/002-workspace-mcp-server-filesystem-tools-path-containment-locking.md` |
+| 003 | Workspace MCP Server: typed catalog tools + optimistic locking | 002 | `workspace-mcp-server.md` | `tickets/003-workspace-mcp-server-typed-catalog-tools-optimistic-locking.md` |
+| 004 | Provider-neutral LLM interface + Anthropic adapter + mock adapter | 003 | `agent-runtime-and-chat.md` | `tickets/004-provider-neutral-llm-interface-anthropic-adapter-mock-adapter.md` |
+| 005 | Agent Runtime turn loop + ChatMessage persistence + SSE chat API | 003, 004 | `agent-runtime-and-chat.md` | `tickets/005-agent-runtime-turn-loop-chatmessage-persistence-sse-chat-api.md` |
