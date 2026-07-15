@@ -683,8 +683,13 @@ export interface CreateAgentPageArgs {
   filename: string;
   /** Self-contained page definition -- markup/schema plus an optional
    * small script (generic mechanism only; no postcard-specific
-   * content-generation logic, per this ticket's scope). */
-  content: string;
+   * content-generation logic, per this ticket's scope). A `Buffer` is
+   * accepted (ticket 006, `postcard.pdf`) and written verbatim with no
+   * text-encoding pass -- `fs.writeFile`'s default `'utf8'` encoding for
+   * string content would corrupt arbitrary binary bytes (any byte outside
+   * the 7-bit ASCII range gets re-encoded as multi-byte UTF-8), which a
+   * PDF's binary stream data cannot tolerate. */
+  content: string | Buffer;
   contentType?: string;
 }
 
@@ -718,7 +723,11 @@ export async function createAgentPage(
   await acquireLock('directory', resourceKey, options.lockHolder, prismaClient);
   try {
     await fs.mkdir(path.dirname(resolved), { recursive: true });
-    await fs.writeFile(resolved, args.content, 'utf8');
+    if (Buffer.isBuffer(args.content)) {
+      await fs.writeFile(resolved, args.content);
+    } else {
+      await fs.writeFile(resolved, args.content, 'utf8');
+    }
 
     const seq = await nextIterationSeq(prismaClient, args.projectId);
     iteration = await prismaClient.iteration.create({

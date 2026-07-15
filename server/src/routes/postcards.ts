@@ -1,14 +1,18 @@
+import fs from 'fs/promises';
 import { Router } from 'express';
 import { requireAuth } from '../middleware/requireAuth';
 import { requireAdmin } from '../middleware/requireAdmin';
 import { prisma as defaultPrisma } from '../services/prisma';
 import { createAgentPage } from '../agent-mcp/catalogTools';
+import { resolveWorkspacePath } from '../services/workspaceDirectorySync';
 import {
   parsePostcardContent,
   resolvePostcardImages,
   renderPostcardHtml,
   PostcardValidationError,
+  type PostcardContent,
 } from '../services/postcardRender';
+import { renderPostcardPdf } from '../services/postcardPdf';
 
 /**
  * Postcard Render & PDF Service's HTTP surface, first half
@@ -42,6 +46,22 @@ import {
  * consumes this route yet -- Sprint 005 wires one in, and is expected to
  * revisit this gate once it does (a normal, authenticated project-owner
  * user is not necessarily an admin).
+ *
+ * **`POST /api/postcards/:projectId/pdf`** (ticket 006): the second half
+ * of the pipeline. Reads back whatever `postcard-content.json` the PUT
+ * handler above most recently persisted for this project (no request
+ * body -- per sprint.md, "one PDF endpoint serves both the iterations-view
+ * PDF button... and the text editor's 'Generate PDF' action", i.e. both
+ * callers just want "the PDF for the project's current state", not a new
+ * submission), re-derives per-face HTML via `renderPostcardHtml` (once
+ * per present face, each called with only that face's image set so
+ * `postcardPdf.ts` gets an isolated single-`.page` doc to rasterize), and
+ * hands those to `renderPostcardPdf` (`postcardPdf.ts`: raster -> bleed
+ * pad -> rotate -> assemble with `/TrimBox`/`/BleedBox` metadata). The
+ * result is persisted as `postcard.pdf` via the same `create_agent_page`
+ * path as the JSON/HTML above, *and* streamed back directly in the
+ * response body (`Content-Type: application/pdf`) -- the wireframe's "PDF
+ * button... pops it up in a viewer window" behavior.
  */
 export const postcardsRouter = Router();
 
@@ -99,4 +119,80 @@ postcardsRouter.put('/postcards/:projectId', requireAuth, requireAdmin, async (r
     htmlPath: htmlResult.path,
     html,
   });
+});
+
+/** Renders `content` (already-validated) to a per-face, single-`.page`
+ * HTML doc for `postcardPdf.ts` to rasterize -- `renderPostcardHtml`
+ * itself is agnostic to which/how-many faces are present (R3: driven by
+ * `front_image`/`back_image` presence), so isolating one face is just a
+ * matter of calling it with the other face's image unset. */
+function faceOnlyHtml(content: PostcardContent, side: 'front' | 'back'): string {
+  if (side === 'front') {
+    return renderPostcardHtml({ ...content, back_image: undefined });
+  }
+  return renderPostcardHtml({ ...content, front_image: undefined });
+}
+
+postcardsRouter.post('/postcards/:projectId/pdf', requireAuth, requireAdmin, async (req, res) => {
+  const projectId = Number.parseInt(String(req.params.projectId), 10);
+  if (Number.isNaN(projectId)) {
+    res.status(400).json({ error: 'Invalid project id' });
+    return;
+  }
+
+  const project = await defaultPrisma.project.findUnique({ where: { id: projectId } });
+  if (!project) {
+    res.status(404).json({ error: `No project with id ${projectId}` });
+    return;
+  }
+
+  const contentPath = `projects/${projectId}/outputs/postcard-content.json`;
+  let raw: string;
+  try {
+    raw = await fs.readFile(resolveWorkspacePath(contentPath), 'utf8');
+  } catch {
+    res.status(404).json({
+      error: `No postcard-content.json submitted yet for project ${projectId} -- PUT /api/postcards/${projectId} first`,
+    });
+    return;
+  }
+
+  let content: PostcardContent;
+  try {
+    content = parsePostcardContent(JSON.parse(raw));
+  } catch (err) {
+    if (err instanceof PostcardValidationError) {
+      res.status(400).json({ error: err.message });
+      return;
+    }
+    throw err;
+  }
+
+  if (content.front_image === undefined) {
+    // Per this ticket's description ("front always; back only if
+    // back_image is set") a postcard PDF always has a front face -- a
+    // persisted content JSON with only back_image (schema-legal for
+    // postcardRender.ts's HTML preview, R3) has nothing for the PDF
+    // pipeline's mandatory first page.
+    res.status(400).json({ error: `Postcard PDF export requires front_image to be set for project ${projectId}` });
+    return;
+  }
+
+  const frontHtml = faceOnlyHtml(content, 'front');
+  const backHtml = content.back_image !== undefined ? faceOnlyHtml(content, 'back') : undefined;
+
+  const pdfBytes = await renderPostcardPdf({ front: frontHtml, back: backHtml });
+
+  const pdfResult = await createAgentPage({
+    projectId,
+    filename: 'postcard.pdf',
+    content: pdfBytes,
+    contentType: 'application/pdf',
+  });
+
+  res.status(200);
+  res.set('Content-Type', 'application/pdf');
+  res.set('Content-Disposition', `inline; filename="postcard.pdf"`);
+  res.set('X-Postcard-Pdf-Path', pdfResult.path);
+  res.send(pdfBytes);
 });

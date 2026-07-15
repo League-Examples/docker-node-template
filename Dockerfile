@@ -35,6 +35,23 @@ WORKDIR /app
 ENV NODE_ENV=production
 ENV PORT=3000
 
+# Note (ticket 006, architecture-update.md R1/Open Question 1): the
+# Postcard PDF pipeline (server/src/services/postcardPdf.ts) needs a real
+# Chromium binary to raster postcard HTML via `puppeteer-core` --
+# Puppeteer's own bundled Chromium download is a glibc build and will not
+# run on this image's musl libc, the same category of failure as
+# `sqlite-vec`'s glibc-only prebuild (see the comment on that `RUN apk add`
+# line above). Unlike `sqlite-vec`, Alpine ships its own natively
+# musl-built `chromium` package, which is the standard Puppeteer-on-Alpine
+# pattern -- confirmed working by ticket 006's spike (a container built
+# from this exact Dockerfile successfully launched `apk`'s `chromium` via
+# `puppeteer-core` and rasterized a test page). `ttf-freefont` is added for
+# better glyph coverage than Alpine's bare default font set; exact font
+# metrics will not match a browser preview rendered on macOS/Windows, but
+# no worse a mismatch than any other headless-Linux-render deployment.
+RUN apk add --no-cache chromium ttf-freefont
+ENV PUPPETEER_EXECUTABLE_PATH=/usr/bin/chromium-browser
+
 COPY --from=server /src/server/node_modules    ./node_modules
 COPY --from=server /src/server/src             ./src
 COPY --from=server /src/server/prisma          ./prisma
