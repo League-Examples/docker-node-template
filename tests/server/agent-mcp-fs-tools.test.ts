@@ -66,14 +66,30 @@ function spyVersioning(): VersioningRecorder & { calls: string[] } {
 }
 
 describe('registerFsTools / createWorkspaceMcpServer — tool surface', () => {
-  it('registers exactly read_file, move_file, create_directory, stat — no other tools, no shell/exec tool', async () => {
-    const server = createWorkspaceMcpServer();
+  it('registerFsTools registers exactly read_file, move_file, create_directory, stat — no other tools, no shell/exec tool', async () => {
+    // Asserted against a fresh McpServer with only registerFsTools applied
+    // (not createWorkspaceMcpServer(), which -- as of ticket 003-003 -- also
+    // registers the catalog tool family on the same instance; that combined
+    // tool surface is asserted in tests/server/agent-mcp-catalog-tools.test.ts).
+    const { McpServer } = await import('@modelcontextprotocol/sdk/server/mcp.js');
+    const server = new McpServer({ name: 'test-fs-only', version: '0.1.0' });
+    registerFsTools(server);
     // The SDK doesn't expose a public "list registered tool names"
     // accessor pre-connect, but `_registeredTools` is populated
     // synchronously by `server.tool(...)` and is the same map the SDK's
     // own `tools/list` handler reads from (see mcp.js).
     const names = Object.keys((server as any)._registeredTools ?? {}).sort();
     expect(names).toEqual(['create_directory', 'move_file', 'read_file', 'stat']);
+  });
+
+  it('createWorkspaceMcpServer registers the fs tools alongside the catalog tools, with no shell/exec tool', async () => {
+    const server = createWorkspaceMcpServer();
+    const names = Object.keys((server as any)._registeredTools ?? {}).sort();
+    expect(names).toEqual(
+      expect.arrayContaining(['create_directory', 'move_file', 'read_file', 'stat'])
+    );
+    expect(names).not.toContain('exec');
+    expect(names).not.toContain('shell');
   });
 
   it('never wires the workspace server onto an Express route (no HTTP transport import)', async () => {
