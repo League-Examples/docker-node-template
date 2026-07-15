@@ -1,14 +1,14 @@
 ---
 id: '012'
 title: 'PostcardEdit page: text editor promotion'
-status: open
+status: done
 use-cases:
 - SUC-009
 depends-on:
 - '004'
 - '006'
-- '008'
-- '009'
+- 008
+- 009
 github-issue: ''
 issue: real-two-pane-app.md
 completes_issue: true
@@ -57,27 +57,60 @@ route). Reached from the iterations view's "Text Entry" button (ticket
 
 ## Acceptance Criteria
 
-- [ ] Front/back tab previews render via `GET /api/files/*` from
+- [x] Front/back tab previews render via `GET /api/files/*` from
       `Iteration.role`, not a hardcoded mockup asset path.
-- [ ] Click-to-edit popup: opens on click, sized to fit text, Return
+- [x] Click-to-edit popup: opens on click, sized to fit text, Return
       commits, Delete button removes the box (component test).
-- [ ] Drag-to-draw: rubber-bands from anchor, naming popup on release,
+- [x] Drag-to-draw: rubber-bands from anchor, naming popup on release,
       resulting box is exactly the drawn size; overflowing text is
       visually clipped, not shown (component test).
-- [ ] Move handles on bottom-left/top-right reposition a box
+- [x] Move handles on bottom-left/top-right reposition a box
       (component test).
-- [ ] QR overlay click opens a URL-entry popup (component test).
-- [ ] Chat box below is wired to the same real SSE mechanism as ticket
+- [x] QR overlay click opens a URL-entry popup (component test).
+- [x] Chat box below is wired to the same real SSE mechanism as ticket
       009 (no duplicate `EventSource`/stream-parsing logic).
-- [ ] Asset browser (`LibraryDrawer`) never renders on this route —
+- [x] Asset browser (`LibraryDrawer`) never renders on this route —
       verify by asserting its absence in every test for this page, not
       just by omission.
-- [ ] Text-region list section (removed round 10) does not reappear.
-- [ ] Save calls `PUT /api/postcards/:id` with `front_image`/`back_image`
+- [x] Text-region list section (removed round 10) does not reappear.
+- [x] Save calls `PUT /api/postcards/:id` with `front_image`/`back_image`
       correctly resolved from current `Iteration.role` state.
-- [ ] Generate PDF calls `POST /api/postcards/:id/pdf` and opens the
+- [x] Generate PDF calls `POST /api/postcards/:id/pdf` and opens the
       result, reachable by a non-admin authenticated user.
-- [ ] Back button navigates to `/projects/:id`.
+- [x] Back button navigates to `/projects/:id`.
+
+## Implementation Notes / Deviations
+
+- `client/src/App.tsx` needed **no change** -- ticket 007 already routed
+  `/projects/:id/postcard` at the real `PostcardEdit` component (its
+  placeholder body only). This ticket replaced the placeholder's body;
+  `App.tsx` itself is untouched.
+- "Save" and "Generate PDF" (AC9/AC10) are **one button, one click**, not
+  two separate controls -- matching the Description's explicit "same
+  pattern as the iterations view's PDF button (ticket 009)", which itself
+  does PUT-then-POST as a single action. The PUT now carries this page's
+  real `front_regions`/`back_regions`/`front_extra_html`/`back_extra_html`
+  (not just the two image paths `OutputPane`'s quick-PDF button sends).
+- Text-region/QR-URL state is **client-side for the duration of one
+  editing session** -- there is no `GET` of a previously-persisted
+  `postcard-content.json` on mount, since `postcards.ts` (Sprint 004) only
+  exposes `PUT`/`POST .../pdf`, no read-back route. Adding that route
+  would be server-side work outside this ticket's stated file list
+  (`PostcardEdit.tsx` + its test + `App.tsx`). Every "Generate PDF" click
+  still submits a complete, self-consistent content JSON for whatever is
+  currently drawn in the session.
+- QR overlay: the mockup only showed the QR box on the back face (its stub
+  project happened to be front-image-only). The real content-JSON schema
+  supports an independent `front_extra_html`/`back_extra_html` per face,
+  so the promoted page renders the QR overlay -- and lets a URL be set --
+  on **both** faces, each with its own state. Actual QR-*image* generation
+  (a real scannable code, as opposed to a labeled placeholder box carrying
+  the URL as text and a `data-qr-url` attribute) is out of this ticket's
+  scope; no QR-generation service exists elsewhere in the codebase.
+- Drawn boxes use `style: ''` (no raw CSS) rather than the mockup's
+  `style: 'custom'` placeholder string, since this field is sent verbatim
+  as CSS to the server's `renderPostcardHtml` (`postcardRender.ts`) --
+  `'custom'` is not valid CSS and was a mockup-only stand-in value.
 
 ## Implementation Plan
 
