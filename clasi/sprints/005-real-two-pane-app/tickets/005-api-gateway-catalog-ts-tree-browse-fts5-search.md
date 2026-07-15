@@ -1,7 +1,7 @@
 ---
 id: '005'
 title: 'API Gateway: catalog.ts (tree browse + FTS5 search)'
-status: open
+status: done
 use-cases:
 - SUC-002
 - SUC-010
@@ -46,21 +46,21 @@ this sprint.
 
 ## Acceptance Criteria
 
-- [ ] `GET /api/catalog/tree` returns real `WorkspaceDirectory`/
+- [x] `GET /api/catalog/tree` returns real `WorkspaceDirectory`/
       `Collection`/`KnowledgeEntry`/`Asset` data grouped in a shape the
       drawer's four categories (assets, examples, styles, projects) can
       render directly.
-- [ ] `GET /api/catalog/search?q=...` returns FTS5-matched results via
+- [x] `GET /api/catalog/search?q=...` returns FTS5-matched results via
       `keywordSearch`, narrowing correctly on a multi-word query.
-  - [ ] An empty-catalog / no-results state returns an empty array, not
+  - [x] An empty-catalog / no-results state returns an empty array, not
       an error (UC-002 E1).
-- [ ] Every returned asset/knowledge-entry item includes its
+- [x] Every returned asset/knowledge-entry item includes its
       workspace-relative `path` and enough text (`description`/
       `bodyText`/`tags`) for the drawer to render a preview without a
       second request.
-- [ ] Both endpoints are `requireAuth`-only (verify with an
+- [x] Both endpoints are `requireAuth`-only (verify with an
       authenticated-non-admin-user test, not just an admin).
-- [ ] Neither endpoint performs any write — verify no `Lock`
+- [x] Neither endpoint performs any write — verify no `Lock`
       acquisition, no `versioning.recordChange` call, in either handler.
 
 ## Implementation Plan
