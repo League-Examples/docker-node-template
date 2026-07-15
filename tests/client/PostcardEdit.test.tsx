@@ -229,8 +229,8 @@ describe('PostcardEdit -- click-to-edit popup (AC2)', () => {
   });
 });
 
-describe('PostcardEdit -- move handles (AC4)', () => {
-  it('dragging the bottom-left handle repositions the box', async () => {
+describe('PostcardEdit -- move/resize handles (AC4)', () => {
+  it('dragging the top-left handle repositions the box (size unchanged)', async () => {
     const user = userEvent.setup();
     stubFetch(projectFixture());
     renderPage();
@@ -238,7 +238,7 @@ describe('PostcardEdit -- move handles (AC4)', () => {
     await drawFrontHeadlineBox(user);
 
     const preview = screen.getByTestId('postcard-preview');
-    fireEvent.mouseDown(screen.getByTestId('move-handle-bl-front_headline'), { clientX: 100, clientY: 50 });
+    fireEvent.mouseDown(screen.getByTestId('move-handle-tl-front_headline'), { clientX: 100, clientY: 50 });
     fireEvent.mouseMove(preview, { clientX: 150, clientY: 80 });
     fireEvent.mouseUp(preview);
 
@@ -246,11 +246,11 @@ describe('PostcardEdit -- move handles (AC4)', () => {
     // start position) is always 0 -- the resulting position is just the
     // drag delta converted at the 96px/in jsdom fallback: (50, 30)px -> (0.52in, 0.31in).
     const box = screen.getByTestId('postcard-region-box-front_headline');
-    expect(box).toHaveStyle({ left: '0.52in', top: '0.31in' });
+    expect(box).toHaveStyle({ left: '0.52in', top: '0.31in', width: '1.46in', height: '0.73in' });
     assertNoLibraryDrawer();
   });
 
-  it('dragging the top-right handle repositions the box', async () => {
+  it('dragging the bottom-right handle resizes the box (top-left corner unchanged)', async () => {
     const user = userEvent.setup();
     stubFetch(projectFixture());
     renderPage();
@@ -258,12 +258,73 @@ describe('PostcardEdit -- move handles (AC4)', () => {
     await drawFrontHeadlineBox(user);
 
     const preview = screen.getByTestId('postcard-preview');
-    fireEvent.mouseDown(screen.getByTestId('move-handle-tr-front_headline'), { clientX: 500, clientY: 200 });
+    fireEvent.mouseDown(screen.getByTestId('move-handle-br-front_headline'), { clientX: 500, clientY: 200 });
     fireEvent.mouseMove(preview, { clientX: 550, clientY: 230 });
     fireEvent.mouseUp(preview);
 
+    // jsdom reports 0 for offsetWidth/offsetHeight (the drag's starting
+    // size), so the resulting size is just the drag delta converted at the
+    // 96px/in jsdom fallback: (50, 30)px -> (0.52in, 0.31in). top/left stay
+    // at the box's original drawn position.
     const box = screen.getByTestId('postcard-region-box-front_headline');
-    expect(box).toHaveStyle({ left: '0.52in', top: '0.31in' });
+    expect(box).toHaveStyle({ left: '1.04in', top: '0.52in', width: '0.52in', height: '0.31in' });
+    assertNoLibraryDrawer();
+  });
+
+  it('clamps the resize to a minimum size instead of collapsing to zero', async () => {
+    const user = userEvent.setup();
+    stubFetch(projectFixture());
+    renderPage();
+    await settle();
+    await drawFrontHeadlineBox(user);
+
+    const preview = screen.getByTestId('postcard-preview');
+    // Drag far up-and-left of the handle's start point -- a shrink well
+    // past zero, which must clamp rather than go negative.
+    fireEvent.mouseDown(screen.getByTestId('move-handle-br-front_headline'), { clientX: 500, clientY: 200 });
+    fireEvent.mouseMove(preview, { clientX: 0, clientY: 0 });
+    fireEvent.mouseUp(preview);
+
+    const box = screen.getByTestId('postcard-region-box-front_headline');
+    expect(box).toHaveStyle({ width: '0.30in', height: '0.20in' });
+    assertNoLibraryDrawer();
+  });
+
+  it('a resize persists position.width/height into the PUT content JSON', async () => {
+    const user = userEvent.setup();
+    const pdfBlob = new Blob(['%PDF-1.7 fake'], { type: 'application/pdf' });
+    const fetchMock = stubFetch(projectFixture(), (url, init) => {
+      if (url === '/api/postcards/7' && init?.method === 'PUT') return { ok: true, json: async () => ({}) } as Response;
+      if (url === '/api/postcards/7/pdf' && init?.method === 'POST') return { ok: true, blob: async () => pdfBlob } as Response;
+      return undefined;
+    });
+    vi.stubGlobal('URL', { ...URL, createObjectURL: vi.fn().mockReturnValue('blob:fake-pdf-url') });
+    vi.stubGlobal('open', vi.fn());
+
+    renderPage();
+    await settle();
+    await drawFrontHeadlineBox(user);
+
+    const preview = screen.getByTestId('postcard-preview');
+    fireEvent.mouseDown(screen.getByTestId('move-handle-br-front_headline'), { clientX: 500, clientY: 200 });
+    fireEvent.mouseMove(preview, { clientX: 550, clientY: 230 });
+    fireEvent.mouseUp(preview);
+
+    await user.click(screen.getByRole('button', { name: /generate pdf/i }));
+
+    await waitFor(() => {
+      expect(fetchMock).toHaveBeenCalledWith('/api/postcards/7', expect.objectContaining({ method: 'PUT' }));
+    });
+    const putCall = fetchMock.mock.calls.find(
+      ([url, init]) => url === '/api/postcards/7' && (init as RequestInit | undefined)?.method === 'PUT',
+    )!;
+    const body = JSON.parse((putCall[1] as RequestInit).body as string);
+    expect(body.front_regions[0].position).toEqual({
+      top: '0.52in',
+      left: '1.04in',
+      width: '0.52in',
+      height: '0.31in',
+    });
     assertNoLibraryDrawer();
   });
 });
@@ -341,7 +402,7 @@ describe('PostcardEdit -- QR overlay is optional, addable, deletable, and movabl
     assertNoLibraryDrawer();
   });
 
-  it('long-click-drag on a corner handle moves the QR, using the same mechanism as text-region move handles', async () => {
+  it('long-click-drag on the top-left handle moves the QR, using the same mechanism as text-region move handles', async () => {
     const user = userEvent.setup();
     stubFetch(projectFixture());
     renderPage();
@@ -349,21 +410,59 @@ describe('PostcardEdit -- QR overlay is optional, addable, deletable, and movabl
     await user.click(screen.getByRole('button', { name: /add qr code/i }));
 
     const preview = screen.getByTestId('postcard-preview');
-    fireEvent.mouseDown(screen.getByTestId('move-handle-bl-qr'), { clientX: 100, clientY: 50 });
+    fireEvent.mouseDown(screen.getByTestId('move-handle-tl-qr'), { clientX: 100, clientY: 50 });
     fireEvent.mouseMove(preview, { clientX: 150, clientY: 80 });
     fireEvent.mouseUp(preview);
 
     // Same jsdom fallback as the text-region move-handle test: offsetLeft/
     // offsetTop start at 0, so the resulting position is just the drag
     // delta at 96px/in -- (50, 30)px -> (0.52in, 0.31in), and the QR's
-    // `right` offset is cleared in favor of an explicit `left`.
+    // `right` offset is cleared in favor of an explicit `left`. Size is
+    // unchanged by a move.
     const box = screen.getByTestId('postcard-qr-box');
-    expect(box).toHaveStyle({ left: '0.52in', top: '0.31in' });
+    expect(box).toHaveStyle({ left: '0.52in', top: '0.31in', width: '1.5in', height: '1.5in' });
 
     // A click right after the drag is swallowed (not treated as opening
     // the popup), matching the text-region move-handle behavior.
     await user.click(box);
     expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+    assertNoLibraryDrawer();
+  });
+
+  it('dragging the bottom-right handle resizes the QR box (top-left corner unchanged)', async () => {
+    const user = userEvent.setup();
+    stubFetch(projectFixture());
+    renderPage();
+    await settle();
+    await user.click(screen.getByRole('button', { name: /add qr code/i }));
+
+    const preview = screen.getByTestId('postcard-preview');
+    fireEvent.mouseDown(screen.getByTestId('move-handle-br-qr'), { clientX: 500, clientY: 200 });
+    fireEvent.mouseMove(preview, { clientX: 550, clientY: 230 });
+    fireEvent.mouseUp(preview);
+
+    // jsdom fallback: offsetWidth/offsetHeight (drag's starting size) are 0,
+    // so the resulting size is just the drag delta at 96px/in -- (50, 30)px
+    // -> (0.52in, 0.31in). top/left stay at the QR's default position.
+    const box = screen.getByTestId('postcard-qr-box');
+    expect(box).toHaveStyle({ top: '1.15in', right: '0.5in', width: '0.52in', height: '0.31in' });
+    assertNoLibraryDrawer();
+  });
+
+  it('clamps the QR resize to a minimum size instead of collapsing to zero', async () => {
+    const user = userEvent.setup();
+    stubFetch(projectFixture());
+    renderPage();
+    await settle();
+    await user.click(screen.getByRole('button', { name: /add qr code/i }));
+
+    const preview = screen.getByTestId('postcard-preview');
+    fireEvent.mouseDown(screen.getByTestId('move-handle-br-qr'), { clientX: 500, clientY: 200 });
+    fireEvent.mouseMove(preview, { clientX: 0, clientY: 0 });
+    fireEvent.mouseUp(preview);
+
+    const box = screen.getByTestId('postcard-qr-box');
+    expect(box).toHaveStyle({ width: '0.30in', height: '0.20in' });
     assertNoLibraryDrawer();
   });
 
@@ -388,7 +487,7 @@ describe('PostcardEdit -- QR overlay is optional, addable, deletable, and movabl
     );
 
     const preview = screen.getByTestId('postcard-preview');
-    fireEvent.mouseDown(screen.getByTestId('move-handle-bl-qr'), { clientX: 100, clientY: 50 });
+    fireEvent.mouseDown(screen.getByTestId('move-handle-tl-qr'), { clientX: 100, clientY: 50 });
     fireEvent.mouseMove(preview, { clientX: 150, clientY: 80 });
     fireEvent.mouseUp(preview);
 
@@ -406,6 +505,47 @@ describe('PostcardEdit -- QR overlay is optional, addable, deletable, and movabl
       position: { top: '0.31in', left: '0.52in', width: '1.5in', height: '1.5in' },
     });
     expect(body).not.toHaveProperty('back_qr');
+    assertNoLibraryDrawer();
+  });
+
+  it('a QR resize persists position.width/height into the PUT content JSON', async () => {
+    const user = userEvent.setup();
+    const pdfBlob = new Blob(['%PDF-1.7 fake'], { type: 'application/pdf' });
+    const fetchMock = stubFetch(projectFixture(), (url, init) => {
+      if (url === '/api/postcards/7' && init?.method === 'PUT') return { ok: true, json: async () => ({}) } as Response;
+      if (url === '/api/postcards/7/pdf' && init?.method === 'POST') return { ok: true, blob: async () => pdfBlob } as Response;
+      return undefined;
+    });
+    vi.stubGlobal('URL', { ...URL, createObjectURL: vi.fn().mockReturnValue('blob:fake-pdf-url') });
+    vi.stubGlobal('open', vi.fn());
+
+    renderPage();
+    await settle();
+    await user.click(screen.getByRole('button', { name: /add qr code/i }));
+    await user.click(screen.getByTestId('postcard-qr-box'));
+    await user.type(
+      within(screen.getByRole('dialog')).getByLabelText(/qr code url/i),
+      'https://example.org/rsvp{Enter}',
+    );
+
+    const preview = screen.getByTestId('postcard-preview');
+    fireEvent.mouseDown(screen.getByTestId('move-handle-br-qr'), { clientX: 500, clientY: 200 });
+    fireEvent.mouseMove(preview, { clientX: 550, clientY: 230 });
+    fireEvent.mouseUp(preview);
+
+    await user.click(screen.getByRole('button', { name: /generate pdf/i }));
+
+    await waitFor(() => {
+      expect(fetchMock).toHaveBeenCalledWith('/api/postcards/7', expect.objectContaining({ method: 'PUT' }));
+    });
+    const putCall = fetchMock.mock.calls.find(
+      ([url, init]) => url === '/api/postcards/7' && (init as RequestInit | undefined)?.method === 'PUT',
+    )!;
+    const body = JSON.parse((putCall[1] as RequestInit).body as string);
+    expect(body.front_qr).toEqual({
+      url: 'https://example.org/rsvp',
+      position: { top: '1.15in', right: '0.5in', width: '0.52in', height: '0.31in' },
+    });
     assertNoLibraryDrawer();
   });
 });

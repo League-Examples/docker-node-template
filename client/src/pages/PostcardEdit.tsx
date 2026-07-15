@@ -11,9 +11,9 @@ import type { ProjectDetailDTO } from './ProjectDetail/types';
  * ticket 005-009).
  *
  * The mockup's interaction mechanics (click-to-edit popup, drag-to-draw,
- * corner move handles, QR URL popup) are already fully built against stub
- * data -- this promotion swaps in the two real data seams the stakeholder
- * called out, without rebuilding anything else:
+ * corner move/resize handles, QR URL popup) are already fully built against
+ * stub data -- this promotion swaps in the two real data seams the
+ * stakeholder called out, without rebuilding anything else:
  *
  *  1. **Preview images**: sourced from whichever `Iteration` currently
  *     holds `role: 'front'`/`role: 'back'` (ticket 001/002's state model,
@@ -33,10 +33,19 @@ import type { ProjectDetailDTO } from './ProjectDetail/types';
  * **QR overlay (OOP change)**: the QR code is an optional, addable,
  * deletable, movable element per face -- NOT an always-present fixture.
  * Added via the side toolbar's "QR" button, positioned/repositioned via
- * the same corner-move-handle drag mechanism as text regions, deleted from
+ * the same corner-handle drag mechanism as text regions, deleted from
  * its own popup. Persisted as a structured `front_qr`/`back_qr` content-
  * JSON object (`{ url, position }`, `postcardRender.ts`'s
  * `PostcardQrSchema`), not the old always-on `*_extra_html` string.
+ *
+ * **Move/resize handles (OOP change)**: both text-region boxes and the QR
+ * box carry two distinct corner handles rather than two same-purpose ones.
+ * The top-left handle drags to MOVE the box (position.top/left change, size
+ * unchanged); the bottom-right handle drags to RESIZE it (the top-left
+ * corner stays put, position.width/height follow the pointer, clamped to
+ * `MIN_BOX_WIDTH_IN`/`MIN_BOX_HEIGHT_IN`). One shared drag mechanism
+ * (`handleMoveStart`/`handlePreviewMouseMove`) drives both actions for both
+ * element kinds, keyed by `moving.action`.
  *
  * **Text-region data is client-side state for the duration of one editing
  * session** -- there is no `GET` of a previously-saved
@@ -95,11 +104,19 @@ interface DrawRect {
 
 const DEFAULT_FONT: PostcardRegionFont = { family: 'Arial, sans-serif', size: '14px' };
 
+/** Minimum box size a resize handle can shrink a region or QR overlay to --
+ * matches the minimum a freshly drawn box already gets in
+ * `createRegionFromRect`, so a resized box can never end up smaller than
+ * one you could draw from scratch. */
+const MIN_BOX_WIDTH_IN = 0.3;
+const MIN_BOX_HEIGHT_IN = 0.2;
+
 /** Default position for a newly-added QR overlay -- identical starting
- * geometry on both faces until moved (long-click-drag, mirroring the
- * text-region corner move handles below). QR presence/url/position are a
- * structured, optional-per-face `front_qr`/`back_qr` content-JSON field
- * (`postcardRender.ts`'s `PostcardQrSchema`) rather than the old
+ * geometry on both faces until moved (long-click-drag on its top-left
+ * handle, mirroring the text-region corner handles below). QR
+ * presence/url/position are a structured, optional-per-face `front_qr`/
+ * `back_qr` content-JSON field (`postcardRender.ts`'s `PostcardQrSchema`)
+ * rather than the old
  * always-on `*_extra_html` overlay -- OOP change: the QR needed to be
  * addable/deletable/movable like any other element, which an opaque HTML
  * string couldn't represent cleanly. Actual QR *image* generation is still
@@ -115,7 +132,7 @@ const QR_OVERLAY_POSITION: PostcardRegionPosition = {
 
 /** A face's optional QR overlay: present iff the stakeholder added one via
  * the toolbar's "Add QR" button (`null` = no QR on this face). `position`
- * moves independently via the same corner-move-handle drag mechanism
+ * moves/resizes independently via the same corner-handle drag mechanism
  * `PostcardRegion`s use. Maps 1:1 to the content JSON's `front_qr`/
  * `back_qr` shape. */
 export interface PostcardQr {
@@ -187,16 +204,23 @@ export default function PostcardEdit() {
   const [drawRect, setDrawRect] = useState<DrawRect | null>(null);
   const [namingRect, setNamingRect] = useState<DrawRect | null>(null);
   const [draftName, setDraftName] = useState('');
-  // Move-a-box state: which element (a text region or the current face's QR
-  // overlay) is being dragged by a corner handle -- one mechanism shared by
-  // both element kinds (see `handleMoveStart`/`handlePreviewMouseMove`).
+  // Move/resize-a-box state: which element (a text region or the current
+  // face's QR overlay) is being dragged by a corner handle, and which
+  // action that corner performs -- one mechanism shared by both element
+  // kinds and both actions (see `handleMoveStart`/`handlePreviewMouseMove`).
+  // Top-left handle -> 'move' (repositions, size unchanged); bottom-right
+  // handle -> 'resize' (top-left corner fixed, width/height follow the
+  // pointer).
   const [moving, setMoving] = useState<{
     kind: 'region' | 'qr';
+    action: 'move' | 'resize';
     name: string;
     startX: number;
     startY: number;
     startLeft: number;
     startTop: number;
+    startWidth: number;
+    startHeight: number;
   } | null>(null);
   const movedRef = useRef(false);
 
@@ -290,20 +314,25 @@ export default function PostcardEdit() {
   /** Starts a corner-handle drag for either a text region or the current
    * face's QR overlay -- the SAME mechanism for both (`kind` just picks
    * which state bucket `handlePreviewMouseMove` below writes back into).
-   * `name` is the region's `name` for `kind: 'region'`, or the active
-   * `side` for `kind: 'qr'` (a face has at most one QR). */
-  function handleMoveStart(event: React.MouseEvent, kind: 'region' | 'qr', name: string) {
+   * `action` picks what the drag does: the top-left handle passes 'move',
+   * the bottom-right handle passes 'resize'. `name` is the region's `name`
+   * for `kind: 'region'`, or the active `side` for `kind: 'qr'` (a face has
+   * at most one QR). */
+  function handleMoveStart(event: React.MouseEvent, kind: 'region' | 'qr', action: 'move' | 'resize', name: string) {
     event.stopPropagation();
     const box = (event.currentTarget as HTMLElement).parentElement;
     if (!box) return;
     const p = previewPoint(event);
     setMoving({
       kind,
+      action,
       name,
       startX: p.x,
       startY: p.y,
       startLeft: box.offsetLeft,
       startTop: box.offsetTop,
+      startWidth: box.offsetWidth,
+      startHeight: box.offsetHeight,
     });
   }
 
@@ -317,29 +346,55 @@ export default function PostcardEdit() {
     if (moving) {
       const p = previewPoint(event);
       const ppi = pxPerInch();
-      const left = (moving.startLeft + (p.x - moving.startX)) / ppi;
-      const top = (moving.startTop + (p.y - moving.startY)) / ppi;
       movedRef.current = true;
-      const newLeft = `${Math.max(left, 0).toFixed(2)}in`;
-      const newTop = `${Math.max(top, 0).toFixed(2)}in`;
-      if (moving.kind === 'region') {
-        setRegionsBySide((prev) => ({
-          ...prev,
-          [side]: prev[side].map((r) =>
-            r.name === moving.name
-              ? { ...r, position: { ...r.position, right: undefined, left: newLeft, top: newTop } }
-              : r,
-          ),
-        }));
-      } else {
-        setQrBySide((prev) => {
-          const current = prev[side];
-          if (!current) return prev;
-          return {
+      if (moving.action === 'move') {
+        const left = (moving.startLeft + (p.x - moving.startX)) / ppi;
+        const top = (moving.startTop + (p.y - moving.startY)) / ppi;
+        const newLeft = `${Math.max(left, 0).toFixed(2)}in`;
+        const newTop = `${Math.max(top, 0).toFixed(2)}in`;
+        if (moving.kind === 'region') {
+          setRegionsBySide((prev) => ({
             ...prev,
-            [side]: { ...current, position: { ...current.position, right: undefined, left: newLeft, top: newTop } },
-          };
-        });
+            [side]: prev[side].map((r) =>
+              r.name === moving.name
+                ? { ...r, position: { ...r.position, right: undefined, left: newLeft, top: newTop } }
+                : r,
+            ),
+          }));
+        } else {
+          setQrBySide((prev) => {
+            const current = prev[side];
+            if (!current) return prev;
+            return {
+              ...prev,
+              [side]: { ...current, position: { ...current.position, right: undefined, left: newLeft, top: newTop } },
+            };
+          });
+        }
+      } else {
+        // Resize: the top-left corner stays put; width/height follow the
+        // pointer, clamped so the box can't collapse to zero.
+        const widthIn = Math.max((moving.startWidth + (p.x - moving.startX)) / ppi, MIN_BOX_WIDTH_IN);
+        const heightIn = Math.max((moving.startHeight + (p.y - moving.startY)) / ppi, MIN_BOX_HEIGHT_IN);
+        const newWidth = `${widthIn.toFixed(2)}in`;
+        const newHeight = `${heightIn.toFixed(2)}in`;
+        if (moving.kind === 'region') {
+          setRegionsBySide((prev) => ({
+            ...prev,
+            [side]: prev[side].map((r) =>
+              r.name === moving.name ? { ...r, position: { ...r.position, width: newWidth, height: newHeight } } : r,
+            ),
+          }));
+        } else {
+          setQrBySide((prev) => {
+            const current = prev[side];
+            if (!current) return prev;
+            return {
+              ...prev,
+              [side]: { ...current, position: { ...current.position, width: newWidth, height: newHeight } },
+            };
+          });
+        }
       }
       return;
     }
@@ -472,8 +527,9 @@ export default function PostcardEdit() {
                 <h1 className="text-xl font-semibold text-slate-800">Text editor — {project.title}</h1>
                 <p className="text-sm text-slate-500">
                   Drag on the postcard to draw a new text box. Click a box to
-                  edit or delete it; drag a corner handle to move it. Use the
-                  QR tool to add a scannable code to the current face.
+                  edit or delete it; drag its top-left handle to move it, or
+                  its bottom-right handle to resize it. Use the QR tool to
+                  add a scannable code to the current face.
                 </p>
               </div>
             </div>
@@ -576,16 +632,18 @@ export default function PostcardEdit() {
               >
                 <span className="block font-semibold text-indigo-700">{region.label}</span>
                 <span data-testid={`postcard-region-text-${region.name}`}>{regionText[region.name]}</span>
-                {/* Corner grab squares: drag to move the box. */}
+                {/* Two distinct corner handles: top-left drags to move the
+                    box, bottom-right drags to resize it (top-left corner
+                    stays fixed, width/height follow the pointer). */}
                 <span
-                  data-testid={`move-handle-bl-${region.name}`}
-                  onMouseDown={(event) => handleMoveStart(event, 'region', region.name)}
-                  className="absolute -bottom-1 -left-1 h-2.5 w-2.5 cursor-move rounded-sm border border-white bg-indigo-600"
+                  data-testid={`move-handle-tl-${region.name}`}
+                  onMouseDown={(event) => handleMoveStart(event, 'region', 'move', region.name)}
+                  className="absolute -left-1 -top-1 h-2.5 w-2.5 cursor-move rounded-sm border border-white bg-indigo-600"
                 />
                 <span
-                  data-testid={`move-handle-tr-${region.name}`}
-                  onMouseDown={(event) => handleMoveStart(event, 'region', region.name)}
-                  className="absolute -right-1 -top-1 h-2.5 w-2.5 cursor-move rounded-sm border border-white bg-indigo-600"
+                  data-testid={`move-handle-br-${region.name}`}
+                  onMouseDown={(event) => handleMoveStart(event, 'region', 'resize', region.name)}
+                  className="absolute -bottom-1 -right-1 h-2.5 w-2.5 cursor-nwse-resize rounded-sm border border-white bg-indigo-600"
                 />
               </button>
             ))}
@@ -604,8 +662,9 @@ export default function PostcardEdit() {
             )}
 
             {/* QR overlay -- present only when this face has one (AC1: no
-                QR by default). Click opens its popup; drag a corner handle
-                to move it, mirroring the text-region move handles above. */}
+                QR by default). Click opens its popup; drag its top-left
+                handle to move it or its bottom-right handle to resize it,
+                mirroring the text-region handles above. */}
             {qr && (
               <button
                 type="button"
@@ -632,16 +691,17 @@ export default function PostcardEdit() {
                 <span data-testid="postcard-qr-url" className="mt-0.5 block max-w-full truncate font-normal">
                   {qr.url}
                 </span>
-                {/* Corner grab squares: same drag mechanism as text regions. */}
+                {/* Same two-handle mechanism as text regions: top-left
+                    moves, bottom-right resizes. */}
                 <span
-                  data-testid="move-handle-bl-qr"
-                  onMouseDown={(event) => handleMoveStart(event, 'qr', side)}
-                  className="absolute -bottom-1 -left-1 h-2.5 w-2.5 cursor-move rounded-sm border border-white bg-amber-600"
+                  data-testid="move-handle-tl-qr"
+                  onMouseDown={(event) => handleMoveStart(event, 'qr', 'move', side)}
+                  className="absolute -left-1 -top-1 h-2.5 w-2.5 cursor-move rounded-sm border border-white bg-amber-600"
                 />
                 <span
-                  data-testid="move-handle-tr-qr"
-                  onMouseDown={(event) => handleMoveStart(event, 'qr', side)}
-                  className="absolute -right-1 -top-1 h-2.5 w-2.5 cursor-move rounded-sm border border-white bg-amber-600"
+                  data-testid="move-handle-br-qr"
+                  onMouseDown={(event) => handleMoveStart(event, 'qr', 'resize', side)}
+                  className="absolute -bottom-1 -right-1 h-2.5 w-2.5 cursor-nwse-resize rounded-sm border border-white bg-amber-600"
                 />
               </button>
             )}
