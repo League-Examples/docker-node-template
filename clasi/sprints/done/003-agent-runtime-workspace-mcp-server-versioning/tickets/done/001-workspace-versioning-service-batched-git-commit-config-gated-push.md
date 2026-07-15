@@ -1,10 +1,11 @@
 ---
-id: "001"
-title: "Workspace Versioning Service: batched git commit + config-gated push"
-status: open
-use-cases: [SUC-005]
+id: '001'
+title: 'Workspace Versioning Service: batched git commit + config-gated push'
+status: done
+use-cases:
+- SUC-005
 depends-on: []
-github-issue: ""
+github-issue: ''
 issue: workspace-git-versioning.md
 completes_issue: true
 ---
@@ -33,32 +34,32 @@ one after a successful write.
 
 ## Acceptance Criteria
 
-- [ ] `server/src/services/versioning.ts` exists, exporting a function
+- [x] `server/src/services/versioning.ts` exists, exporting a function
       that stages and commits changed paths under `workspace/` plus a
       fresh JSON export snapshot of `KnowledgeEntry`/`Collection` rows
       into `workspace/exports/`, as one git commit.
-- [ ] The live `.db` file is never staged or committed by this service.
-- [ ] `WORKSPACE_GIT_ROOT` controls the git working-tree root the service
+- [x] The live `.db` file is never staged or committed by this service.
+- [x] `WORKSPACE_GIT_ROOT` controls the git working-tree root the service
       operates against; defaults to the app repo root (so `workspace/`
       commits land in the same repo/history as the rest of the app, per
       `architecture-update.md` R1).
-- [ ] `WORKSPACE_GIT_REMOTE` controls whether a push is attempted after
+- [x] `WORKSPACE_GIT_REMOTE` controls whether a push is attempted after
       commit; unset (this sprint's default) means local-commit-only, no
       push attempted, no remote required to exist.
-- [ ] When `WORKSPACE_GIT_REMOTE` is set (test-only, pointed at a
+- [x] When `WORKSPACE_GIT_REMOTE` is set (test-only, pointed at a
       throwaway local bare repo) and the commit succeeds, a push is
       attempted to that remote.
-- [ ] A push failure (simulated: invalid/unreachable remote) does not
+- [x] A push failure (simulated: invalid/unreachable remote) does not
       raise past the caller -- the local commit stands, and the failure
       is surfaced as a non-fatal result (e.g. a returned `pushed: false`
       plus a logged warning), not a thrown exception (architecture-001
       UC-012 E1).
-- [ ] No GitHub remote or repository is created by this ticket --
+- [x] No GitHub remote or repository is created by this ticket --
       `WORKSPACE_GIT_REMOTE` is read from config only, never provisioned.
-- [ ] `WORKSPACE_GIT_ROOT` / `WORKSPACE_GIT_REMOTE` are added to
+- [x] `WORKSPACE_GIT_ROOT` / `WORKSPACE_GIT_REMOTE` are added to
       `config/dev/public.env` and `config/prod/public.env` (non-secret,
       both optional/empty-default).
-- [ ] Two writes staged before one call to the commit function produce
+- [x] Two writes staged before one call to the commit function produce
       exactly one git commit -- the batching contract tickets 002/003
       rely on.
 
@@ -118,3 +119,23 @@ reveals a config-shape change.
 - **New tests to write**: `tests/server/versioning.test.ts` per Testing
   Plan above.
 - **Verification command**: `npm test`
+
+### Results
+
+`npm test` exit 0: **171 server** (158 baseline + 13 new in
+`tests/server/versioning.test.ts`) / **94 client** (unchanged) -- no
+regressions. All 13 new tests operate against per-test scratch git repos
+under `os.tmpdir()` (`WorkspaceVersioningService`'s `gitRoot`/`exportsDir`
+options); the real app repo's git history and `server/workspace/` tree
+were verified untouched after the full run (`git log`, `git status`,
+`find server/workspace -newer ...`). Coverage: batching (two writes -> one
+commit; a second `commitTurn` -> a second, separate commit; no pending
+changes -> `committed: false`, no commit created), live `.db`/`.db-wal`
+paths silently dropped from `recordChange` (never staged, confirmed via
+`git status`'s `staged`/`not_added`), `exportKnowledgeSnapshot` writing a
+JSON snapshot and joining the same commit as recorded changes, no-push
+when `WORKSPACE_GIT_REMOTE` is unset, a successful push to a throwaway
+local bare repo (`git init --bare`) when the remote is configured, a push
+failure to an invalid/unreachable remote path returning `pushed: false` +
+`pushError` without throwing (and the local commit still standing), and
+`WORKSPACE_GIT_ROOT`/`WORKSPACE_GIT_REMOTE` config-read defaults/overrides.

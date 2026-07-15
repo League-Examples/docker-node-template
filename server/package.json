@@ -18,11 +18,13 @@
     "seed": "tsx prisma/seed.ts"
   },
   "dependencies": {
+    "@anthropic-ai/sdk": "^0.111.0",
     "@aws-sdk/client-s3": "^3.1007.0",
     "@modelcontextprotocol/sdk": "^1.27.1",
     "@prisma/adapter-better-sqlite3": "^7.5.0",
     "@prisma/client": "^7.4.2",
     "better-sqlite3": "^12.8.0",
+    "diff": "^8.0.4",
     "dotenv": "^17.3.1",
     "express": "^4.21.2",
     "express-session": "^1.19.0",
@@ -30,7 +32,9 @@
     "passport-google-oauth20": "^2.0.0",
     "pino": "^9.6.0",
     "pino-http": "^10.4.0",
-    "sqlite-vec": "^0.1.9"
+    "simple-git": "^3.36.0",
+    "sqlite-vec": "^0.1.9",
+    "zod": "^4.3.6"
   },
   "devDependencies": {
     "@types/better-sqlite3": "^7.6.13",
