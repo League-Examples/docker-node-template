@@ -7,6 +7,7 @@ import {
   removeReference,
   setIterationState,
   removeIteration,
+  removeProject,
   VersionConflictError,
 } from '../agent-mcp/catalogTools';
 import { LockConflictError } from '../agent-mcp/locks';
@@ -320,6 +321,77 @@ projectsRouter.delete('/projects/:id/iterations/:iterId', requireAuth, async (re
   let result;
   try {
     result = await removeIteration({ iterationId: iterId });
+  } catch (err) {
+    res.status(statusForToolError(err)).json({ error: toolErrorMessage(err) });
+    return;
+  }
+
+  res.status(200).json(result);
+});
+
+/** OOP follow-up (2026-07-15): `ProjectList.tsx`'s bulk-select action bar --
+ * archive (My/All views) and restore (Archive view) are the same PATCH,
+ * differing only in the `status` value the client sends. Delegates to
+ * `create_project`'s update path (its `id`+`version` optimistic-lock branch
+ * already supports a bare `status` change) rather than a new tool function --
+ * no other project fields are involved here. Reads the current row first (a
+ * read, not a write, matching every other existing-row check in this file)
+ * both to 404 on a missing project and to supply the `version`
+ * `create_project`'s update path requires; a concurrent update losing that
+ * race surfaces as `create_project`'s own `VersionConflictError` (409), not
+ * a special case here. */
+projectsRouter.patch('/projects/:id', requireAuth, async (req, res) => {
+  const id = Number.parseInt(String(req.params.id), 10);
+  if (Number.isNaN(id)) {
+    res.status(400).json({ error: 'Invalid project id' });
+    return;
+  }
+
+  const status = req.body?.status;
+  if (status !== 'active' && status !== 'archived') {
+    res.status(400).json({ error: "status must be 'active' or 'archived'" });
+    return;
+  }
+
+  const existing = await defaultPrisma.project.findUnique({ where: { id } });
+  if (!existing) {
+    res.status(404).json({ error: `No project with id ${id}` });
+    return;
+  }
+
+  let updated;
+  try {
+    updated = await createProject({ id, version: existing.version, status });
+  } catch (err) {
+    res.status(statusForToolError(err)).json({ error: toolErrorMessage(err) });
+    return;
+  }
+
+  res.status(200).json(updated);
+});
+
+/** OOP follow-up (2026-07-15): `ProjectList.tsx`'s bulk-select action bar's
+ * Delete action, gated behind a client-side confirmation popup before this
+ * ever fires. Delegates to `remove_project` (R1), which deletes the
+ * `Project` row's dependent `ChatMessage`/`Reference`/`Iteration` rows
+ * first, then the `Project` row itself, then best-effort removes the
+ * project's workspace directory. */
+projectsRouter.delete('/projects/:id', requireAuth, async (req, res) => {
+  const id = Number.parseInt(String(req.params.id), 10);
+  if (Number.isNaN(id)) {
+    res.status(400).json({ error: 'Invalid project id' });
+    return;
+  }
+
+  const existing = await defaultPrisma.project.findUnique({ where: { id } });
+  if (!existing) {
+    res.status(404).json({ error: `No project with id ${id}` });
+    return;
+  }
+
+  let result;
+  try {
+    result = await removeProject({ projectId: id });
   } catch (err) {
     res.status(statusForToolError(err)).json({ error: toolErrorMessage(err) });
     return;

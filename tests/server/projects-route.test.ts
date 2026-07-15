@@ -36,6 +36,7 @@ const mockAddReference = vi.hoisted(() => vi.fn());
 const mockRemoveReference = vi.hoisted(() => vi.fn());
 const mockSetIterationState = vi.hoisted(() => vi.fn());
 const mockRemoveIteration = vi.hoisted(() => vi.fn());
+const mockRemoveProject = vi.hoisted(() => vi.fn());
 
 vi.mock('../../server/src/agent-mcp/catalogTools', async (importOriginal) => {
   const actual = await importOriginal<typeof import('../../server/src/agent-mcp/catalogTools')>();
@@ -60,6 +61,10 @@ vi.mock('../../server/src/agent-mcp/catalogTools', async (importOriginal) => {
     removeIteration: (...args: Parameters<typeof actual.removeIteration>) => {
       mockRemoveIteration(...args);
       return actual.removeIteration(...args);
+    },
+    removeProject: (...args: Parameters<typeof actual.removeProject>) => {
+      mockRemoveProject(...args);
+      return actual.removeProject(...args);
     },
   };
 });
@@ -179,6 +184,7 @@ beforeEach(() => {
   mockRemoveReference.mockClear();
   mockSetIterationState.mockClear();
   mockRemoveIteration.mockClear();
+  mockRemoveProject.mockClear();
 });
 
 async function loginAsUserA() {
@@ -583,6 +589,103 @@ describe('DELETE /api/projects/:id/iterations/:iterId -- remove_iteration (OOP f
 
   it('rejects an unauthenticated request with 401', async () => {
     const res = await request(app).delete('/api/projects/1/iterations/1');
+    expect(res.status).toBe(401);
+  });
+});
+
+describe('PATCH /api/projects/:id -- archive/restore (OOP follow-up, 2026-07-15)', () => {
+  it('archives an active project through create_project, not raw Prisma', async () => {
+    const project = await makeProject(userAId, `${marker}-patch-archive`);
+    const agent = await loginAsUserA();
+
+    const res = await agent.patch(`/api/projects/${project.id}`).send({ status: 'archived' });
+
+    expect(res.status).toBe(200);
+    expect(res.body.status).toBe('archived');
+    expect(mockCreateProject).toHaveBeenCalledTimes(1);
+    expect(mockCreateProject.mock.calls[0][0]).toMatchObject({ id: project.id, status: 'archived' });
+
+    const persisted = await prisma.project.findUnique({ where: { id: project.id } });
+    expect(persisted?.status).toBe('archived');
+  });
+
+  it('restores an archived project back to active', async () => {
+    const project = await makeProject(userAId, `${marker}-patch-restore`, 'archived');
+    const agent = await loginAsUserA();
+
+    const res = await agent.patch(`/api/projects/${project.id}`).send({ status: 'active' });
+
+    expect(res.status).toBe(200);
+    expect(res.body.status).toBe('active');
+
+    const persisted = await prisma.project.findUnique({ where: { id: project.id } });
+    expect(persisted?.status).toBe('active');
+  });
+
+  it('rejects an invalid status value with 400, without calling create_project', async () => {
+    const project = await makeProject(userAId, `${marker}-patch-bad-status`);
+    const agent = await loginAsUserA();
+
+    const res = await agent.patch(`/api/projects/${project.id}`).send({ status: 'deleted' });
+
+    expect(res.status).toBe(400);
+    expect(mockCreateProject).not.toHaveBeenCalled();
+  });
+
+  it('returns 404 for a project that does not exist, without calling create_project', async () => {
+    const agent = await loginAsUserA();
+    const res = await agent.patch('/api/projects/999999999').send({ status: 'archived' });
+    expect(res.status).toBe(404);
+    expect(mockCreateProject).not.toHaveBeenCalled();
+  });
+
+  it('returns 400 for a non-numeric project id', async () => {
+    const agent = await loginAsUserA();
+    const res = await agent.patch('/api/projects/not-a-number').send({ status: 'archived' });
+    expect(res.status).toBe(400);
+    expect(mockCreateProject).not.toHaveBeenCalled();
+  });
+
+  it('rejects an unauthenticated request with 401', async () => {
+    const project = await makeProject(userAId, `${marker}-patch-unauth`);
+    const res = await request(app).patch(`/api/projects/${project.id}`).send({ status: 'archived' });
+    expect(res.status).toBe(401);
+  });
+});
+
+describe('DELETE /api/projects/:id -- bulk delete (OOP follow-up, 2026-07-15)', () => {
+  it('deletes the Project row through the remove_project tool, not raw Prisma', async () => {
+    const project = await makeProject(userAId, `${marker}-delete-project`);
+    const iter = await makeIteration(project.id, `projects/${project.id}/iterations/a.png`, 1);
+    const agent = await loginAsUserA();
+
+    const res = await agent.delete(`/api/projects/${project.id}`);
+
+    expect(res.status).toBe(200);
+    expect(res.body).toEqual({ id: project.id, deleted: true });
+    expect(mockRemoveProject).toHaveBeenCalledTimes(1);
+    expect(mockRemoveProject.mock.calls[0][0]).toMatchObject({ projectId: project.id });
+
+    expect(await prisma.project.findUnique({ where: { id: project.id } })).toBeNull();
+    expect(await prisma.iteration.findUnique({ where: { id: iter.id } })).toBeNull();
+  });
+
+  it('returns 404 for a project that does not exist, without calling remove_project', async () => {
+    const agent = await loginAsUserA();
+    const res = await agent.delete('/api/projects/999999999');
+    expect(res.status).toBe(404);
+    expect(mockRemoveProject).not.toHaveBeenCalled();
+  });
+
+  it('returns 400 for a non-numeric project id', async () => {
+    const agent = await loginAsUserA();
+    const res = await agent.delete('/api/projects/not-a-number');
+    expect(res.status).toBe(400);
+    expect(mockRemoveProject).not.toHaveBeenCalled();
+  });
+
+  it('rejects an unauthenticated request with 401', async () => {
+    const res = await request(app).delete('/api/projects/1');
     expect(res.status).toBe(401);
   });
 });

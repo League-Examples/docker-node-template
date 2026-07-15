@@ -30,6 +30,7 @@ import {
   removeReference,
   setIterationState,
   removeIteration,
+  removeProject,
   searchCatalog,
   registerCatalogTools,
   VersionConflictError,
@@ -160,7 +161,7 @@ async function makeProject(title: string) {
 }
 
 describe('registerCatalogTools / createWorkspaceMcpServer -- tool surface', () => {
-  it('registers exactly the twelve catalog tools (seven from ticket 003 + four from ticket 005-002 + remove_iteration OOP follow-up) alongside the four fs tools -- no other tools', async () => {
+  it('registers exactly the thirteen catalog tools (seven from ticket 003 + four from ticket 005-002 + remove_iteration/remove_project OOP follow-ups) alongside the four fs tools -- no other tools', async () => {
     const server = createWorkspaceMcpServer();
     const names = Object.keys((server as any)._registeredTools ?? {}).sort();
     expect(names).toEqual(
@@ -180,6 +181,7 @@ describe('registerCatalogTools / createWorkspaceMcpServer -- tool surface', () =
         'remove_reference',
         'set_iteration_state',
         'remove_iteration',
+        'remove_project',
         'search_catalog',
       ].sort()
     );
@@ -203,6 +205,7 @@ describe('registerCatalogTools / createWorkspaceMcpServer -- tool surface', () =
         'remove_reference',
         'set_iteration_state',
         'remove_iteration',
+        'remove_project',
         'search_catalog',
       ].sort()
     );
@@ -650,6 +653,71 @@ describe('remove_iteration', () => {
     );
 
     await removeIteration({ iterationId: iteration.id }, { versioning: spyVersioning() });
+
+    const count = await prisma.lock.count({
+      where: { resourceType: 'directory', resourceKey: `projects/${project.id}` },
+    });
+    expect(count).toBe(0); // released after completion
+  });
+});
+
+describe('remove_project', () => {
+  async function makeAssetAndReference(project: { id: number }, pathSuffix: string) {
+    const collection = await prisma.collection.create({
+      data: { directoryId: assetsDirId, name: `${marker}-remove-project-collection`, kind: 'stock-art' },
+    });
+    cleanup.collectionIds.push(collection.id);
+    const asset = await prisma.asset.create({
+      data: { collectionId: collection.id, path: `${marker}/assets/${pathSuffix}`, hash: `hash-${pathSuffix}`, mtime: new Date() },
+    });
+    cleanup.assetIds.push(asset.id);
+    const reference = await prisma.reference.create({ data: { projectId: project.id, assetId: asset.id, role: 'style' } });
+    return reference;
+  }
+
+  it('deletes the Project row and its dependent Iteration/Reference/ChatMessage rows', async () => {
+    const project = await makeProject(`${marker}-remove-project`);
+    const iteration = await createIteration(
+      { projectId: project.id, imagePath: `${marker}/remove-project-iter.png`, promptUsed: 'p' },
+      { versioning: spyVersioning() }
+    );
+    const reference = await makeAssetAndReference(project, 'remove-project-ref.png');
+    const chatMessage = await prisma.chatMessage.create({
+      data: { projectId: project.id, role: 'user', content: 'hello' },
+    });
+
+    const versioning = spyVersioning();
+    const result = await removeProject({ projectId: project.id }, { versioning });
+    expect(result).toEqual({ id: project.id, deleted: true });
+    expect(versioning.calls).toHaveLength(1);
+
+    expect(await prisma.project.findUnique({ where: { id: project.id } })).toBeNull();
+    expect(await prisma.iteration.findUnique({ where: { id: iteration.id } })).toBeNull();
+    expect(await prisma.reference.findUnique({ where: { id: reference.id } })).toBeNull();
+    expect(await prisma.chatMessage.findUnique({ where: { id: chatMessage.id } })).toBeNull();
+  });
+
+  it('best-effort removes the project workspace directory', async () => {
+    const project = await makeProject(`${marker}-remove-project-dir`);
+    const dirPath = resolveWorkspacePath(`projects/${project.id}`);
+    await fs.mkdir(dirPath, { recursive: true });
+    await fs.writeFile(path.join(dirPath, 'marker.txt'), 'x');
+
+    await removeProject({ projectId: project.id }, { versioning: spyVersioning() });
+
+    await expect(fs.access(dirPath)).rejects.toThrow();
+  });
+
+  it('rejects an id with no matching Project', async () => {
+    await expect(removeProject({ projectId: -1 }, { versioning: spyVersioning() })).rejects.toThrow(
+      /no Project with id/
+    );
+  });
+
+  it('acquires and releases a Lock row around the delete', async () => {
+    const project = await makeProject(`${marker}-remove-project-lock`);
+
+    await removeProject({ projectId: project.id }, { versioning: spyVersioning() });
 
     const count = await prisma.lock.count({
       where: { resourceType: 'directory', resourceKey: `projects/${project.id}` },

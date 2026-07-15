@@ -25,6 +25,20 @@ import { Link, useNavigate } from 'react-router-dom';
  * new project's first `Reference` server-side in the same round trip, so
  * navigating straight to `/projects/:id` already shows it in the
  * reference strip (ticket 010) with no further action.
+ *
+ * **Bulk select/archive/delete** (OOP follow-up, 2026-07-15): each project
+ * card in the My/All/Archive views (never Library, which shows assets, not
+ * projects) carries a selection checkbox rendered outside the card's own
+ * `Link` -- clicking it stops propagation and never bubbles into the
+ * `Link`, so it never triggers card navigation. Selecting one or more
+ * projects shows a sticky action bar: My/All offer Archive, Archive offers
+ * Restore (both a `PATCH /api/projects/:id` per selected id, delegating
+ * server-side to `create_project`'s update path), and every view offers
+ * Delete (`DELETE /api/projects/:id` per selected id, delegating to the new
+ * `remove_project` tool) gated behind a confirmation step -- mirroring
+ * `OutputPane.tsx`'s per-row delete-confirmation popup, just scoped to the
+ * whole selection instead of one row. Any bulk action clears the selection
+ * and refetches the current view afterward so the list reflects the change.
  */
 
 type ProjectView = 'mine' | 'all' | 'library' | 'archive';
@@ -174,6 +188,15 @@ export default function ProjectList() {
 
   const [creating, setCreating] = useState(false);
 
+  // Bulk select/archive/delete (OOP follow-up, 2026-07-15) -- see module
+  // header. Selection is view-scoped: switching views clears it, since a
+  // project selected in one view's list has no meaning once that list is
+  // gone.
+  const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set());
+  const [confirmDeleteOpen, setConfirmDeleteOpen] = useState(false);
+  const [bulkBusy, setBulkBusy] = useState(false);
+  const [bulkError, setBulkError] = useState('');
+
   const loadProjects = useCallback(async (activeView: Exclude<ProjectView, 'library'>) => {
     setProjectsLoading(true);
     setProjectsError('');
@@ -213,6 +236,72 @@ export default function ProjectList() {
       void loadProjects(view);
     }
   }, [view, loadProjects, loadLibrary]);
+
+  useEffect(() => {
+    setSelectedIds(new Set());
+    setConfirmDeleteOpen(false);
+    setBulkError('');
+  }, [view]);
+
+  function toggleSelected(projectId: number) {
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(projectId)) {
+        next.delete(projectId);
+      } else {
+        next.add(projectId);
+      }
+      return next;
+    });
+  }
+
+  /** Fires each selected id's request in parallel, then -- only if every
+   * one succeeded -- clears the selection and refetches the current view.
+   * `view` is narrowed to non-`'library'` by the `view === 'library'`
+   * guard at each caller (the action bar itself only renders outside the
+   * Library view, so this is never actually reached with `view ===
+   * 'library'`, but the guard keeps `loadProjects`'s parameter type
+   * honest). */
+  async function runBulkAction(action: (projectId: number) => Promise<Response>, failureMessage: string) {
+    if (view === 'library') return;
+    setBulkBusy(true);
+    setBulkError('');
+    try {
+      const results = await Promise.all(Array.from(selectedIds).map(action));
+      if (results.some((res) => !res.ok)) throw new Error(failureMessage);
+      setSelectedIds(new Set());
+      setConfirmDeleteOpen(false);
+      await loadProjects(view);
+    } catch (err) {
+      setBulkError(err instanceof Error ? err.message : failureMessage);
+    } finally {
+      setBulkBusy(false);
+    }
+  }
+
+  function patchStatus(status: 'active' | 'archived') {
+    return (projectId: number) =>
+      fetch(`/api/projects/${projectId}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ status }),
+      });
+  }
+
+  async function handleBulkArchive() {
+    await runBulkAction(patchStatus('archived'), 'Failed to archive one or more projects');
+  }
+
+  async function handleBulkRestore() {
+    await runBulkAction(patchStatus('active'), 'Failed to restore one or more projects');
+  }
+
+  async function handleBulkDeleteConfirmed() {
+    await runBulkAction(
+      (projectId) => fetch(`/api/projects/${projectId}`, { method: 'DELETE' }),
+      'Failed to delete one or more projects',
+    );
+  }
 
   async function handleNewProject() {
     setCreating(true);
@@ -296,6 +385,82 @@ export default function ProjectList() {
           ))}
         </div>
 
+        {view !== 'library' && selectedIds.size > 0 && (
+          <div
+            data-testid="bulk-action-bar"
+            className="sticky top-0 z-10 mb-4 flex flex-wrap items-center gap-3 rounded border border-indigo-200 bg-indigo-50 px-4 py-2"
+          >
+            {confirmDeleteOpen ? (
+              <>
+                <p className="text-sm font-medium text-slate-700">
+                  Delete {selectedIds.size} project{selectedIds.size === 1 ? '' : 's'}? This can&apos;t be undone.
+                </p>
+                <div className="ml-auto flex items-center gap-2">
+                  <button
+                    type="button"
+                    aria-label="Confirm delete selected projects"
+                    disabled={bulkBusy}
+                    onClick={() => void handleBulkDeleteConfirmed()}
+                    className="rounded bg-red-600 px-3 py-1.5 text-sm font-semibold text-white hover:bg-red-700 disabled:opacity-60"
+                  >
+                    Delete
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setConfirmDeleteOpen(false)}
+                    className="rounded border border-slate-300 px-3 py-1.5 text-sm text-slate-600 hover:bg-slate-50"
+                  >
+                    Cancel
+                  </button>
+                </div>
+              </>
+            ) : (
+              <>
+                <p className="text-sm font-medium text-slate-700">{selectedIds.size} selected</p>
+                <div className="ml-auto flex items-center gap-2">
+                  {view === 'archive' ? (
+                    <button
+                      type="button"
+                      aria-label="Restore selected projects"
+                      disabled={bulkBusy}
+                      onClick={() => void handleBulkRestore()}
+                      className="rounded border border-slate-300 px-3 py-1.5 text-sm font-semibold text-slate-600 hover:bg-slate-50 disabled:opacity-60"
+                    >
+                      Restore
+                    </button>
+                  ) : (
+                    <button
+                      type="button"
+                      aria-label="Archive selected projects"
+                      disabled={bulkBusy}
+                      onClick={() => void handleBulkArchive()}
+                      className="rounded border border-slate-300 px-3 py-1.5 text-sm font-semibold text-slate-600 hover:bg-slate-50 disabled:opacity-60"
+                    >
+                      Archive
+                    </button>
+                  )}
+                  <button
+                    type="button"
+                    aria-label="Delete selected projects"
+                    onClick={() => setConfirmDeleteOpen(true)}
+                    className="rounded border border-red-300 px-3 py-1.5 text-sm font-semibold text-red-600 hover:bg-red-50"
+                  >
+                    Delete
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setSelectedIds(new Set())}
+                    className="rounded px-3 py-1.5 text-sm text-slate-500 hover:bg-white"
+                  >
+                    Clear
+                  </button>
+                </div>
+              </>
+            )}
+            {bulkError && <p className="w-full text-xs text-red-600">{bulkError}</p>}
+          </div>
+        )}
+
         {view === 'library' ? (
           <div>
             <p className="mb-3 text-sm text-slate-500">
@@ -352,7 +517,25 @@ export default function ProjectList() {
               const heroIteration = selectHeroIteration(project.iterations ?? []);
               const kindLabel = projectKindLabel(project.detailsHeader);
               return (
-                <li key={project.id}>
+                <li key={project.id} className="relative">
+                  {/* Selection checkbox lives OUTSIDE the Link below (not
+                      nested inside its anchor), so a click on it never
+                      bubbles into a navigation -- stopPropagation on top is
+                      belt-and-braces, matching the OOP request. */}
+                  <label
+                    className="absolute left-2 top-2 z-10 flex items-center justify-center rounded bg-white/90 p-1 shadow"
+                    onClick={(event) => event.stopPropagation()}
+                  >
+                    <input
+                      type="checkbox"
+                      aria-label={`Select ${project.title}`}
+                      checked={selectedIds.has(project.id)}
+                      onChange={(event) => {
+                        event.stopPropagation();
+                        toggleSelected(project.id);
+                      }}
+                    />
+                  </label>
                   <Link
                     to={`/projects/${project.id}`}
                     className="block rounded-lg border border-slate-200 bg-white p-3 hover:border-indigo-400"

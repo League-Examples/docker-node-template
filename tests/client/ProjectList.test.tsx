@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, afterEach } from 'vitest';
-import { render, screen, fireEvent, within } from '@testing-library/react';
+import { render, screen, fireEvent, within, waitFor } from '@testing-library/react';
 import { MemoryRouter, Routes, Route, useParams } from 'react-router-dom';
 import ProjectList from '../../client/src/pages/ProjectList';
 
@@ -35,6 +35,8 @@ function stubFetch(handlers: {
   projects?: (view: string) => unknown[];
   tree?: () => unknown;
   createProject?: (body: any) => unknown;
+  patchProject?: (id: string, body: any) => { ok: boolean };
+  deleteProject?: (id: string) => { ok: boolean };
 }) {
   const fn = vi.fn((input: RequestInfo | URL, init?: RequestInit) => {
     const url = String(input);
@@ -51,6 +53,18 @@ function stubFetch(handlers: {
       const body = init.body ? JSON.parse(String(init.body)) : {};
       const created = handlers.createProject ? handlers.createProject(body) : { id: 1 };
       return Promise.resolve({ ok: true, json: async () => created } as Response);
+    }
+    const projectIdMatch = url.match(/^\/api\/projects\/([^/]+)$/);
+    if (projectIdMatch && init?.method === 'PATCH') {
+      const id = projectIdMatch[1];
+      const body = init.body ? JSON.parse(String(init.body)) : {};
+      const result = handlers.patchProject ? handlers.patchProject(id, body) : { ok: true };
+      return Promise.resolve({ ok: result.ok, status: result.ok ? 200 : 500, json: async () => ({ id, ...body }) } as Response);
+    }
+    if (projectIdMatch && init?.method === 'DELETE') {
+      const id = projectIdMatch[1];
+      const result = handlers.deleteProject ? handlers.deleteProject(id) : { ok: true };
+      return Promise.resolve({ ok: result.ok, status: result.ok ? 200 : 500, json: async () => ({ id, deleted: true }) } as Response);
     }
     return Promise.resolve({ ok: false, status: 404, json: async () => ({}) } as Response);
   });
@@ -302,5 +316,195 @@ describe('ProjectList library-asset-to-project flow (SUC-011)', () => {
     expect(postCall).toBeDefined();
     const body = JSON.parse(String(postCall![1]!.body));
     expect(body.sourceAssetId).toBe(5);
+  });
+});
+
+describe('ProjectList bulk select/archive/delete (OOP follow-up, 2026-07-15)', () => {
+  function twoProjects() {
+    return [
+      { id: 1, title: 'Postcard One', status: 'active', owner: { id: 1, email: 'me@x.org', displayName: null }, iterations: [] },
+      { id: 2, title: 'Postcard Two', status: 'active', owner: { id: 1, email: 'me@x.org', displayName: null }, iterations: [] },
+    ];
+  }
+
+  it('selecting a card shows the action bar with a running count, and Clear dismisses it', async () => {
+    stubFetch({ projects: (view) => (view === 'mine' ? twoProjects() : []) });
+    renderPage();
+
+    await screen.findByText('Postcard One');
+    expect(screen.queryByTestId('bulk-action-bar')).not.toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole('checkbox', { name: 'Select Postcard One' }));
+    expect(screen.getByTestId('bulk-action-bar')).toBeInTheDocument();
+    expect(screen.getByText('1 selected')).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole('checkbox', { name: 'Select Postcard Two' }));
+    expect(screen.getByText('2 selected')).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Clear' }));
+    expect(screen.queryByTestId('bulk-action-bar')).not.toBeInTheDocument();
+  });
+
+  it('clicking the checkbox selects the card without navigating into the project', async () => {
+    stubFetch({ projects: (view) => (view === 'mine' ? twoProjects() : []) });
+    renderPage();
+
+    await screen.findByText('Postcard One');
+    fireEvent.click(screen.getByRole('checkbox', { name: 'Select Postcard One' }));
+
+    expect(screen.getByRole('checkbox', { name: 'Select Postcard One' })).toBeChecked();
+    expect(screen.queryByText('Project Detail 1')).not.toBeInTheDocument();
+    expect(screen.getByText('Postcard One')).toBeInTheDocument();
+  });
+
+  it('Archive PATCHes each selected project to archived and refetches the current view', async () => {
+    const fetchMock = stubFetch({
+      projects: (view) => (view === 'mine' ? twoProjects() : []),
+      patchProject: () => ({ ok: true }),
+    });
+    renderPage();
+
+    await screen.findByText('Postcard One');
+    fireEvent.click(screen.getByRole('checkbox', { name: 'Select Postcard One' }));
+    fireEvent.click(screen.getByRole('checkbox', { name: 'Select Postcard Two' }));
+    expect(screen.getByText('2 selected')).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Archive selected projects' }));
+
+    await waitFor(() => expect(screen.queryByTestId('bulk-action-bar')).not.toBeInTheDocument());
+
+    const patchCalls = fetchMock.mock.calls.filter(
+      ([, init]: [string, RequestInit | undefined]) => init?.method === 'PATCH',
+    );
+    expect(patchCalls).toHaveLength(2);
+    const patchedIds = patchCalls.map(([url]: [string, RequestInit | undefined]) => url).sort();
+    expect(patchedIds).toEqual(['/api/projects/1', '/api/projects/2']);
+    expect(JSON.parse(String(patchCalls[0][1]!.body))).toEqual({ status: 'archived' });
+
+    // Refetches the current (My) view after the bulk action so the list
+    // reflects the change.
+    const getMineCalls = fetchMock.mock.calls.filter(([url]: [string]) => url === '/api/projects?view=mine');
+    expect(getMineCalls.length).toBeGreaterThanOrEqual(2);
+  });
+
+  it('Delete opens a confirmation popup; confirming DELETEs each selected project and refetches', async () => {
+    const fetchMock = stubFetch({
+      projects: (view) => (view === 'mine' ? twoProjects() : []),
+      deleteProject: () => ({ ok: true }),
+    });
+    renderPage();
+
+    await screen.findByText('Postcard One');
+    fireEvent.click(screen.getByRole('checkbox', { name: 'Select Postcard One' }));
+
+    fireEvent.click(screen.getByRole('button', { name: 'Delete selected projects' }));
+    await screen.findByText("Delete 1 project? This can't be undone.");
+
+    fireEvent.click(screen.getByRole('button', { name: 'Confirm delete selected projects' }));
+
+    await waitFor(() => expect(screen.queryByTestId('bulk-action-bar')).not.toBeInTheDocument());
+
+    const deleteCalls = fetchMock.mock.calls.filter(
+      ([, init]: [string, RequestInit | undefined]) => init?.method === 'DELETE',
+    );
+    expect(deleteCalls).toHaveLength(1);
+    expect(deleteCalls[0][0]).toBe('/api/projects/1');
+
+    const getMineCalls = fetchMock.mock.calls.filter(([url]: [string]) => url === '/api/projects?view=mine');
+    expect(getMineCalls.length).toBeGreaterThanOrEqual(2);
+  });
+
+  it('Cancel on the delete confirmation makes no request and preserves the selection', async () => {
+    const fetchMock = stubFetch({ projects: (view) => (view === 'mine' ? twoProjects() : []) });
+    renderPage();
+
+    await screen.findByText('Postcard One');
+    fireEvent.click(screen.getByRole('checkbox', { name: 'Select Postcard One' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Delete selected projects' }));
+    await screen.findByText("Delete 1 project? This can't be undone.");
+
+    fireEvent.click(screen.getByRole('button', { name: 'Cancel' }));
+
+    expect(screen.queryByText("Delete 1 project? This can't be undone.")).not.toBeInTheDocument();
+    expect(screen.getByText('1 selected')).toBeInTheDocument();
+    const deleteCalls = fetchMock.mock.calls.filter(
+      ([, init]: [string, RequestInit | undefined]) => init?.method === 'DELETE',
+    );
+    expect(deleteCalls).toHaveLength(0);
+  });
+
+  it('Archive view offers Restore (not Archive) for the bulk action', async () => {
+    const fetchMock = stubFetch({
+      projects: (view) =>
+        view === 'archive'
+          ? [{ id: 7, title: 'Old Flyer', status: 'archived', owner: { id: 1, email: 'me@x.org', displayName: null }, iterations: [] }]
+          : [],
+      patchProject: () => ({ ok: true }),
+    });
+    renderPage();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Archive' })); // the view-switch button
+    await screen.findByText('Old Flyer');
+
+    fireEvent.click(screen.getByRole('checkbox', { name: 'Select Old Flyer' }));
+    expect(screen.getByRole('button', { name: 'Restore selected projects' })).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Archive selected projects' })).not.toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Restore selected projects' }));
+    await waitFor(() => expect(screen.queryByTestId('bulk-action-bar')).not.toBeInTheDocument());
+
+    const patchCalls = fetchMock.mock.calls.filter(
+      ([, init]: [string, RequestInit | undefined]) => init?.method === 'PATCH',
+    );
+    expect(patchCalls).toHaveLength(1);
+    expect(patchCalls[0][0]).toBe('/api/projects/7');
+    expect(JSON.parse(String(patchCalls[0][1]!.body))).toEqual({ status: 'active' });
+  });
+
+  it('Library view never shows a selection checkbox', async () => {
+    stubFetch({
+      projects: () => [],
+      tree: () => ({
+        directories: [
+          {
+            id: 1,
+            parentId: null,
+            path: 'assets',
+            name: 'assets',
+            kind: 'collection',
+            collections: [
+              {
+                id: 1,
+                name: 'stock-art',
+                kind: 'stock-art',
+                assets: [{ id: 5, path: 'assets/stock-art/logo-robot.png' }],
+              },
+            ],
+          },
+        ],
+      }),
+    });
+    renderPage();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Library' }));
+    await screen.findByText('logo robot');
+
+    expect(screen.queryByRole('checkbox')).not.toBeInTheDocument();
+  });
+
+  it('switching views clears the selection', async () => {
+    stubFetch({
+      projects: (view) => (view === 'mine' ? twoProjects() : []),
+    });
+    renderPage();
+
+    await screen.findByText('Postcard One');
+    fireEvent.click(screen.getByRole('checkbox', { name: 'Select Postcard One' }));
+    expect(screen.getByTestId('bulk-action-bar')).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole('button', { name: 'All projects' }));
+
+    expect(screen.queryByTestId('bulk-action-bar')).not.toBeInTheDocument();
+    await screen.findByText('No projects yet.');
   });
 });

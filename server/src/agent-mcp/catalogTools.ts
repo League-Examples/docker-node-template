@@ -1014,6 +1014,70 @@ export async function removeIteration(
 }
 
 // ---------------------------------------------------------------------------
+// remove_project
+// ---------------------------------------------------------------------------
+
+export interface RemoveProjectArgs {
+  projectId: number;
+}
+
+export interface RemoveProjectResult {
+  id: number;
+  deleted: true;
+}
+
+/** `remove_project` -- OOP follow-up (2026-07-15): `ProjectList.tsx`'s
+ * bulk-select Delete action, gated behind a client-side confirmation popup
+ * before this ever fires. Deletes a `Project` row along with its dependent
+ * `ChatMessage`/`Reference`/`Iteration` rows first -- none of those
+ * `projectId` foreign keys cascade on delete (`schema.prisma` defines no
+ * `onDelete` behavior on any of them), so deleting the `Project` row before
+ * its children would fail the FK constraint. Lock pattern: same `directory`
+ * resourceKey lock as `create_project`/`remove_iteration`, keyed by
+ * `projects/<id>`, held around the whole delete.
+ *
+ * Also attempts to remove the project's entire workspace directory
+ * (`projects/<id>/`, recursively) after the row deletion and lock release,
+ * but only best-effort -- an already-missing directory (or any other
+ * filesystem error) is swallowed, never thrown out of this function, same
+ * as `remove_iteration`'s backing-file cleanup above. */
+export async function removeProject(
+  args: RemoveProjectArgs,
+  options: CatalogToolsOptions = {}
+): Promise<RemoveProjectResult> {
+  const prismaClient = options.prismaClient ?? defaultPrisma;
+  const versioning = options.versioning ?? defaultVersioningService;
+  const logger = options.logger ?? defaultLogger;
+
+  const existing = await prismaClient.project.findUnique({ where: { id: args.projectId } });
+  if (!existing) throw new Error(`remove_project: no Project with id ${args.projectId}`);
+
+  const resourceKey = projectResourceKey(existing);
+  await acquireLock('directory', resourceKey, options.lockHolder, prismaClient);
+  try {
+    await prismaClient.chatMessage.deleteMany({ where: { projectId: args.projectId } });
+    await prismaClient.reference.deleteMany({ where: { projectId: args.projectId } });
+    await prismaClient.iteration.deleteMany({ where: { projectId: args.projectId } });
+    await prismaClient.project.delete({ where: { id: args.projectId } });
+  } finally {
+    await releaseLock('directory', resourceKey, prismaClient);
+  }
+
+  versioning.recordChange(resolveWorkspacePath(resourceKey));
+
+  try {
+    await fs.rm(resolveWorkspacePath(resourceKey), { recursive: true, force: true });
+  } catch (err) {
+    logger.error(
+      { err, projectId: args.projectId, resourceKey },
+      'remove_project: workspace directory removal failed or already absent; Project row deletion is unaffected'
+    );
+  }
+
+  return { id: args.projectId, deleted: true };
+}
+
+// ---------------------------------------------------------------------------
 // search_catalog
 // ---------------------------------------------------------------------------
 
@@ -1134,8 +1198,8 @@ export async function searchCatalog(
  * `resolve_correction`, `add_asset_to_collection`, `create_project`,
  * `create_iteration`, `create_agent_page`, `add_reference`,
  * `remove_reference`, `set_iteration_state`, `remove_iteration`,
- * `search_catalog` -- and no others -- on `server` (expected to be the
- * `workspaceMcpServer` instance from `./server.ts`). */
+ * `remove_project`, `search_catalog` -- and no others -- on `server`
+ * (expected to be the `workspaceMcpServer` instance from `./server.ts`). */
 export function registerCatalogTools(server: McpServer, options: CatalogToolsOptions = {}) {
   server.tool(
     'create_knowledge_entry',
@@ -1267,6 +1331,15 @@ export function registerCatalogTools(server: McpServer, options: CatalogToolsOpt
       iterationId: z.number().int(),
     },
     async (args) => textResult(await removeIteration(args, options))
+  );
+
+  server.tool(
+    'remove_project',
+    'Delete a Project row by id, along with its dependent ChatMessage/Reference/Iteration rows, and best-effort remove its workspace directory.',
+    {
+      projectId: z.number().int(),
+    },
+    async (args) => textResult(await removeProject(args, options))
   );
 
   server.tool(
