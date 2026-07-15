@@ -53,6 +53,10 @@ export interface PostcardRegionContentProps {
   widthPx?: number;
   className?: string;
   'data-testid'?: string;
+  /** Set `true` for an invisible sizing-clone usage (`PostcardEdit.tsx`'s
+   * auto-height chrome-sizing clone) so assistive tech skips the
+   * duplicate, non-visible text node. */
+  'aria-hidden'?: boolean;
 }
 
 /** Parses a raw `"k:v; k:v;"` CSS declaration string (a region's `style`
@@ -82,6 +86,7 @@ export default function PostcardRegionContent({
   widthPx,
   className,
   'data-testid': dataTestId,
+  'aria-hidden': ariaHidden,
 }: PostcardRegionContentProps) {
   const fontSize = widthPx === undefined ? font.size : scaleFontSize(font.size, widthPx);
   const containerStyle: CSSProperties = {
@@ -92,7 +97,7 @@ export default function PostcardRegionContent({
   const paragraphs = splitTextParagraphs(text);
 
   return (
-    <span className={className} data-testid={dataTestId} style={containerStyle}>
+    <span className={className} data-testid={dataTestId} aria-hidden={ariaHidden} style={containerStyle}>
       {paragraphs.map((paragraph, index) => (
         <p key={index} style={{ marginTop: 0, marginBottom: index === paragraphs.length - 1 ? 0 : '0.6em' }}>
           {paragraph.split('\n').map((line, lineIndex, lines) => (

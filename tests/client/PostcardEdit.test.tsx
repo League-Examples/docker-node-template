@@ -188,7 +188,7 @@ describe('PostcardEdit -- drag-to-draw a new box (AC3)', () => {
     // overflow at that height rather than growing the box to fit text. The
     // clip lives on the inner text layer (so the label tag can straddle the
     // box's top border without being clipped).
-    expect(screen.getByTestId('postcard-region-text-front_headline')).toHaveClass('overflow-hidden');
+    expect(screen.getByTestId('postcard-region-textbox-front_headline')).toHaveClass('overflow-hidden');
     assertNoLibraryDrawer();
   });
 });
@@ -862,16 +862,17 @@ describe('PostcardEdit -- height-less regions render auto-height, in flow (OOP f
     // zero) height.
     expect(box.style.height).toBe('');
 
+    // The base-layer WRAPPER (chrome-free, shared with the gallery
+    // overlay) carries `absolute` unconditionally (matching the gallery's
+    // own always-absolute wrapper), but must NOT carry `overflow-hidden`
+    // for a height-less region -- it's left in normal document flow so it
+    // grows to fit its content.
+    const wrapperEl = screen.getByTestId('postcard-region-textbox-front_body');
+    expect(wrapperEl).toHaveClass('absolute');
+    expect(wrapperEl).not.toHaveClass('overflow-hidden');
+
     const textEl = screen.getByTestId('postcard-region-text-front_body');
     expect(textEl).toHaveTextContent('IMPORTED MARKETING TEXT');
-    // The text layer is in normal document flow -- NOT the absolutely-
-    // positioned, clipped layer a height-having box uses (that combination
-    // is exactly what collapsed height-less boxes to nothing before this
-    // fix: an absolute inset-0 layer contributes nothing to an
-    // otherwise-empty, height-less button's own height).
-    expect(textEl).not.toHaveClass('absolute');
-    expect(textEl).not.toHaveClass('inset-0');
-    expect(textEl).not.toHaveClass('overflow-hidden');
     assertNoLibraryDrawer();
   });
 
@@ -887,10 +888,9 @@ describe('PostcardEdit -- height-less regions render auto-height, in flow (OOP f
 
     const box = await screen.findByTestId('postcard-region-box-front_headline');
     expect(box).toHaveStyle({ height: '0.73in' });
-    const textEl = screen.getByTestId('postcard-region-text-front_headline');
-    expect(textEl).toHaveClass('absolute');
-    expect(textEl).toHaveClass('inset-0');
-    expect(textEl).toHaveClass('overflow-hidden');
+    const wrapperEl = screen.getByTestId('postcard-region-textbox-front_headline');
+    expect(wrapperEl).toHaveClass('absolute');
+    expect(wrapperEl).toHaveClass('overflow-hidden');
     assertNoLibraryDrawer();
   });
 
@@ -923,7 +923,7 @@ describe('PostcardEdit -- height-less regions render auto-height, in flow (OOP f
     await screen.findByTestId('postcard-region-box-front_body');
 
     // Before resizing, the box is height-less/auto-flow.
-    expect(screen.getByTestId('postcard-region-text-front_body')).not.toHaveClass('overflow-hidden');
+    expect(screen.getByTestId('postcard-region-textbox-front_body')).not.toHaveClass('overflow-hidden');
 
     const preview = screen.getByTestId('postcard-preview');
     fireEvent.mouseDown(screen.getByTestId('move-handle-br-front_body'), { clientX: 500, clientY: 200 });
@@ -932,7 +932,7 @@ describe('PostcardEdit -- height-less regions render auto-height, in flow (OOP f
 
     const box = screen.getByTestId('postcard-region-box-front_body');
     expect(box.style.height).not.toBe('');
-    expect(screen.getByTestId('postcard-region-text-front_body')).toHaveClass('overflow-hidden');
+    expect(screen.getByTestId('postcard-region-textbox-front_body')).toHaveClass('overflow-hidden');
     assertNoLibraryDrawer();
   });
 
@@ -966,8 +966,9 @@ describe('PostcardEdit -- height-less regions render auto-height, in flow (OOP f
     for (const region of backRegions) {
       const box = await screen.findByTestId(`postcard-region-box-${region.name}`);
       expect(box.style.height).toBe('');
+      const wrapperEl = screen.getByTestId(`postcard-region-textbox-${region.name}`);
+      expect(wrapperEl).not.toHaveClass('overflow-hidden');
       const textEl = screen.getByTestId(`postcard-region-text-${region.name}`);
-      expect(textEl).not.toHaveClass('overflow-hidden');
       expect(textEl.textContent).not.toBe('');
     }
     assertNoLibraryDrawer();

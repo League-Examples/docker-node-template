@@ -1,7 +1,7 @@
 import type { PostcardContentRegionDTO, PostcardQr } from './types';
-import { buildQrGraphic, normalizeQrUrl, displayQrUrl, CAPTION_VIEWBOX_WIDTH, CAPTION_VIEWBOX_HEIGHT } from '../../lib/qrCode';
-import { regionBoxStyle, hasExplicitHeight } from '../../lib/postcardRegionLayout';
-import PostcardRegionContent from '../../lib/PostcardRegionContent';
+import { buildQrGraphic, normalizeQrUrl } from '../../lib/qrCode';
+import PostcardRegionBaseLayer from '../../lib/PostcardRegionBaseLayer';
+import PostcardQrBaseLayer from '../../lib/PostcardQrBaseLayer';
 
 /**
  * Read-only postcard text/QR overlay for the iteration gallery
@@ -21,23 +21,26 @@ import PostcardRegionContent from '../../lib/PostcardRegionContent';
  * `pointer-events-none` on the wrapper ensures the overlay never blocks the
  * gallery's own controls (accepted checkbox, side pulldown, etc).
  *
- * Reuses `../../lib/postcardRegionLayout.ts`'s `regionBoxStyle`/
- * `hasExplicitHeight` -- the SAME height-aware rule `PostcardEdit.tsx`'s
- * editor uses (a `position.height`-less region auto-heights to fit its
- * text, in normal document flow; one WITH an explicit height is clipped to
- * it) -- so the gallery preview always matches the editor and the server
- * PDF render, never a third, independently-drifting rendering.
+ * **Two-layer WYSIWYG split (OOP change, 2026-07-15)**: each region's box +
+ * text now renders through `../../lib/PostcardRegionBaseLayer.tsx`, the
+ * SINGLE shared base-layer component `PostcardEdit.tsx`'s editor also
+ * renders (for its own chrome-free base text layer, underneath a
+ * completely separate chrome `<button>` sibling carrying the dashed
+ * border/label/resize-handle) -- this is what makes the gallery preview
+ * and the editor's base rendering provably identical (same component, same
+ * props), not just visually similar hand-mirrored JSX, per the
+ * stakeholder's explicit "must not drift" requirement. That base-layer
+ * component itself uses `../../lib/postcardRegionLayout.ts`'s
+ * `regionBoxStyle`/`hasExplicitHeight` (the height-aware auto-flow-vs-
+ * clipped rule) and `../../lib/PostcardRegionContent.tsx` (real
+ * `font.family`/`font.size` scaled by `widthPx`, the region's raw `style`
+ * string, and real paragraph structure mirroring
+ * `postcardRender.ts`'s `regionStyleAttr` + `textToParagraphsHtml`) --
+ * see that component's own header for the full contract.
  *
- * **WYSIWYG text rendering (OOP change, 2026-07-15)**: each region's text
- * now renders through `../../lib/PostcardRegionContent.tsx`, the SAME
- * component `PostcardEdit.tsx`'s editor uses -- real `font.family`/
- * `font.size` (scaled by `widthPx`), the region's raw `style` string
- * (e.g. `font-weight:900; color:#CC1616;`), and real paragraph structure
- * (one `<p>` per blank-line-separated paragraph, single newlines within a
- * paragraph becoming `<br />`) -- rather than a plain `whitespace-pre-wrap`
- * text node. This is what makes the gallery preview match the server's
- * canonical PDF/HTML render (`postcardRender.ts`'s `regionStyleAttr` +
- * `textToParagraphsHtml`) instead of just approximating it.
+ * The QR graphic/caption render through the analogous
+ * `../../lib/PostcardQrBaseLayer.tsx`, the same shared component
+ * `PostcardEdit.tsx` uses for its own chrome-free base QR render.
  */
 
 interface PostcardOverlayProps {
@@ -58,70 +61,35 @@ export default function PostcardOverlay({ regions, qr, widthPx }: PostcardOverla
 
   return (
     <div data-testid="postcard-overlay" aria-hidden="true" className="pointer-events-none absolute inset-0 overflow-hidden">
-      {regions.map((region) => {
-        const explicitHeight = hasExplicitHeight(region.position);
-        return (
-          <div
-            key={region.name}
-            data-testid={`overlay-region-${region.name}`}
-            className={explicitHeight ? 'absolute overflow-hidden' : 'absolute'}
-            style={regionBoxStyle(region.position, widthPx)}
-          >
-            {/* WYSIWYG (OOP change, 2026-07-15): real font/style + paragraph
-                structure, via the shared `PostcardRegionContent` also used
-                by the editor -- `widthPx` scales font.size to this image's
-                displayed pixel width, matching `regionBoxStyle`'s own
-                position scaling above. */}
-            <PostcardRegionContent
-              data-testid={`overlay-region-text-${region.name}`}
-              className="block whitespace-pre-wrap"
-              text={region.text}
-              font={region.font}
-              style={region.style}
-              widthPx={widthPx}
-            />
-          </div>
-        );
-      })}
+      {regions.map((region) => (
+        // WYSIWYG two-layer split (OOP change, 2026-07-15): the box + text
+        // rendering itself now lives in `../../lib/PostcardRegionBaseLayer.tsx`,
+        // the SAME component `PostcardEdit.tsx`'s editor renders for its own
+        // (chrome-free) base text layer -- this is what guarantees the
+        // gallery preview can never drift from the editor's WYSIWYG base
+        // render again.
+        <PostcardRegionBaseLayer
+          key={region.name}
+          boxTestId={`overlay-region-${region.name}`}
+          textTestId={`overlay-region-text-${region.name}`}
+          position={region.position}
+          text={region.text}
+          font={region.font}
+          style={region.style}
+          widthPx={widthPx}
+        />
+      ))}
 
       {qr && (
-        <div data-testid="overlay-qr" className="absolute" style={regionBoxStyle(qr.position, widthPx)}>
-          {qrGraphic && (
-            <div className="flex w-full flex-col gap-1">
-              <div data-testid="overlay-qr-graphic" className="w-full" style={{ aspectRatio: '1 / 1' }}>
-                <svg
-                  viewBox={`0 0 ${qrGraphic.size} ${qrGraphic.size}`}
-                  width="100%"
-                  height="100%"
-                  preserveAspectRatio="none"
-                  shapeRendering="crispEdges"
-                >
-                  <rect width={qrGraphic.size} height={qrGraphic.size} fill="#fff" />
-                  <path d={qrGraphic.path} fill="#000" />
-                </svg>
-              </div>
-              <div
-                data-testid="overlay-qr-url"
-                className="w-full"
-                style={{ aspectRatio: `${CAPTION_VIEWBOX_WIDTH} / ${CAPTION_VIEWBOX_HEIGHT}` }}
-              >
-                <svg viewBox={`0 0 ${CAPTION_VIEWBOX_WIDTH} ${CAPTION_VIEWBOX_HEIGHT}`} width="100%" height="100%" preserveAspectRatio="none">
-                  <text
-                    x={0}
-                    y={CAPTION_VIEWBOX_HEIGHT - 10}
-                    fontFamily="Arial, sans-serif"
-                    fontSize={CAPTION_VIEWBOX_HEIGHT - 12}
-                    textLength={CAPTION_VIEWBOX_WIDTH}
-                    lengthAdjust="spacingAndGlyphs"
-                    fill="#333"
-                  >
-                    {displayQrUrl(qr.url)}
-                  </text>
-                </svg>
-              </div>
-            </div>
-          )}
-        </div>
+        <PostcardQrBaseLayer
+          boxTestId="overlay-qr"
+          graphicTestId="overlay-qr-graphic"
+          urlTestId="overlay-qr-url"
+          position={qr.position}
+          qrGraphic={qrGraphic}
+          url={qr.url}
+          widthPx={widthPx}
+        />
       )}
     </div>
   );
