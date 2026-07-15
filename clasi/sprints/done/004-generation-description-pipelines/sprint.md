@@ -1,7 +1,7 @@
 ---
 id: '004'
 title: Generation & Description Pipelines
-status: planning-docs
+status: done
 branch: sprint/004-generation-description-pipelines
 use-cases:
 - UC-006
