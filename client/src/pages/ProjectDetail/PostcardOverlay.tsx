@@ -1,6 +1,7 @@
 import type { PostcardContentRegionDTO, PostcardQr } from './types';
 import { buildQrGraphic, normalizeQrUrl, displayQrUrl, CAPTION_VIEWBOX_WIDTH, CAPTION_VIEWBOX_HEIGHT } from '../../lib/qrCode';
-import { regionBoxStyle, hasExplicitHeight, scaleFontSize } from '../../lib/postcardRegionLayout';
+import { regionBoxStyle, hasExplicitHeight } from '../../lib/postcardRegionLayout';
+import PostcardRegionContent from '../../lib/PostcardRegionContent';
 
 /**
  * Read-only postcard text/QR overlay for the iteration gallery
@@ -26,6 +27,17 @@ import { regionBoxStyle, hasExplicitHeight, scaleFontSize } from '../../lib/post
  * text, in normal document flow; one WITH an explicit height is clipped to
  * it) -- so the gallery preview always matches the editor and the server
  * PDF render, never a third, independently-drifting rendering.
+ *
+ * **WYSIWYG text rendering (OOP change, 2026-07-15)**: each region's text
+ * now renders through `../../lib/PostcardRegionContent.tsx`, the SAME
+ * component `PostcardEdit.tsx`'s editor uses -- real `font.family`/
+ * `font.size` (scaled by `widthPx`), the region's raw `style` string
+ * (e.g. `font-weight:900; color:#CC1616;`), and real paragraph structure
+ * (one `<p>` per blank-line-separated paragraph, single newlines within a
+ * paragraph becoming `<br />`) -- rather than a plain `whitespace-pre-wrap`
+ * text node. This is what makes the gallery preview match the server's
+ * canonical PDF/HTML render (`postcardRender.ts`'s `regionStyleAttr` +
+ * `textToParagraphsHtml`) instead of just approximating it.
  */
 
 interface PostcardOverlayProps {
@@ -53,18 +65,21 @@ export default function PostcardOverlay({ regions, qr, widthPx }: PostcardOverla
             key={region.name}
             data-testid={`overlay-region-${region.name}`}
             className={explicitHeight ? 'absolute overflow-hidden' : 'absolute'}
-            style={{
-              ...regionBoxStyle(region.position, widthPx),
-              fontFamily: region.font.family,
-              fontSize: scaleFontSize(region.font.size, widthPx),
-            }}
+            style={regionBoxStyle(region.position, widthPx)}
           >
-            <span
+            {/* WYSIWYG (OOP change, 2026-07-15): real font/style + paragraph
+                structure, via the shared `PostcardRegionContent` also used
+                by the editor -- `widthPx` scales font.size to this image's
+                displayed pixel width, matching `regionBoxStyle`'s own
+                position scaling above. */}
+            <PostcardRegionContent
               data-testid={`overlay-region-text-${region.name}`}
               className="block whitespace-pre-wrap"
-            >
-              {region.text}
-            </span>
+              text={region.text}
+              font={region.font}
+              style={region.style}
+              widthPx={widthPx}
+            />
           </div>
         );
       })}

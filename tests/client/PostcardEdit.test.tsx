@@ -974,6 +974,82 @@ describe('PostcardEdit -- height-less regions render auto-height, in flow (OOP f
   });
 });
 
+describe('PostcardEdit -- WYSIWYG text rendering via shared PostcardRegionContent (OOP change, 2026-07-15)', () => {
+  it("renders a region's real font family/size and raw style string, not generic plain text", async () => {
+    stubFetch(projectFixture(), (url, init) => {
+      if (url === '/api/postcards/7' && (!init || !init.method)) {
+        return {
+          ok: true,
+          json: async () => ({
+            content: contentFixture({
+              front_regions: [
+                {
+                  name: 'front_headline',
+                  label: 'Headline',
+                  style: 'font-weight:900; color:#CC1616;',
+                  text: 'ROBOT RIOT',
+                  position: { top: '1.0in', left: '0.5in', width: '3.4in' },
+                  font: { family: "'Arial Black', Arial, sans-serif", size: '34px' },
+                },
+              ],
+              front_qr: undefined,
+            }),
+          }),
+        } as Response;
+      }
+      return undefined;
+    });
+    renderPage();
+    await settle();
+
+    const textEl = await screen.findByTestId('postcard-region-text-front_headline');
+    expect(textEl).toHaveStyle({
+      fontFamily: "'Arial Black', Arial, sans-serif",
+      fontSize: '34px',
+      fontWeight: '900',
+      color: '#CC1616',
+    });
+    expect(textEl).toHaveTextContent('ROBOT RIOT');
+    assertNoLibraryDrawer();
+  });
+
+  it('splits multi-paragraph text into separate <p> elements, with a <br> for a single newline within a paragraph', async () => {
+    stubFetch(projectFixture(), (url, init) => {
+      if (url === '/api/postcards/7' && (!init || !init.method)) {
+        return {
+          ok: true,
+          json: async () => ({
+            content: contentFixture({
+              front_regions: [
+                {
+                  name: 'front_body',
+                  label: 'Body copy',
+                  style: '',
+                  text: 'Line one\nLine two\n\nSecond paragraph',
+                  position: { top: '1.0in', left: '0.5in', width: '3.4in' },
+                  font: { family: 'Georgia, serif', size: '15.5px' },
+                },
+              ],
+              front_qr: undefined,
+            }),
+          }),
+        } as Response;
+      }
+      return undefined;
+    });
+    renderPage();
+    await settle();
+
+    const textEl = await screen.findByTestId('postcard-region-text-front_body');
+    const paragraphs = textEl.querySelectorAll('p');
+    expect(paragraphs).toHaveLength(2);
+    expect(paragraphs[0].querySelectorAll('br')).toHaveLength(1);
+    expect(paragraphs[0].textContent).toBe('Line oneLine two');
+    expect(paragraphs[1].textContent).toBe('Second paragraph');
+    assertNoLibraryDrawer();
+  });
+});
+
 describe('PostcardEdit -- Save + Generate PDF (AC9/AC10)', () => {
   it('is disabled until an iteration is marked front', async () => {
     stubFetch(

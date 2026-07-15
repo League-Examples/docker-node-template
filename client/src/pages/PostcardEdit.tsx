@@ -12,6 +12,7 @@ import type {
 } from './ProjectDetail/types';
 import { buildQrGraphic, normalizeQrUrl, displayQrUrl, CAPTION_VIEWBOX_WIDTH, CAPTION_VIEWBOX_HEIGHT } from '../lib/qrCode';
 import { regionBoxStyle, hasExplicitHeight } from '../lib/postcardRegionLayout';
+import PostcardRegionContent from '../lib/PostcardRegionContent';
 
 /**
  * `/projects/:id/postcard` -- the real postcard text-region editor (ticket
@@ -826,22 +827,29 @@ export default function PostcardEdit() {
                     // (round-10: overflow clipped, not shown).
                     // overflow-hidden lives here, not on the button, so the
                     // label tag below can straddle the top border.
-                    <span
+                    // WYSIWYG (OOP change, 2026-07-15): real font/style +
+                    // paragraph structure, via the shared
+                    // `PostcardRegionContent` also used by the gallery
+                    // overlay -- no `widthPx` (the editor's own 1:1 `in`-unit
+                    // canvas convention, same as `regionBoxStyle` above).
+                    <PostcardRegionContent
                       data-testid={`postcard-region-text-${region.name}`}
                       className="absolute inset-0 overflow-hidden p-1 pt-2"
-                    >
-                      {regionText[region.name]}
-                    </span>
+                      text={regionText[region.name] ?? ''}
+                      font={region.font}
+                      style={region.style}
+                    />
                   ) : (
                     // Auto-height mode: text sits in normal document flow,
                     // so the button (which has no explicit height of its
                     // own) grows to fit it instead of collapsing.
-                    <span
+                    <PostcardRegionContent
                       data-testid={`postcard-region-text-${region.name}`}
                       className="block whitespace-pre-wrap p-1 pt-3"
-                    >
-                      {regionText[region.name]}
-                    </span>
+                      text={regionText[region.name] ?? ''}
+                      font={region.font}
+                      style={region.style}
+                    />
                   )}
                   {/* Label tag: sits centered on the top border at the upper-left,
                       left-aligned -- white background + solid border laid over the

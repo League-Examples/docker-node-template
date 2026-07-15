@@ -64,3 +64,18 @@ export function scaleFontSize(size: string, widthPx: number): string {
   if (Number.isNaN(n)) return size;
   return `${(n * (widthPx / REFERENCE_WIDTH_PX)).toFixed(2)}px`;
 }
+
+/** Mirrors `server/src/services/postcardRender.ts`'s `textToParagraphsHtml`
+ * split logic exactly (OOP change, 2026-07-15) -- the single source of
+ * truth `PostcardRegionContent.tsx` (both the editable text editor and the
+ * read-only gallery overlay) key their paragraph rendering off of, so a
+ * region's text always splits into the SAME paragraphs everywhere it
+ * appears, matching the server's PDF/HTML render exactly. Trims ONLY
+ * trailing whitespace (`text.replace(/\s+$/, '')` -- leading whitespace is
+ * preserved), then splits on one-or-more blank lines, dropping any empty
+ * paragraph the split produces (so a trailing `\n\n` doesn't yield a
+ * trailing empty paragraph). */
+export function splitTextParagraphs(text: string): string[] {
+  const trimmed = text.replace(/\s+$/, '');
+  return trimmed.split(/\n\n+/).filter((paragraph) => paragraph.length > 0);
+}

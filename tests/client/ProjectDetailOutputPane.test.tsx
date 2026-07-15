@@ -532,6 +532,58 @@ describe('OutputPane -- rendered-text overlay on the gallery (OOP change, 2026-0
     expect(screen.getByLabelText('Iteration 1 accepted')).toBeInTheDocument();
     expect(screen.getByLabelText('Iteration 1 side')).toBeInTheDocument();
   });
+
+  it("applies the region's real font/style and paragraph structure, font.size scaled by widthPx (OOP change, 2026-07-15)", async () => {
+    const iterations = [iteration({ id: 1, seq: 1, role: 'front', imagePath: 'projects/7/iterations/1.png' })];
+    const fetchMock = vi.fn((url: RequestInfo | URL, init?: RequestInit) => {
+      if (String(url) === '/api/postcards/7' && (!init || !init.method)) {
+        return Promise.resolve({
+          ok: true,
+          json: async () => ({
+            content: {
+              front_regions: [
+                {
+                  name: 'front_headline',
+                  label: 'Headline',
+                  style: 'font-weight:900; color:#CC1616;',
+                  text: 'Line one\nLine two\n\nSecond paragraph',
+                  position: { top: '1.0in', left: '0.5in', width: '3.4in' },
+                  font: { family: 'Arial, sans-serif', size: '34px' },
+                },
+              ],
+              back_regions: [],
+            },
+          }),
+        } as Response);
+      }
+      return Promise.resolve({ ok: false, status: 404 } as Response);
+    });
+    vi.stubGlobal('fetch', fetchMock);
+
+    renderOutputPane(iterations);
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledWith('/api/postcards/7'));
+
+    // Displayed at REFERENCE_WIDTH_PX (576px, 6in * 96dpi) -- font.size
+    // stays exactly as authored, just formatted to 2 decimal places.
+    measureImage(0, 576);
+    const textEl576 = await screen.findByTestId('overlay-region-text-front_headline');
+    expect(textEl576).toHaveStyle({
+      fontFamily: 'Arial, sans-serif',
+      fontSize: '34.00px',
+      fontWeight: '900',
+      color: '#CC1616',
+    });
+    const paragraphs576 = textEl576.querySelectorAll('p');
+    expect(paragraphs576).toHaveLength(2);
+    expect(paragraphs576[0].querySelectorAll('br')).toHaveLength(1);
+    expect(paragraphs576[0].textContent).toBe('Line oneLine two');
+    expect(paragraphs576[1].textContent).toBe('Second paragraph');
+
+    // Displayed at half REFERENCE_WIDTH_PX -- font.size halves too.
+    measureImage(0, 288);
+    const textEl288 = await screen.findByTestId('overlay-region-text-front_headline');
+    expect(textEl288).toHaveStyle({ fontSize: '17.00px' });
+  });
 });
 
 describe('OutputPane -- delete an iteration, with a confirmation popup (OOP change, 2026-07-15)', () => {
