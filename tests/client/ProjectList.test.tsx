@@ -259,6 +259,173 @@ describe('ProjectList hero-image selection rule (SUC-010)', () => {
   });
 });
 
+/** Stubs `img` as having rendered at `widthPx` wide, then fires its `load`
+ * event -- jsdom performs no real layout, so `HeroImage`'s
+ * `useMeasuredWidth`-driven `getBoundingClientRect()` measurement has to be
+ * stubbed by hand, mirroring `ProjectDetailOutputPane.test.tsx`'s own
+ * `measureImage` helper for the exact same reason. Takes the element
+ * directly (via `card.querySelector('img')`, as the hero-rule tests above
+ * already do) rather than `getByRole('img')` -- the hero `<img>` has
+ * `alt=""`, which gives it ARIA role `presentation`, not `img`. */
+function measureImage(img: HTMLImageElement, widthPx: number, heightPx = widthPx / 1.5) {
+  Object.defineProperty(img, 'getBoundingClientRect', {
+    value: () => ({ width: widthPx, height: heightPx, top: 0, left: 0, right: widthPx, bottom: heightPx, x: 0, y: 0, toJSON() {} }),
+    configurable: true,
+  });
+  fireEvent.load(img);
+  return img;
+}
+
+describe('ProjectList hero-card rendered-text overlay (OOP change, 2026-07-15)', () => {
+  it('overlays front_regions text over the hero image when the hero iteration is role: "front"', async () => {
+    stubFetch({
+      projects: (view) =>
+        view === 'mine'
+          ? [
+              {
+                id: 1,
+                title: 'Postcard With Text',
+                status: 'active',
+                owner: { id: 1, email: 'me@x.org', displayName: null },
+                iterations: [
+                  { id: 10, seq: 1, imagePath: 'projects/1/iterations/1.png', accepted: true, role: 'front' },
+                ],
+                postcardContent: {
+                  front_regions: [
+                    {
+                      name: 'headline',
+                      label: 'Headline',
+                      style: '',
+                      text: 'HELLO POSTCARD',
+                      position: { top: '1.0in', left: '0.5in', width: '3.4in' },
+                      font: { family: 'Arial, sans-serif', size: '24px' },
+                    },
+                  ],
+                },
+              },
+            ]
+          : [],
+    });
+    renderPage();
+
+    const card = (await screen.findByText('Postcard With Text')).closest('a')!;
+    measureImage(card.querySelector('img')!, 600);
+
+    const overlay = await screen.findByTestId('postcard-overlay');
+    expect(within(card).getByTestId('overlay-region-text-headline')).toHaveTextContent('HELLO POSTCARD');
+    expect(card.contains(overlay)).toBe(true);
+
+    // The card's own navigation target is unaffected by the overlay.
+    expect(card).toHaveAttribute('href', '/projects/1');
+  });
+
+  it('renders a bare image (no overlay) when the project has no saved postcard content', async () => {
+    stubFetch({
+      projects: (view) =>
+        view === 'mine'
+          ? [
+              {
+                id: 2,
+                title: 'Postcard Without Content',
+                status: 'active',
+                owner: { id: 1, email: 'me@x.org', displayName: null },
+                iterations: [
+                  { id: 20, seq: 1, imagePath: 'projects/2/iterations/1.png', accepted: true, role: 'front' },
+                ],
+                postcardContent: null,
+              },
+            ]
+          : [],
+    });
+    renderPage();
+
+    const card = (await screen.findByText('Postcard Without Content')).closest('a')!;
+    measureImage(card.querySelector('img')!, 600);
+
+    expect(within(card).queryByTestId('postcard-overlay')).not.toBeInTheDocument();
+  });
+
+  it('renders a bare image (no overlay) when the hero iteration has no role', async () => {
+    stubFetch({
+      projects: (view) =>
+        view === 'mine'
+          ? [
+              {
+                id: 3,
+                title: 'Unmarked Project',
+                status: 'active',
+                owner: { id: 1, email: 'me@x.org', displayName: null },
+                iterations: [
+                  { id: 30, seq: 1, imagePath: 'projects/3/iterations/1.png', accepted: true, role: null },
+                ],
+                postcardContent: {
+                  front_regions: [
+                    {
+                      name: 'headline',
+                      label: 'Headline',
+                      style: '',
+                      text: 'SHOULD NOT SHOW',
+                      position: { top: '1.0in', left: '0.5in', width: '3.4in' },
+                      font: { family: 'Arial, sans-serif', size: '24px' },
+                    },
+                  ],
+                },
+              },
+            ]
+          : [],
+    });
+    renderPage();
+
+    const card = (await screen.findByText('Unmarked Project')).closest('a')!;
+    measureImage(card.querySelector('img')!, 600);
+
+    expect(within(card).queryByTestId('postcard-overlay')).not.toBeInTheDocument();
+  });
+
+  it('does not interfere with the selection checkbox (still toggles, still does not navigate)', async () => {
+    stubFetch({
+      projects: (view) =>
+        view === 'mine'
+          ? [
+              {
+                id: 4,
+                title: 'Overlaid Selectable',
+                status: 'active',
+                owner: { id: 1, email: 'me@x.org', displayName: null },
+                iterations: [
+                  { id: 40, seq: 1, imagePath: 'projects/4/iterations/1.png', accepted: true, role: 'front' },
+                ],
+                postcardContent: {
+                  front_regions: [
+                    {
+                      name: 'headline',
+                      label: 'Headline',
+                      style: '',
+                      text: 'CHECKBOX TEST',
+                      position: { top: '1.0in', left: '0.5in', width: '3.4in' },
+                      font: { family: 'Arial, sans-serif', size: '24px' },
+                    },
+                  ],
+                },
+              },
+            ]
+          : [],
+    });
+    renderPage();
+
+    const selectableCard = (await screen.findByText('Overlaid Selectable')).closest('a')!;
+    measureImage(selectableCard.querySelector('img')!, 600);
+    await screen.findByTestId('postcard-overlay');
+
+    fireEvent.click(screen.getByRole('checkbox', { name: 'Select Overlaid Selectable' }));
+
+    expect(screen.getByRole('checkbox', { name: 'Select Overlaid Selectable' })).toBeChecked();
+    // Selecting never navigates -- the detail stub route text never appears.
+    expect(screen.queryByText('Project Detail 4')).not.toBeInTheDocument();
+    expect(screen.getByText('Overlaid Selectable')).toBeInTheDocument();
+  });
+});
+
 describe('ProjectList new-project flow', () => {
   it('"New project" button POSTs /api/projects and navigates to /projects/:id', async () => {
     const fetchMock = stubFetch({

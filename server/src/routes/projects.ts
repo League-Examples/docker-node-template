@@ -1,3 +1,4 @@
+import fs from 'fs/promises';
 import { Router } from 'express';
 import { requireAuth } from '../middleware/requireAuth';
 import { prisma as defaultPrisma } from '../services/prisma';
@@ -11,6 +12,8 @@ import {
   VersionConflictError,
 } from '../agent-mcp/catalogTools';
 import { LockConflictError } from '../agent-mcp/locks';
+import { resolveWorkspacePath } from '../services/workspaceDirectorySync';
+import { parsePostcardContent, type PostcardContent } from '../services/postcardRender';
 
 /**
  * API Gateway's `projects.ts` (architecture-update.md Step 3 API Gateway
@@ -37,7 +40,13 @@ import { LockConflictError } from '../agent-mcp/locks';
  * (SUC-010 -- most-recently-accepted iteration, front-over-back for
  * postcards, fallback to the last iteration) and its "All projects"
  * owner label both need that data on the list response itself, not a
- * follow-up per-project fetch (see `PROJECT_LIST_INCLUDE` below).
+ * follow-up per-project fetch (see `PROJECT_LIST_INCLUDE` below). It also
+ * inlines each row's `postcardContent` (OOP change, 2026-07-15): the saved
+ * `postcard-content.json` (if any), read from the workspace alongside the
+ * Prisma query, so `ProjectList.tsx`'s hero card can overlay saved
+ * text/QR on the hero image via the same read-only `PostcardOverlay`
+ * `OutputPane.tsx`'s iteration gallery already uses (see
+ * `readListPostcardContent` below).
  *
  * **`requireAuth` only** -- matching every other new/relaxed route in
  * this sprint (architecture-001's shared-trust model: no per-user
@@ -103,6 +112,36 @@ const PROJECT_LIST_INCLUDE = {
   iterations: EXCLUDE_AGENT_PAGE_ITERATIONS,
 };
 
+/** Reads back whatever `postcard-content.json` `postcards.ts`'s `PUT
+ * /api/postcards/:projectId` most recently persisted for `projectId`, for
+ * `GET /projects`'s list-include extension below (OOP change,
+ * 2026-07-15). Reuses the exact same `resolveWorkspacePath` + `fs.readFile`
+ * + `parsePostcardContent` read `postcards.ts`'s own `GET
+ * /postcards/:projectId` route already does -- but, unlike that route,
+ * EVERY failure mode here (no file yet, a JSON parse error, or a
+ * `PostcardValidationError` from a malformed stored file) collapses to
+ * `null` rather than surfacing an error. This is a bulk list response
+ * covering many projects in one round trip; one project's corrupted or
+ * absent `postcard-content.json` must never fail the whole `GET /projects`
+ * response for every other project in the list -- it should just fall back
+ * to `ProjectList.tsx`'s existing bare-image behavior for that one card,
+ * exactly like `OutputPane.tsx`'s own swallow-on-error hydration effect
+ * already does for the single-project detail view. */
+async function readListPostcardContent(projectId: number): Promise<PostcardContent | null> {
+  const contentPath = `projects/${projectId}/outputs/postcard-content.json`;
+  let raw: string;
+  try {
+    raw = await fs.readFile(resolveWorkspacePath(contentPath), 'utf8');
+  } catch {
+    return null;
+  }
+  try {
+    return parsePostcardContent(JSON.parse(raw));
+  } catch {
+    return null;
+  }
+}
+
 projectsRouter.get('/projects', requireAuth, async (req, res) => {
   const userId = (req.user as any).id;
   const view = req.query.view === 'all' || req.query.view === 'archive' ? req.query.view : 'mine';
@@ -120,7 +159,24 @@ projectsRouter.get('/projects', requireAuth, async (req, res) => {
     include: PROJECT_LIST_INCLUDE,
   });
 
-  res.status(200).json({ projects });
+  // `postcardContent` (OOP change, 2026-07-15): each row's saved postcard
+  // content JSON, read in parallel alongside the Prisma query results
+  // above, so `ProjectList.tsx`'s new hero-card text/QR overlay
+  // (`PostcardOverlay`, the same read-only renderer `OutputPane.tsx`'s
+  // iteration gallery already uses) has everything it needs in this one
+  // response -- no follow-up `GET /api/postcards/:id` per visible card.
+  // List-only, deliberately: `GET /projects/:id`'s `PROJECT_DETAIL_INCLUDE`
+  // is untouched, since `PostcardEdit.tsx`/`OutputPane.tsx` already fetch
+  // this themselves via `GET /api/postcards/:projectId` and don't need it
+  // duplicated onto the detail response.
+  const projectsWithPostcardContent = await Promise.all(
+    projects.map(async (project: (typeof projects)[number]) => ({
+      ...project,
+      postcardContent: await readListPostcardContent(project.id),
+    })),
+  );
+
+  res.status(200).json({ projects: projectsWithPostcardContent });
 });
 
 projectsRouter.get('/projects/:id', requireAuth, async (req, res) => {

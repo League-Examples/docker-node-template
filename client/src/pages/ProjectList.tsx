@@ -1,5 +1,9 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
+import type { PostcardContentDTO } from './ProjectDetail/types';
+import PostcardOverlay from './ProjectDetail/PostcardOverlay';
+import { useMeasuredWidth } from '../lib/useMeasuredWidth';
+import { postcardFaceRegions, postcardFaceQr } from '../lib/postcardFaceContent';
 
 /**
  * Post-login landing page — the project list (SUC-010/SUC-011). Promoted
@@ -39,6 +43,25 @@ import { Link, useNavigate } from 'react-router-dom';
  * `OutputPane.tsx`'s per-row delete-confirmation popup, just scoped to the
  * whole selection instead of one row. Any bulk action clears the selection
  * and refetches the current view afterward so the list reflects the change.
+ *
+ * **Hero-card rendered-text overlay (OOP change, 2026-07-15)**: each card's
+ * hero image now overlays whatever postcard text/QR was last saved for
+ * whichever face `selectHeroIteration` picked -- the exact same read-only
+ * `ProjectDetail/PostcardOverlay` component `OutputPane.tsx`'s iteration
+ * gallery already renders, not a second hand-built preview. The saved
+ * content itself rides along on `GET /api/projects`'s response as each
+ * row's new `postcardContent` field (`routes/projects.ts`'s
+ * `PROJECT_LIST_INCLUDE` extension) -- no follow-up per-card fetch. Which
+ * face's `front_regions`/`back_regions`/`front_qr`/`back_qr` applies is
+ * decided by the hero iteration's own `role`, via the shared
+ * `../lib/postcardFaceContent` helper (also used by `OutputPane.tsx`), and
+ * the overlay is scaled to the hero image's actual on-screen pixel width
+ * via the shared `../lib/useMeasuredWidth` hook (ditto) -- see `HeroImage`
+ * below, which mirrors `OutputPane.tsx`'s `IterationImage` almost exactly,
+ * just with the card's own aspect-ratio-box sizing instead of the
+ * gallery's 800px cap. A project with no saved postcard content, or whose
+ * hero has no `role` at all, renders the bare image exactly as before --
+ * see `HeroImage`'s own `showOverlay` gate.
  */
 
 type ProjectView = 'mine' | 'all' | 'library' | 'archive';
@@ -73,6 +96,13 @@ interface ProjectSummary {
   detailsHeader?: Record<string, unknown> | null;
   owner?: ProjectOwner | null;
   iterations?: IterationSummary[];
+  /** Saved postcard text/QR content (OOP change, 2026-07-15) -- see the
+   * module header's "Hero-card rendered-text overlay" section.
+   * `routes/projects.ts`'s `GET /projects` sends `null` for a project with
+   * nothing saved yet (or an unreadable/malformed content file), same
+   * "absent means bare image" contract `OutputPane.tsx` already follows for
+   * its own `GET /api/postcards/:projectId` fetch. */
+  postcardContent?: PostcardContentDTO | null;
 }
 
 interface CatalogAssetItem {
@@ -149,6 +179,43 @@ function heroCaption(iteration: IterationSummary | null): string {
  * `Asset.path`) via ticket 004's `GET /api/files/*` route. */
 function fileUrl(relativePath: string): string {
   return `/api/files/${relativePath}`;
+}
+
+/** A card's hero image, plus (when the hero iteration's face has saved
+ * postcard content) a `PostcardOverlay` scaled to match -- the module
+ * header's "Hero-card rendered-text overlay" section. Mirrors
+ * `ProjectDetail/OutputPane.tsx`'s `IterationImage` almost exactly (same
+ * shared `useMeasuredWidth` hook, same `showOverlay` gate), just sized to
+ * the card's fixed `aspect-[3/2]` box instead of the gallery's 800px cap --
+ * kept as its own small component (rather than inlined in the card loop
+ * below) so the `<img ref>` measuring hook has a stable per-card element to
+ * attach to. */
+function HeroImage({
+  imagePath,
+  overlayRegions,
+  overlayQr,
+}: {
+  imagePath: string;
+  overlayRegions?: PostcardContentDTO['front_regions'];
+  overlayQr?: PostcardContentDTO['front_qr'];
+}) {
+  const imgRef = useRef<HTMLImageElement>(null);
+  const { widthPx, measure } = useMeasuredWidth(imgRef, imagePath);
+
+  const showOverlay = (overlayRegions && overlayRegions.length > 0) || !!overlayQr;
+
+  return (
+    <div className="relative mb-1 aspect-[3/2] w-full overflow-hidden rounded">
+      <img
+        ref={imgRef}
+        src={fileUrl(imagePath)}
+        alt=""
+        onLoad={measure}
+        className="h-full w-full object-cover"
+      />
+      {showOverlay && <PostcardOverlay regions={overlayRegions ?? []} qr={overlayQr} widthPx={widthPx} />}
+    </div>
+  );
 }
 
 /** Best-effort "kind" line from `Project.detailsHeader` (free-form JSON,
@@ -516,6 +583,8 @@ export default function ProjectList() {
             {projects.map((project) => {
               const heroIteration = selectHeroIteration(project.iterations ?? []);
               const kindLabel = projectKindLabel(project.detailsHeader);
+              const heroOverlayRegions = postcardFaceRegions(project.postcardContent, heroIteration?.role);
+              const heroOverlayQr = postcardFaceQr(project.postcardContent, heroIteration?.role);
               return (
                 <li key={project.id} className="relative">
                   {/* Selection checkbox lives OUTSIDE the Link below (not
@@ -541,10 +610,10 @@ export default function ProjectList() {
                     className="block rounded-lg border border-slate-200 bg-white p-3 hover:border-indigo-400"
                   >
                     {heroIteration ? (
-                      <img
-                        src={fileUrl(heroIteration.imagePath)}
-                        alt=""
-                        className="mb-1 aspect-[3/2] w-full rounded object-cover"
+                      <HeroImage
+                        imagePath={heroIteration.imagePath}
+                        overlayRegions={heroOverlayRegions}
+                        overlayQr={heroOverlayQr}
                       />
                     ) : (
                       <div

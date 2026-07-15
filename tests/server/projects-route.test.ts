@@ -280,6 +280,48 @@ describe('GET /api/projects -- view filtering', () => {
     expect(row.owner.email).toBe(`${marker}-a@example.com`);
   });
 
+  it('inlines each project\'s saved postcardContent, and null when nothing is saved (OOP change, 2026-07-15)', async () => {
+    // Two projects: one with a real, prior-PUT `postcard-content.json`
+    // (via the same `PUT /api/postcards/:projectId` route the client's
+    // text editor uses -- mirrors `postcard-route.test.ts`'s own fixture
+    // pattern, so this exercises the real `createAgentPage` write, not a
+    // hand-written file), one with nothing saved at all.
+    const withContent = await makeProject(userAId, `${marker}-list-postcard-content`);
+    const frontIteration = await makeIteration(withContent.id, `projects/${withContent.id}/iterations/front.png`, 1);
+    const withoutContent = await makeProject(userAId, `${marker}-list-postcard-none`);
+
+    const agent = await loginAsUserA();
+
+    const putRes = await agent.put(`/api/postcards/${withContent.id}`).send({
+      front_image: frontIteration.imagePath,
+      front_regions: [
+        {
+          name: 'headline',
+          label: 'Headline',
+          style: '',
+          text: 'HELLO WORLD',
+          rows: null,
+          position: { top: '1.0in', left: '0.5in', width: '3.4in' },
+          font: { family: 'Arial, sans-serif', size: '34px' },
+        },
+      ],
+    });
+    expect(putRes.status).toBe(200);
+
+    const res = await agent.get('/api/projects?view=mine');
+    expect(res.status).toBe(200);
+
+    const withContentRow = res.body.projects.find((p: any) => p.id === withContent.id);
+    expect(withContentRow).toBeDefined();
+    expect(withContentRow.postcardContent).not.toBeNull();
+    expect(withContentRow.postcardContent.front_regions).toHaveLength(1);
+    expect(withContentRow.postcardContent.front_regions[0].text).toBe('HELLO WORLD');
+
+    const withoutContentRow = res.body.projects.find((p: any) => p.id === withoutContent.id);
+    expect(withoutContentRow).toBeDefined();
+    expect(withoutContentRow.postcardContent).toBeNull();
+  });
+
   it('excludes agent-page output rows from the list response\'s iterations too (OOP follow-up, 2026-07-15)', async () => {
     const project = await makeProject(userAId, `${marker}-list-agent-page-filter`);
     const realIteration = await makeIteration(project.id, `projects/${project.id}/iterations/real.png`, 1);

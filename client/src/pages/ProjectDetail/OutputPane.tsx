@@ -2,6 +2,8 @@ import { useEffect, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { fileUrl, type IterationDTO, type PostcardContentDTO, type PostcardContentRegionDTO, type PostcardQr } from './types';
 import PostcardOverlay from './PostcardOverlay';
+import { useMeasuredWidth } from '../../lib/useMeasuredWidth';
+import { postcardFaceRegions, postcardFaceQr } from '../../lib/postcardFaceContent';
 
 /**
  * Top portion of the right pane: the project-output view (promoted from
@@ -53,6 +55,15 @@ import PostcardOverlay from './PostcardOverlay';
  * pattern as `PostcardEdit.tsx`'s own hydration effect. The overlay is
  * strictly read-only (no move handles, no label tags, no click-to-edit) --
  * see `PostcardOverlay.tsx`'s own header.
+ *
+ * **Shared with `ProjectList.tsx`'s hero-card overlay (OOP change,
+ * 2026-07-15)**: `IterationImage`'s ref/`getBoundingClientRect`/
+ * `ResizeObserver` measuring dance now lives in `../../lib/useMeasuredWidth`
+ * (`ProjectList.tsx`'s new hero image uses the exact same hook), and the
+ * `role === 'front' ? front_* : role === 'back' ? back_* : undefined`
+ * three-way ternary below now lives in `../../lib/postcardFaceContent`
+ * (`postcardFaceRegions`/`postcardFaceQr`) for the same reason -- one
+ * implementation each, not two hand copies.
  */
 
 type IterationRole = 'none' | 'front' | 'back';
@@ -296,9 +307,8 @@ export default function OutputPane({ projectId, projectTitle, iterations, onIter
             // role (see module header) -- an iteration with no role, or a
             // role but no saved content for that face, renders bare.
             const role = roleOf(iteration);
-            const overlayRegions =
-              role === 'front' ? postcardContent?.front_regions : role === 'back' ? postcardContent?.back_regions : undefined;
-            const overlayQr = role === 'front' ? postcardContent?.front_qr : role === 'back' ? postcardContent?.back_qr : undefined;
+            const overlayRegions = postcardFaceRegions(postcardContent, role);
+            const overlayQr = postcardFaceQr(postcardContent, role);
             return (
               <div
                 key={iteration.id}
@@ -404,31 +414,17 @@ interface IterationImageProps {
 
 /** One iteration's image, plus (when this iteration's face has saved
  * postcard content) a `PostcardOverlay` scaled to match. Measures the
- * `<img>`'s own actual rendered pixel width via `getBoundingClientRect` --
- * both on load (the image has no intrinsic size before then) and via a
- * `ResizeObserver` (the gallery's `object-contain`/800px-cap sizing can
- * change with the viewport) -- so the overlay always lines up with
- * whatever size THIS artwork ends up displayed at, not a hardcoded
- * assumption. `widthPx` starts at 0 (no overlay rendered) until the first
- * successful measurement. */
+ * `<img>`'s own actual rendered pixel width via the shared
+ * `../../lib/useMeasuredWidth` hook (module header, "Shared with
+ * `ProjectList.tsx`'s hero-card overlay") -- both on load (the image has no
+ * intrinsic size before then) and via a `ResizeObserver` (the gallery's
+ * `object-contain`/800px-cap sizing can change with the viewport) -- so the
+ * overlay always lines up with whatever size THIS artwork ends up
+ * displayed at, not a hardcoded assumption. `widthPx` starts at 0 (no
+ * overlay rendered) until the first successful measurement. */
 function IterationImage({ src, alt, overlayRegions, overlayQr }: IterationImageProps) {
   const imgRef = useRef<HTMLImageElement>(null);
-  const [widthPx, setWidthPx] = useState(0);
-
-  function measure() {
-    const el = imgRef.current;
-    if (el) setWidthPx(el.getBoundingClientRect().width);
-  }
-
-  useEffect(() => {
-    measure();
-    const el = imgRef.current;
-    if (!el || typeof ResizeObserver === 'undefined') return undefined;
-    const observer = new ResizeObserver(() => measure());
-    observer.observe(el);
-    return () => observer.disconnect();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [src]);
+  const { widthPx, measure } = useMeasuredWidth(imgRef, src);
 
   const showOverlay = (overlayRegions && overlayRegions.length > 0) || !!overlayQr;
 
