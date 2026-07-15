@@ -1,12 +1,14 @@
 ---
-id: "004"
-title: "Provider-neutral LLM interface + Anthropic adapter + mock adapter"
-status: open
-use-cases: [SUC-003]
-depends-on: ["003"]
-github-issue: ""
+id: '004'
+title: Provider-neutral LLM interface + Anthropic adapter + mock adapter
+status: done
+use-cases:
+- SUC-003
+depends-on:
+- '003'
+github-issue: ''
 issue: agent-runtime-and-chat.md
-completes_issue: true
+completes_issue: false
 ---
 <!-- CLASI: Before changing code or making plans, review the SE process in CLAUDE.md -->
 
@@ -26,23 +28,23 @@ Server's finished tool surface (fs + catalog) to translate against.
 
 ## Acceptance Criteria
 
-- [ ] `server/src/agent/providers/types.ts` defines a `ProviderAdapter`
+- [x] `server/src/agent/providers/types.ts` defines a `ProviderAdapter`
       interface covering: sending a chat-completions-plus-tool-use
       request (system prompt, message history, available tool
       definitions) and receiving a response that is either a final
       assistant message or one or more tool-use requests; the interface
       has zero outward dependencies on any specific vendor SDK type.
-- [ ] `server/src/agent/providers/anthropic.ts` implements
+- [x] `server/src/agent/providers/anthropic.ts` implements
       `ProviderAdapter` using the Claude Agent SDK (or the Anthropic
       Messages API with tool use -- document which), translating the
       Workspace MCP Server's tool definitions (tickets 002/003) into the
       SDK's expected tool-schema format and translating the SDK's
       tool-use response back into the interface's provider-neutral
       shape.
-- [ ] `server/src/agent/providers/mock.ts` implements the same
+- [x] `server/src/agent/providers/mock.ts` implements the same
       `ProviderAdapter` interface against a scripted/canned response
       sequence (no real network call), configurable per test.
-- [ ] A test drives one scripted tool-use exchange (e.g. "call
+- [x] A test drives one scripted tool-use exchange (e.g. "call
       `create_knowledge_entry`, then respond with a final message")
       through **both** adapters and confirms: (a) the mock adapter
       completes it with no network access; (b) the Anthropic adapter's
@@ -50,11 +52,11 @@ Server's finished tool surface (fs + catalog) to translate against.
       Agent SDK client (no real API call, no real `ANTHROPIC_API_KEY`
       required) -- the full suite is green with no real Anthropic
       credentials present.
-- [ ] Neither adapter file is imported by, or has any awareness of,
+- [x] Neither adapter file is imported by, or has any awareness of,
       `ChatMessage`, `Lock`, or any Prisma model -- adapters translate
       wire formats only; persistence and tool dispatch belong to ticket
       005's turn controller.
-- [ ] A documented, provider-neutral tool-call result shape (e.g. `{
+- [x] A documented, provider-neutral tool-call result shape (e.g. `{
       name: string; args: unknown; result: unknown }`) is exported from
       `providers/types.ts` for ticket 005 to use when persisting
       `ChatMessage.toolCalls` (D10 Consequences -- no raw SDK object ever
@@ -112,3 +114,38 @@ None beyond this ticket.
 - **New tests to write**: `tests/server/agent-providers.test.ts` per
   Testing Plan above.
 - **Verification command**: `npm test`
+
+### Testing notes (as implemented)
+
+- **Design choice (AC2 "document which")**: the Anthropic adapter wraps
+  the plain **Anthropic Messages API** (`@anthropic-ai/sdk`,
+  `client.messages.create` with `tools`), not the Claude Agent SDK. The
+  Claude Agent SDK is a batteries-included harness with its own agent
+  loop/session/tool-dispatch model; ticket 005's turn controller *is*
+  that harness for Flyerbot (context reconstruction, `project_turn`
+  locking, dispatch to the Workspace MCP Server), so the plain
+  request/response Messages API -- which maps directly onto
+  `ProviderAdapter.sendTurn`'s one-turn-in/one-turn-out contract -- is
+  the correct wrapping layer. Documented at length in
+  `providers/anthropic.ts`'s module header.
+- **Credentials**: `createAnthropicAdapter()` never constructs the real
+  SDK client at call time; `sendTurn` resolves a client lazily (injected
+  `options.client` in every test, so the real SDK client is never
+  constructed in the suite) and throws a specific
+  `AnthropicAdapter: no ANTHROPIC_API_KEY configured...` error only if
+  actually invoked with neither an injected client nor a key. Verified
+  against a **real** `ANTHROPIC_API_KEY` present in this dev machine's
+  `.env` (confirmed via `env | grep -i anthropic`) -- `npm test` stayed
+  green because every test either injects a stub client or explicitly
+  clears the env var in `beforeEach` before exercising the no-credentials
+  path.
+- **Swap-containment proof (R4)**: `structural parity` test in
+  `tests/server/agent-providers.test.ts` drives the same scripted
+  "call `create_knowledge_entry`, then respond with a final message"
+  exchange through `createMockAdapter` and a stubbed
+  `createAnthropicAdapter` via a shared `driveExchange()` helper typed
+  only against `ProviderAdapter`, and asserts the two adapters' results
+  are `toEqual` -- the turn controller cannot tell them apart.
+- **Result**: `npm test` -- 236/236 server tests pass (224 pre-existing +
+  12 new in `agent-providers.test.ts`), 94/94 client tests pass. No
+  network access, no real Anthropic API call, in the new suite.
