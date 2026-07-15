@@ -295,6 +295,50 @@ describe('PUT /api/postcards/:projectId -- extra_html QR overlay (AC4)', () => {
   });
 });
 
+describe('PUT /api/postcards/:projectId -- front_qr/back_qr overlay (OOP: addable/deletable/movable QR)', () => {
+  it('persists and renders a structured front_qr, and omits the QR overlay entirely when absent', async () => {
+    const project = await makeProject(`${marker}-qr-front`);
+    await makeIteration(project.id, `projects/${project.id}/iterations/iter-1.png`, 1);
+    await makeIteration(project.id, `projects/${project.id}/iterations/iter-2.png`, 2);
+
+    const agent = await loginAsAdmin();
+    const res = await agent.put(`/api/postcards/${project.id}`).send({
+      front_image: `projects/${project.id}/iterations/iter-1.png`,
+      back_image: `projects/${project.id}/iterations/iter-2.png`,
+      front_qr: {
+        url: 'https://example.org/rsvp',
+        position: { top: '1.15in', right: '0.5in', width: '1.5in', height: '1.5in' },
+      },
+    });
+
+    expect(res.status).toBe(200);
+    const persistedContent = JSON.parse(
+      await fs.readFile(resolveWorkspacePath(res.body.contentPath), 'utf8')
+    );
+    expect(persistedContent.front_qr.url).toBe('https://example.org/rsvp');
+    expect(persistedContent.back_qr).toBeUndefined();
+
+    const html = await fs.readFile(resolveWorkspacePath(res.body.htmlPath), 'utf8');
+    const frontSection = html.split('data-side="front"')[1].split('data-side="back"')[0];
+    const backSection = html.split('data-side="back"')[1];
+    expect(frontSection).toContain('data-qr-url="https://example.org/rsvp"');
+    expect(backSection).not.toContain('data-qr-url');
+  });
+
+  it('rejects a QR position with neither left nor right', async () => {
+    const project = await makeProject(`${marker}-qr-bad-position`);
+    await makeIteration(project.id, `projects/${project.id}/iterations/iter-1.png`, 1);
+
+    const agent = await loginAsAdmin();
+    const res = await agent.put(`/api/postcards/${project.id}`).send({
+      front_image: `projects/${project.id}/iterations/iter-1.png`,
+      front_qr: { url: 'https://example.org', position: { top: '1in', width: '1.5in' } },
+    });
+
+    expect(res.status).toBe(400);
+  });
+});
+
 describe('PUT /api/postcards/:projectId -- re-submission overwrites (AC5)', () => {
   it('overwrites the persisted files in place while recording a fresh Iteration each time', async () => {
     const project = await makeProject(`${marker}-resubmit`);

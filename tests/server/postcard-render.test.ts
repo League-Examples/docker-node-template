@@ -75,6 +75,44 @@ describe('parsePostcardContent', () => {
     expect(() => parsePostcardContent('not an object')).toThrow(PostcardValidationError);
     expect(() => parsePostcardContent(null)).toThrow(PostcardValidationError);
   });
+
+  it('front_qr/back_qr default to undefined -- absent means no QR on that face', () => {
+    const content = parsePostcardContent({ front_image: 'x' });
+    expect(content.front_qr).toBeUndefined();
+    expect(content.back_qr).toBeUndefined();
+  });
+
+  it('accepts a structured front_qr/back_qr object', () => {
+    const content = parsePostcardContent({
+      front_image: 'front.png',
+      back_image: 'back.png',
+      front_qr: { url: 'https://example.org/front', position: { top: '1.15in', right: '0.5in', width: '1.5in', height: '1.5in' } },
+      back_qr: { url: 'https://example.org/back', position: { top: '2in', left: '0.5in', width: '1.5in' } },
+    });
+    expect(content.front_qr).toEqual({
+      url: 'https://example.org/front',
+      position: { top: '1.15in', right: '0.5in', width: '1.5in', height: '1.5in' },
+    });
+    expect(content.back_qr?.url).toBe('https://example.org/back');
+  });
+
+  it('rejects a QR position with neither left nor right, same as a region position', () => {
+    expect(() =>
+      parsePostcardContent({
+        front_image: 'x',
+        front_qr: { url: 'https://example.org', position: { top: '1in', width: '1.5in' } },
+      })
+    ).toThrow(PostcardValidationError);
+  });
+
+  it('rejects a QR object missing a required field', () => {
+    expect(() =>
+      parsePostcardContent({
+        front_image: 'x',
+        front_qr: { position: { top: '1in', left: '1in', width: '1.5in' } },
+      })
+    ).toThrow(PostcardValidationError);
+  });
 });
 
 describe('resolvePostcardImages', () => {
@@ -231,5 +269,56 @@ describe('renderPostcardHtml', () => {
     const html = renderPostcardHtml(content);
     expect(html).not.toContain('<script>alert(1)</script>');
     expect(html).toContain('&lt;script&gt;');
+  });
+
+  describe('front_qr/back_qr overlay (OOP: optional, structured, positioned QR)', () => {
+    it('renders nothing for a face with no QR data -- AC1, including pre-existing content with no front_qr/back_qr at all', () => {
+      const content = parsePostcardContent({ front_image: 'front.png', back_image: 'back.png' });
+      const html = renderPostcardHtml(content);
+      expect(html).not.toContain('data-qr-url');
+      expect(html).not.toContain('QR code');
+    });
+
+    it('renders a face\'s QR overlay at its own position when present', () => {
+      const content = parsePostcardContent({
+        front_image: 'front.png',
+        front_qr: {
+          url: 'https://example.org/signup',
+          position: { top: '2.00in', left: '0.75in', width: '1.20in', height: '1.20in' },
+        },
+      });
+      const html = renderPostcardHtml(content);
+      expect(html).toContain('data-qr-url="https://example.org/signup"');
+      expect(html).toContain('top:2.00in');
+      expect(html).toContain('left:0.75in');
+      expect(html).toContain('width:1.20in');
+      expect(html).toContain('height:1.20in');
+    });
+
+    it('renders front_qr and back_qr independently -- one face can have a QR while the other does not', () => {
+      const content = parsePostcardContent({
+        front_image: 'front.png',
+        back_image: 'back.png',
+        back_qr: { url: 'https://example.org/back-only', position: { top: '1in', right: '0.5in', width: '1.5in' } },
+      });
+      const html = renderPostcardHtml(content);
+      const frontSection = html.split('data-side="front"')[1].split('data-side="back"')[0];
+      const backSection = html.split('data-side="back"')[1];
+      expect(frontSection).not.toContain('data-qr-url');
+      expect(backSection).toContain('data-qr-url="https://example.org/back-only"');
+    });
+
+    it('escapes the QR url as an HTML attribute/text value', () => {
+      const content = parsePostcardContent({
+        front_image: 'front.png',
+        front_qr: {
+          url: 'https://example.org/?a=1&b="x"',
+          position: { top: '1in', left: '1in', width: '1.5in' },
+        },
+      });
+      const html = renderPostcardHtml(content);
+      expect(html).not.toContain('href="https://example.org/?a=1&b="x""');
+      expect(html).toContain('&amp;b=&quot;x&quot;');
+    });
   });
 });

@@ -254,20 +254,144 @@ describe('PostcardEdit -- move handles (AC4)', () => {
   });
 });
 
-describe('PostcardEdit -- QR overlay (AC5)', () => {
-  it('clicking the QR box opens a URL popup; Return sets the URL for the current face', async () => {
+describe('PostcardEdit -- QR overlay is optional, addable, deletable, and movable (OOP change)', () => {
+  it('shows no QR by default on either face -- an imported/fresh design has no QR data', async () => {
     const user = userEvent.setup();
     stubFetch(projectFixture());
     renderPage();
     await settle();
 
-    await user.click(screen.getByTestId('postcard-extra-overlay'));
-    const dialog = screen.getByRole('dialog', { name: /set qr code url/i });
+    expect(screen.queryByTestId('postcard-qr-box')).not.toBeInTheDocument();
+
+    await user.click(screen.getByRole('button', { name: /^back$/i }));
+    expect(screen.queryByTestId('postcard-qr-box')).not.toBeInTheDocument();
+    assertNoLibraryDrawer();
+  });
+
+  it('the "Add QR code" toolbar button adds a QR overlay to the CURRENT face only, at a default position', async () => {
+    const user = userEvent.setup();
+    stubFetch(projectFixture());
+    renderPage();
+    await settle();
+
+    await user.click(screen.getByRole('button', { name: /add qr code/i }));
+
+    const box = screen.getByTestId('postcard-qr-box');
+    expect(box).toBeInTheDocument();
+    expect(box).toHaveStyle({ top: '1.15in', right: '0.5in', width: '1.5in', height: '1.5in' });
+
+    // Adding is per-face -- the back face still has no QR.
+    await user.click(screen.getByRole('button', { name: /^back$/i }));
+    expect(screen.queryByTestId('postcard-qr-box')).not.toBeInTheDocument();
+
+    // Switching back to front, the added QR is still there, and the
+    // add button is now disabled (a face carries at most one QR).
+    await user.click(screen.getByRole('button', { name: /^front$/i }));
+    expect(screen.getByTestId('postcard-qr-box')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /add qr code/i })).toBeDisabled();
+    assertNoLibraryDrawer();
+  });
+
+  it('clicking the QR box opens its popup; Return sets the URL for the current face', async () => {
+    const user = userEvent.setup();
+    stubFetch(projectFixture());
+    renderPage();
+    await settle();
+    await user.click(screen.getByRole('button', { name: /add qr code/i }));
+
+    await user.click(screen.getByTestId('postcard-qr-box'));
+    const dialog = screen.getByRole('dialog', { name: /qr code/i });
     const urlInput = within(dialog).getByLabelText(/qr code url/i);
     await user.type(urlInput, 'https://example.org/signup{Enter}');
 
     expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
     expect(screen.getByTestId('postcard-qr-url')).toHaveTextContent('https://example.org/signup');
+    assertNoLibraryDrawer();
+  });
+
+  it('the popup carries a Delete button that removes the QR from the current face', async () => {
+    const user = userEvent.setup();
+    stubFetch(projectFixture());
+    renderPage();
+    await settle();
+    await user.click(screen.getByRole('button', { name: /add qr code/i }));
+    await user.click(screen.getByTestId('postcard-qr-box'));
+
+    const dialog = screen.getByRole('dialog', { name: /qr code/i });
+    await user.click(within(dialog).getByRole('button', { name: /delete/i }));
+
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+    expect(screen.queryByTestId('postcard-qr-box')).not.toBeInTheDocument();
+    // The add button is available again, now that the face has no QR.
+    expect(screen.getByRole('button', { name: /add qr code/i })).not.toBeDisabled();
+    assertNoLibraryDrawer();
+  });
+
+  it('long-click-drag on a corner handle moves the QR, using the same mechanism as text-region move handles', async () => {
+    const user = userEvent.setup();
+    stubFetch(projectFixture());
+    renderPage();
+    await settle();
+    await user.click(screen.getByRole('button', { name: /add qr code/i }));
+
+    const preview = screen.getByTestId('postcard-preview');
+    fireEvent.mouseDown(screen.getByTestId('move-handle-bl-qr'), { clientX: 100, clientY: 50 });
+    fireEvent.mouseMove(preview, { clientX: 150, clientY: 80 });
+    fireEvent.mouseUp(preview);
+
+    // Same jsdom fallback as the text-region move-handle test: offsetLeft/
+    // offsetTop start at 0, so the resulting position is just the drag
+    // delta at 96px/in -- (50, 30)px -> (0.52in, 0.31in), and the QR's
+    // `right` offset is cleared in favor of an explicit `left`.
+    const box = screen.getByTestId('postcard-qr-box');
+    expect(box).toHaveStyle({ left: '0.52in', top: '0.31in' });
+
+    // A click right after the drag is swallowed (not treated as opening
+    // the popup), matching the text-region move-handle behavior.
+    await user.click(box);
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+    assertNoLibraryDrawer();
+  });
+
+  it('the moved QR position persists into the PUT content JSON as a structured front_qr/back_qr field', async () => {
+    const user = userEvent.setup();
+    const pdfBlob = new Blob(['%PDF-1.7 fake'], { type: 'application/pdf' });
+    const fetchMock = stubFetch(projectFixture(), (url, init) => {
+      if (url === '/api/postcards/7' && init?.method === 'PUT') return { ok: true, json: async () => ({}) } as Response;
+      if (url === '/api/postcards/7/pdf' && init?.method === 'POST') return { ok: true, blob: async () => pdfBlob } as Response;
+      return undefined;
+    });
+    vi.stubGlobal('URL', { ...URL, createObjectURL: vi.fn().mockReturnValue('blob:fake-pdf-url') });
+    vi.stubGlobal('open', vi.fn());
+
+    renderPage();
+    await settle();
+    await user.click(screen.getByRole('button', { name: /add qr code/i }));
+    await user.click(screen.getByTestId('postcard-qr-box'));
+    await user.type(
+      within(screen.getByRole('dialog')).getByLabelText(/qr code url/i),
+      'https://example.org/rsvp{Enter}',
+    );
+
+    const preview = screen.getByTestId('postcard-preview');
+    fireEvent.mouseDown(screen.getByTestId('move-handle-bl-qr'), { clientX: 100, clientY: 50 });
+    fireEvent.mouseMove(preview, { clientX: 150, clientY: 80 });
+    fireEvent.mouseUp(preview);
+
+    await user.click(screen.getByRole('button', { name: /generate pdf/i }));
+
+    await waitFor(() => {
+      expect(fetchMock).toHaveBeenCalledWith('/api/postcards/7', expect.objectContaining({ method: 'PUT' }));
+    });
+    const putCall = fetchMock.mock.calls.find(
+      ([url, init]) => url === '/api/postcards/7' && (init as RequestInit | undefined)?.method === 'PUT',
+    )!;
+    const body = JSON.parse((putCall[1] as RequestInit).body as string);
+    expect(body.front_qr).toEqual({
+      url: 'https://example.org/rsvp',
+      position: { top: '0.31in', left: '0.52in', width: '1.5in', height: '1.5in' },
+    });
+    expect(body).not.toHaveProperty('back_qr');
     assertNoLibraryDrawer();
   });
 });
@@ -355,8 +479,11 @@ describe('PostcardEdit -- Save + Generate PDF (AC9/AC10)', () => {
       },
     ]);
     expect(body.back_regions).toEqual([]);
-    expect(body.front_extra_html).toBe('');
-    expect(body.back_extra_html).toBe('');
+    // No QR was added in this session -- the structured QR fields are
+    // omitted entirely (AC1: no QR by default), not sent as empty
+    // placeholders (the old `*_extra_html` behavior).
+    expect(body).not.toHaveProperty('front_qr');
+    expect(body).not.toHaveProperty('back_qr');
 
     await waitFor(() => {
       expect(fetchMock).toHaveBeenCalledWith('/api/postcards/7/pdf', expect.objectContaining({ method: 'POST' }));

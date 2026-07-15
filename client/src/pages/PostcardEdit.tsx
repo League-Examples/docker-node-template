@@ -26,9 +26,17 @@ import type { ProjectDetailDTO } from './ProjectDetail/types';
  *     (`OutputPane.tsx`'s `handleGeneratePdf`, ticket 005-009) -- `PUT
  *     /api/postcards/:id` with the validated content-JSON shape
  *     (`postcardRender.ts`, Sprint 004), now carrying this page's actual
- *     `front_regions`/`back_regions`/`*_extra_html` (not just the two
+ *     `front_regions`/`back_regions`/`front_qr`/`back_qr` (not just the two
  *     image paths `OutputPane`'s quick-PDF button sends), then `POST
  *     /api/postcards/:id/pdf` to render and open the result.
+ *
+ * **QR overlay (OOP change)**: the QR code is an optional, addable,
+ * deletable, movable element per face -- NOT an always-present fixture.
+ * Added via the side toolbar's "QR" button, positioned/repositioned via
+ * the same corner-move-handle drag mechanism as text regions, deleted from
+ * its own popup. Persisted as a structured `front_qr`/`back_qr` content-
+ * JSON object (`{ url, position }`, `postcardRender.ts`'s
+ * `PostcardQrSchema`), not the old always-on `*_extra_html` string.
  *
  * **Text-region data is client-side state for the duration of one editing
  * session** -- there is no `GET` of a previously-saved
@@ -87,18 +95,33 @@ interface DrawRect {
 
 const DEFAULT_FONT: PostcardRegionFont = { family: 'Arial, sans-serif', size: '14px' };
 
-/** Fixed QR-overlay geometry, identical on both faces -- a content-JSON
- * `*_extra_html` seam (`postcardRender.ts`: "anything that doesn't fit the
- * region model, injected verbatim"), not a `PostcardRegion`. Actual QR
- * *image* generation is out of this ticket's scope -- the placeholder box
- * below carries the encoded URL as both visible text and a `data-qr-url`
- * attribute so it round-trips through the content JSON unambiguously. */
+/** Default position for a newly-added QR overlay -- identical starting
+ * geometry on both faces until moved (long-click-drag, mirroring the
+ * text-region corner move handles below). QR presence/url/position are a
+ * structured, optional-per-face `front_qr`/`back_qr` content-JSON field
+ * (`postcardRender.ts`'s `PostcardQrSchema`) rather than the old
+ * always-on `*_extra_html` overlay -- OOP change: the QR needed to be
+ * addable/deletable/movable like any other element, which an opaque HTML
+ * string couldn't represent cleanly. Actual QR *image* generation is still
+ * out of scope -- the placeholder box below carries the encoded URL as
+ * both visible text and a `data-qr-url` attribute so it round-trips
+ * through the content JSON unambiguously. */
 const QR_OVERLAY_POSITION: PostcardRegionPosition = {
   top: '1.15in',
   right: '0.5in',
   width: '1.5in',
   height: '1.5in',
 };
+
+/** A face's optional QR overlay: present iff the stakeholder added one via
+ * the toolbar's "Add QR" button (`null` = no QR on this face). `position`
+ * moves independently via the same corner-move-handle drag mechanism
+ * `PostcardRegion`s use. Maps 1:1 to the content JSON's `front_qr`/
+ * `back_qr` shape. */
+export interface PostcardQr {
+  url: string;
+  position: PostcardRegionPosition;
+}
 
 /** Turn a label into a region name unique across both faces (server-side
  * `data-region` identifier, `postcardRender.ts`'s `renderRegion`). */
@@ -108,25 +131,6 @@ function makeRegionName(side: PostcardSide, label: string, taken: Set<string>): 
   let n = 2;
   while (taken.has(name)) name = `${side}_${slug}_${n++}`;
   return name;
-}
-
-function escapeHtml(value: string): string {
-  return value
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;');
-}
-
-/** Builds the `*_extra_html` value for a face's QR overlay -- injected
- * verbatim by `renderPostcardHtml` (Sprint 004). */
-function qrOverlayExtraHtml(url: string): string {
-  const pos = QR_OVERLAY_POSITION;
-  const style =
-    `position:absolute; top:${pos.top}; right:${pos.right}; width:${pos.width}; height:${pos.height}; ` +
-    'border:1px dashed #999; display:flex; align-items:center; justify-content:center; ' +
-    'font-size:8px; color:#999; text-align:center; overflow:hidden;';
-  return `<div style="${style}" data-qr-url="${escapeHtml(url)}">QR code<br/>${escapeHtml(url)}</div>`;
 }
 
 /** "top 1.0in · left 0.5in · width 3.4in — Arial 14px" */
@@ -171,8 +175,10 @@ export default function PostcardEdit() {
   // Click-to-edit popup state: which region is being edited, and its draft.
   const [editingRegion, setEditingRegion] = useState<PostcardRegion | null>(null);
   const [draftText, setDraftText] = useState('');
-  // QR popup state: the URL each face's QR code encodes, and the in-flight draft.
-  const [qrUrlBySide, setQrUrlBySide] = useState<Record<PostcardSide, string>>({ front: '', back: '' });
+  // Per-face optional QR overlay -- `null` means "no QR on this face" (AC1:
+  // no QR by default, including for imported designs with no QR data).
+  const [qrBySide, setQrBySide] = useState<Record<PostcardSide, PostcardQr | null>>({ front: null, back: null });
+  // QR popup state: which face's QR popup is open, and its in-flight URL draft.
   const [editingQrSide, setEditingQrSide] = useState<PostcardSide | null>(null);
   const [draftQrUrl, setDraftQrUrl] = useState('');
   // Draw-a-box state: anchor corner, live rubber-band rect, then naming.
@@ -181,8 +187,11 @@ export default function PostcardEdit() {
   const [drawRect, setDrawRect] = useState<DrawRect | null>(null);
   const [namingRect, setNamingRect] = useState<DrawRect | null>(null);
   const [draftName, setDraftName] = useState('');
-  // Move-a-box state: which region is being dragged by a corner handle.
+  // Move-a-box state: which element (a text region or the current face's QR
+  // overlay) is being dragged by a corner handle -- one mechanism shared by
+  // both element kinds (see `handleMoveStart`/`handlePreviewMouseMove`).
   const [moving, setMoving] = useState<{
+    kind: 'region' | 'qr';
     name: string;
     startX: number;
     startY: number;
@@ -220,7 +229,7 @@ export default function PostcardEdit() {
   const currentIteration = iterationBySide[side];
 
   const regions = regionsBySide[side];
-  const qrUrl = qrUrlBySide[side];
+  const qr = qrBySide[side];
 
   function handleRegionTextChange(name: string, value: string) {
     setRegionText((prev) => ({ ...prev, [name]: value }));
@@ -248,6 +257,23 @@ export default function PostcardEdit() {
     setEditingRegion(null);
   }
 
+  /** Toolbar "Add QR" button: adds a QR overlay to the CURRENT face at a
+   * sensible default position (AC2 -- add button). A face can only carry
+   * one QR at a time, so this is a no-op if one is already present (the
+   * button is also disabled in that case). */
+  function handleAddQr() {
+    setQrBySide((prev) => (prev[side] ? prev : { ...prev, [side]: { url: '', position: QR_OVERLAY_POSITION } }));
+  }
+
+  /** QR popup's Delete button: removes the QR overlay from the current
+   * face entirely (AC3 -- distinct from just clearing its URL). */
+  function deleteEditingQr() {
+    if (!editingQrSide) return;
+    const targetSide = editingQrSide;
+    setQrBySide((prev) => ({ ...prev, [targetSide]: null }));
+    setEditingQrSide(null);
+  }
+
   // --- Drawing handlers (preview background only, not region buttons) ---
 
   function previewPoint(event: React.MouseEvent): { x: number; y: number } {
@@ -261,13 +287,19 @@ export default function PostcardEdit() {
     return measured > 0 ? measured / 6 : 96;
   }
 
-  function handleMoveStart(event: React.MouseEvent, regionName: string) {
+  /** Starts a corner-handle drag for either a text region or the current
+   * face's QR overlay -- the SAME mechanism for both (`kind` just picks
+   * which state bucket `handlePreviewMouseMove` below writes back into).
+   * `name` is the region's `name` for `kind: 'region'`, or the active
+   * `side` for `kind: 'qr'` (a face has at most one QR). */
+  function handleMoveStart(event: React.MouseEvent, kind: 'region' | 'qr', name: string) {
     event.stopPropagation();
     const box = (event.currentTarget as HTMLElement).parentElement;
     if (!box) return;
     const p = previewPoint(event);
     setMoving({
-      name: regionName,
+      kind,
+      name,
       startX: p.x,
       startY: p.y,
       startLeft: box.offsetLeft,
@@ -288,22 +320,27 @@ export default function PostcardEdit() {
       const left = (moving.startLeft + (p.x - moving.startX)) / ppi;
       const top = (moving.startTop + (p.y - moving.startY)) / ppi;
       movedRef.current = true;
-      setRegionsBySide((prev) => ({
-        ...prev,
-        [side]: prev[side].map((r) =>
-          r.name === moving.name
-            ? {
-                ...r,
-                position: {
-                  ...r.position,
-                  right: undefined,
-                  left: `${Math.max(left, 0).toFixed(2)}in`,
-                  top: `${Math.max(top, 0).toFixed(2)}in`,
-                },
-              }
-            : r,
-        ),
-      }));
+      const newLeft = `${Math.max(left, 0).toFixed(2)}in`;
+      const newTop = `${Math.max(top, 0).toFixed(2)}in`;
+      if (moving.kind === 'region') {
+        setRegionsBySide((prev) => ({
+          ...prev,
+          [side]: prev[side].map((r) =>
+            r.name === moving.name
+              ? { ...r, position: { ...r.position, right: undefined, left: newLeft, top: newTop } }
+              : r,
+          ),
+        }));
+      } else {
+        setQrBySide((prev) => {
+          const current = prev[side];
+          if (!current) return prev;
+          return {
+            ...prev,
+            [side]: { ...current, position: { ...current.position, right: undefined, left: newLeft, top: newTop } },
+          };
+        });
+      }
       return;
     }
     if (!drawAnchor) return;
@@ -365,10 +402,13 @@ export default function PostcardEdit() {
         front_image: frontIteration.imagePath,
         front_regions: regionsBySide.front.map((r) => toContentRegion(r, regionText)),
         back_regions: regionsBySide.back.map((r) => toContentRegion(r, regionText)),
-        front_extra_html: qrUrlBySide.front ? qrOverlayExtraHtml(qrUrlBySide.front) : '',
-        back_extra_html: qrUrlBySide.back ? qrOverlayExtraHtml(qrUrlBySide.back) : '',
       };
       if (backIteration) content.back_image = backIteration.imagePath;
+      // Structured, optional-per-face QR (`postcardRender.ts`'s
+      // `PostcardQrSchema`) -- omitted entirely when a face has no QR
+      // (AC1: no QR by default), not sent as an empty placeholder.
+      if (qrBySide.front) content.front_qr = qrBySide.front;
+      if (qrBySide.back) content.back_qr = qrBySide.back;
 
       const putRes = await fetch(`/api/postcards/${projectId}`, {
         method: 'PUT',
@@ -432,7 +472,8 @@ export default function PostcardEdit() {
                 <h1 className="text-xl font-semibold text-slate-800">Text editor — {project.title}</h1>
                 <p className="text-sm text-slate-500">
                   Drag on the postcard to draw a new text box. Click a box to
-                  edit or delete it; drag a corner handle to move it.
+                  edit or delete it; drag a corner handle to move it. Use the
+                  QR tool to add a scannable code to the current face.
                 </p>
               </div>
             </div>
@@ -472,15 +513,33 @@ export default function PostcardEdit() {
             ))}
           </div>
 
-          <div
-            ref={previewRef}
-            data-testid="postcard-preview"
-            onMouseDown={handlePreviewMouseDown}
-            onMouseMove={handlePreviewMouseMove}
-            onMouseUp={handlePreviewMouseUp}
-            className="relative mx-auto mb-4 cursor-crosshair border-2 border-slate-300 bg-white shadow-sm"
-            style={{ width: '6in', height: '4in' }}
-          >
+          <div className="mb-4 flex items-start justify-center gap-3">
+            {/* Side toolbar -- consistent with the draw-to-create text-box
+                affordance already on the canvas itself; this is the one
+                element-adding tool that isn't a canvas drag, so it gets a
+                button (AC2). */}
+            <div className="flex flex-shrink-0 flex-col gap-2 pt-1" aria-label="Tools" role="toolbar">
+              <button
+                type="button"
+                onClick={handleAddQr}
+                disabled={!!qr}
+                aria-label="Add QR code"
+                title={qr ? 'This face already has a QR code' : 'Add a QR code to this face'}
+                className="flex h-9 w-9 items-center justify-center rounded border border-slate-300 bg-white text-[10px] font-bold uppercase leading-none text-slate-600 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-40"
+              >
+                QR
+              </button>
+            </div>
+
+            <div
+              ref={previewRef}
+              data-testid="postcard-preview"
+              onMouseDown={handlePreviewMouseDown}
+              onMouseMove={handlePreviewMouseMove}
+              onMouseUp={handlePreviewMouseUp}
+              className="relative flex-shrink-0 cursor-crosshair border-2 border-slate-300 bg-white shadow-sm"
+              style={{ width: '6in', height: '4in' }}
+            >
             {currentIteration ? (
               <img
                 src={fileUrl(currentIteration.imagePath)}
@@ -526,12 +585,12 @@ export default function PostcardEdit() {
                 {/* Corner grab squares: drag to move the box. */}
                 <span
                   data-testid={`move-handle-bl-${region.name}`}
-                  onMouseDown={(event) => handleMoveStart(event, region.name)}
+                  onMouseDown={(event) => handleMoveStart(event, 'region', region.name)}
                   className="absolute -bottom-1 -left-1 h-2.5 w-2.5 cursor-move rounded-sm border border-white bg-indigo-600"
                 />
                 <span
                   data-testid={`move-handle-tr-${region.name}`}
-                  onMouseDown={(event) => handleMoveStart(event, region.name)}
+                  onMouseDown={(event) => handleMoveStart(event, 'region', region.name)}
                   className="absolute -right-1 -top-1 h-2.5 w-2.5 cursor-move rounded-sm border border-white bg-indigo-600"
                 />
               </button>
@@ -550,27 +609,49 @@ export default function PostcardEdit() {
               />
             )}
 
-            <button
-              type="button"
-              data-testid="postcard-extra-overlay"
-              aria-label="QR code overlay — set URL"
-              onClick={() => {
-                setDraftQrUrl(qrUrl);
-                setEditingQrSide(side);
-              }}
-              className="absolute flex cursor-pointer flex-col items-center justify-center border-2 border-dashed border-amber-500 bg-amber-50/70 p-1 text-center text-[9px] font-semibold text-amber-700 hover:bg-amber-100"
-              style={{
-                top: QR_OVERLAY_POSITION.top,
-                right: QR_OVERLAY_POSITION.right,
-                width: QR_OVERLAY_POSITION.width,
-                height: QR_OVERLAY_POSITION.height,
-              }}
-            >
-              <span>QR code overlay</span>
-              <span data-testid="postcard-qr-url" className="mt-0.5 block max-w-full truncate font-normal">
-                {qrUrl}
-              </span>
-            </button>
+            {/* QR overlay -- present only when this face has one (AC1: no
+                QR by default). Click opens its popup; drag a corner handle
+                to move it, mirroring the text-region move handles above. */}
+            {qr && (
+              <button
+                type="button"
+                data-testid="postcard-qr-box"
+                aria-label="QR code — edit or move"
+                onClick={() => {
+                  if (movedRef.current) {
+                    movedRef.current = false;
+                    return; // a corner-handle drag just ended; not a click
+                  }
+                  setDraftQrUrl(qr.url);
+                  setEditingQrSide(side);
+                }}
+                className="absolute flex cursor-pointer flex-col items-center justify-center border-2 border-dashed border-amber-500 bg-amber-50/70 p-1 text-center text-[9px] font-semibold text-amber-700 hover:bg-amber-100"
+                style={{
+                  top: qr.position.top,
+                  left: qr.position.left,
+                  right: qr.position.right,
+                  width: qr.position.width,
+                  height: qr.position.height,
+                }}
+              >
+                <span>QR code overlay</span>
+                <span data-testid="postcard-qr-url" className="mt-0.5 block max-w-full truncate font-normal">
+                  {qr.url}
+                </span>
+                {/* Corner grab squares: same drag mechanism as text regions. */}
+                <span
+                  data-testid="move-handle-bl-qr"
+                  onMouseDown={(event) => handleMoveStart(event, 'qr', side)}
+                  className="absolute -bottom-1 -left-1 h-2.5 w-2.5 cursor-move rounded-sm border border-white bg-amber-600"
+                />
+                <span
+                  data-testid="move-handle-tr-qr"
+                  onMouseDown={(event) => handleMoveStart(event, 'qr', side)}
+                  className="absolute -right-1 -top-1 h-2.5 w-2.5 cursor-move rounded-sm border border-white bg-amber-600"
+                />
+              </button>
+            )}
+            </div>
           </div>
         </div>
       </div>
@@ -670,14 +751,25 @@ export default function PostcardEdit() {
         >
           <div
             role="dialog"
-            aria-label="Set QR code URL"
+            aria-label="QR code"
             className="w-full max-w-2xl rounded-lg bg-white p-6 shadow-xl"
             onClick={(event) => event.stopPropagation()}
           >
-            <h3 className="text-sm font-semibold text-slate-700">QR code</h3>
-            <p className="mb-3 mt-0.5 text-xs text-slate-500">
-              The QR code encodes this URL — Return applies, Esc cancels
-            </p>
+            <div className="flex items-start justify-between gap-4">
+              <div>
+                <h3 className="text-sm font-semibold text-slate-700">QR code</h3>
+                <p className="mb-3 mt-0.5 text-xs text-slate-500">
+                  The QR code encodes this URL — Return applies, Esc cancels
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={deleteEditingQr}
+                className="flex-shrink-0 rounded border border-red-300 px-3 py-1.5 text-sm font-semibold text-red-600 hover:bg-red-50"
+              >
+                Delete
+              </button>
+            </div>
             <input
               autoFocus
               type="url"
@@ -690,7 +782,11 @@ export default function PostcardEdit() {
                 if (event.key === 'Enter') {
                   event.preventDefault();
                   const targetSide = editingQrSide;
-                  setQrUrlBySide((prev) => ({ ...prev, [targetSide]: draftQrUrl }));
+                  setQrBySide((prev) => {
+                    const current = prev[targetSide];
+                    if (!current) return prev;
+                    return { ...prev, [targetSide]: { ...current, url: draftQrUrl } };
+                  });
                   setEditingQrSide(null);
                 }
               }}

@@ -31,9 +31,22 @@ import { prisma as defaultPrisma } from './prisma';
  *     }
  *   ],
  *   "front_extra_html": "",
- *   "back_extra_html": "<div style=\"position:absolute; ...\"><img src=\"...\"></div>" // QR overlays and anything else that doesn't fit the region model; injected verbatim
+ *   "back_extra_html": "<div style=\"position:absolute; ...\"></div>", // anything else that doesn't fit the region model; injected verbatim
+ *   "front_qr": null,                    // optional -- absent/omitted means this face has no QR code (client `PostcardEdit.tsx`'s AC1: no QR by default)
+ *   "back_qr": { "url": "https://example.org", "position": { "top": "1.15in", "right": "0.5in", "width": "1.5in", "height": "1.5in" } }
  * }
  * ```
+ *
+ * **`front_qr`/`back_qr`** (OOP change, 2026-07-15): a face's QR code is
+ * now a structured, optional, independently-positioned element -- not the
+ * old always-on `*_extra_html` overlay. `{ url, position }`, `position`
+ * using the exact same shape as a region's `position` (inches -> CSS `in`
+ * units, `left`/`right` + `width`/`height`). Rendered as its own
+ * absolutely-positioned placeholder `<div data-qr-url="...">` (actual QR
+ * *image* generation remains out of scope, matching the placeholder the
+ * predecessor's `*_extra_html` overlay already used). Omitted entirely
+ * when a face has no QR code -- this is what makes "no QR by default"
+ * possible, including for content JSON written before this field existed.
  *
  * **`position.height` (wireframe interaction contract, stakeholder rounds
  * 4/7/8/10)**: optional. When present, the rendered region is given that
@@ -85,6 +98,20 @@ const PostcardRegionSchema = z.object({
   font: PostcardRegionFontSchema,
 });
 
+/** A face's optional QR overlay (OOP change, 2026-07-15): the QR code moved
+ * from an opaque, always-on `*_extra_html` string to a structured,
+ * optional-per-face object so the editor could make it addable, deletable,
+ * and independently positioned like any other element -- an HTML blob
+ * couldn't represent "present or absent" or "at this position" cleanly.
+ * `front_extra_html`/`back_extra_html` remain in the schema, unchanged, for
+ * backward compatibility with previously-stored content and as a general
+ * "anything else that doesn't fit the region model" escape hatch; a QR
+ * overlay should now be expressed via `front_qr`/`back_qr` instead. */
+const PostcardQrSchema = z.object({
+  url: z.string(),
+  position: PostcardRegionPositionSchema,
+});
+
 const PostcardContentSchema = z
   .object({
     front_image: z.string().optional(),
@@ -93,6 +120,8 @@ const PostcardContentSchema = z
     back_regions: z.array(PostcardRegionSchema).optional().default([]),
     front_extra_html: z.string().optional().default(''),
     back_extra_html: z.string().optional().default(''),
+    front_qr: PostcardQrSchema.optional(),
+    back_qr: PostcardQrSchema.optional(),
   })
   .refine((content) => content.front_image !== undefined || content.back_image !== undefined, {
     message: 'at least one of front_image or back_image is required',
@@ -101,6 +130,7 @@ const PostcardContentSchema = z
 export type PostcardRegionPosition = z.infer<typeof PostcardRegionPositionSchema>;
 export type PostcardRegionFont = z.infer<typeof PostcardRegionFontSchema>;
 export type PostcardRegion = z.infer<typeof PostcardRegionSchema>;
+export type PostcardQr = z.infer<typeof PostcardQrSchema>;
 export type PostcardContent = z.infer<typeof PostcardContentSchema>;
 
 /** Thrown for any content-JSON problem this module can detect on its own
@@ -211,20 +241,56 @@ function renderRegion(region: PostcardRegion): string {
   return `<div class="region" data-region="${escapeHtml(region.name)}" style="${escapeHtml(regionStyleAttr(region))}">${textToParagraphsHtml(region.text)}</div>`;
 }
 
+/** Builds the inline `style` attribute value for a QR overlay's `<div>`:
+ * absolute position (same convention as `regionStyleAttr`) plus the fixed
+ * placeholder-box cosmetics the client editor (`PostcardEdit.tsx`) also
+ * uses, so the server render matches what the editor showed. */
+function qrStyleAttr(position: PostcardRegionPosition): string {
+  const parts: string[] = ['position:absolute', `top:${position.top}`];
+  if (position.left !== undefined) parts.push(`left:${position.left}`);
+  if (position.right !== undefined) parts.push(`right:${position.right}`);
+  parts.push(`width:${position.width}`);
+  if (position.height !== undefined) parts.push(`height:${position.height}`);
+  parts.push(
+    'border:1px dashed #999',
+    'display:flex',
+    'align-items:center',
+    'justify-content:center',
+    'font-size:8px',
+    'color:#999',
+    'text-align:center',
+    'overflow:hidden'
+  );
+  return `${parts.join('; ')};`;
+}
+
+/** Renders a face's QR overlay as an absolutely-positioned placeholder
+ * `<div>` carrying the encoded URL as both visible text and a
+ * `data-qr-url` attribute (actual QR *image* generation is out of scope --
+ * see module header). Returns `''` when `qr` is `undefined` (AC1: no QR by
+ * default). */
+function renderQrOverlay(qr: PostcardQr | undefined): string {
+  if (qr === undefined) return '';
+  return `<div class="qr" data-qr-url="${escapeHtml(qr.url)}" style="${escapeHtml(qrStyleAttr(qr.position))}">QR code<br/>${escapeHtml(qr.url)}</div>`;
+}
+
 /** Renders one face ("front" or "back") -- background image, then
- * `extraHtml` verbatim (QR overlays etc.), then one `<div>` per region.
- * Returns `''` (renders nothing) when `image` is `undefined` -- this is
- * what makes a front-only content JSON produce a front-only render (this
- * ticket's AC1/AC2, R3). */
+ * `extraHtml` verbatim (a general escape hatch, `front_extra_html`/
+ * `back_extra_html`), then the face's QR overlay (if present, `qr`), then
+ * one `<div>` per region. Returns `''` (renders nothing) when `image` is
+ * `undefined` -- this is what makes a front-only content JSON produce a
+ * front-only render (this ticket's AC1/AC2, R3). */
 function renderFace(
   side: 'front' | 'back',
   image: string | undefined,
   regions: PostcardRegion[],
-  extraHtml: string
+  extraHtml: string,
+  qr: PostcardQr | undefined
 ): string {
   if (image === undefined) return '';
 
   const regionsHtml = regions.map(renderRegion).join('\n');
+  const qrHtml = renderQrOverlay(qr);
   const label = side.toUpperCase();
 
   return `
@@ -233,6 +299,7 @@ function renderFace(
     <section class="page" data-side="${side}">
       <img class="bg" src="${escapeHtml(image)}" alt="${label}">
       ${extraHtml}
+      ${qrHtml}
       ${regionsHtml}
     </section>
   </div>`;
@@ -245,8 +312,20 @@ function renderFace(
  * No client-side JS -- this ticket's scope is server-side templating only
  * (Sprint 005 wires up any interactive editing). */
 export function renderPostcardHtml(content: PostcardContent): string {
-  const frontHtml = renderFace('front', content.front_image, content.front_regions, content.front_extra_html);
-  const backHtml = renderFace('back', content.back_image, content.back_regions, content.back_extra_html);
+  const frontHtml = renderFace(
+    'front',
+    content.front_image,
+    content.front_regions,
+    content.front_extra_html,
+    content.front_qr
+  );
+  const backHtml = renderFace(
+    'back',
+    content.back_image,
+    content.back_regions,
+    content.back_extra_html,
+    content.back_qr
+  );
 
   return `<!DOCTYPE html>
 <html lang="en">
