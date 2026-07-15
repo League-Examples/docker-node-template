@@ -2,7 +2,7 @@
 id: '010'
 title: 'ProjectDetail page part 2: library drawer (literal + conversational filter)
   + references'
-status: in-progress
+status: done
 use-cases:
 - SUC-002
 - SUC-003
