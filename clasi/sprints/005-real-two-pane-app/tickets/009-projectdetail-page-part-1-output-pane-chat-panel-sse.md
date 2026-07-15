@@ -1,7 +1,7 @@
 ---
 id: 009
 title: 'ProjectDetail page part 1: output pane + chat panel SSE'
-status: in-progress
+status: done
 use-cases:
 - SUC-001
 - SUC-005
