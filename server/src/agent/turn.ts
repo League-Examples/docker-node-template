@@ -128,9 +128,10 @@ export interface WorkspaceToolOptions {
 
 export type WorkspaceToolHandler = (args: any, options: WorkspaceToolOptions) => Promise<unknown>;
 
-/** The 11 tools ticket 002/003 registered on `workspaceMcpServer`,
- * dispatched here by name -- and no others (R2: fixed, statically-
- * registered tool surface). */
+/** The 11 tools tickets 002/003 registered on `workspaceMcpServer`, plus
+ * ticket 005-002's four more (`add_reference`, `remove_reference`,
+ * `set_iteration_state`, `search_catalog`) -- 15 total, dispatched here by
+ * name -- and no others (R2: fixed, statically-registered tool surface). */
 export const DEFAULT_TOOL_HANDLERS: Record<string, WorkspaceToolHandler> = {
   read_file: (args) => fsTools.readFile(args),
   stat: (args) => fsTools.statPath(args),
@@ -143,12 +144,16 @@ export const DEFAULT_TOOL_HANDLERS: Record<string, WorkspaceToolHandler> = {
   create_project: (args, options) => catalogTools.createProject(args, options),
   create_iteration: (args, options) => catalogTools.createIteration(args, options),
   create_agent_page: (args, options) => catalogTools.createAgentPage(args, options),
+  add_reference: (args, options) => catalogTools.addReference(args, options),
+  remove_reference: (args, options) => catalogTools.removeReference(args, options),
+  set_iteration_state: (args, options) => catalogTools.setIterationState(args, options),
+  search_catalog: (args, options) => catalogTools.searchCatalog(args, options),
 };
 
 /** Tool definitions handed to `ProviderAdapter.sendTurn` -- the
  * provider-neutral shape (name/description/JSON-schema-ish inputSchema)
  * mirroring the zod schemas `fsTools.ts`/`catalogTools.ts` register on
- * `workspaceMcpServer` (kept in sync by hand; both describe the same 11
+ * `workspaceMcpServer` (kept in sync by hand; both describe the same 15
  * tools, not two independent tool surfaces). */
 export const WORKSPACE_TOOL_DEFINITIONS: ProviderToolDefinition[] = [
   {
@@ -295,6 +300,56 @@ export const WORKSPACE_TOOL_DEFINITIONS: ProviderToolDefinition[] = [
         contentType: { type: 'string' },
       },
       required: ['projectId', 'filename', 'content'],
+    },
+  },
+  {
+    name: 'add_reference',
+    description:
+      "Create a Reference row linking an Asset to a Project with a role ('style' | 'composition' | 'template').",
+    inputSchema: {
+      type: 'object',
+      properties: {
+        projectId: { type: 'integer' },
+        assetId: { type: 'integer' },
+        role: { type: 'string', description: "'style' | 'composition' | 'template'" },
+      },
+      required: ['projectId', 'assetId', 'role'],
+    },
+  },
+  {
+    name: 'remove_reference',
+    description: 'Delete a Reference row by id.',
+    inputSchema: {
+      type: 'object',
+      properties: { referenceId: { type: 'integer' } },
+      required: ['referenceId'],
+    },
+  },
+  {
+    name: 'set_iteration_state',
+    description:
+      "Update an Iteration's accepted/role flags. Setting accepted: true clears accepted from every other Iteration in the same project; setting role: 'front' (or 'back') clears that same role from whichever other Iteration in the same project held it. 'front' and 'back' are independently exclusive.",
+    inputSchema: {
+      type: 'object',
+      properties: {
+        iterationId: { type: 'integer' },
+        accepted: { type: 'boolean' },
+        role: { type: ['string', 'null'], enum: ['front', 'back', null] },
+      },
+      required: ['iterationId'],
+    },
+  },
+  {
+    name: 'search_catalog',
+    description:
+      'Hybrid vector + keyword search over the Catalog & Knowledge Store (Asset/KnowledgeEntry rows), merged and deduped by (ownerType, ownerId).',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        query: { type: 'string' },
+        k: { type: 'integer' },
+      },
+      required: ['query'],
     },
   },
   {

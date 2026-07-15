@@ -7,8 +7,8 @@ import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { prisma as defaultPrisma } from '../services/prisma';
 import { resolveWorkspacePath } from '../services/workspaceDirectorySync';
 import { versioningService as defaultVersioningService } from '../services/versioning';
-import { indexKnowledgeEntry } from '../services/search';
-import { describeAsset, retryPendingDescriptions } from '../services/description';
+import { indexKnowledgeEntry, nearestNeighbors, keywordSearch } from '../services/search';
+import { describeAsset, retryPendingDescriptions, embedText } from '../services/description';
 import type { DescribeAssetOptions, RetryPendingDescriptionsOptions } from '../services/description';
 import { acquireLock, releaseLock } from './locks';
 import type { VersioningRecorder } from './fsTools';
@@ -17,6 +17,7 @@ import type { KnowledgeCorrectionModel } from '../generated/prisma/models/Knowle
 import type { AssetModel } from '../generated/prisma/models/Asset';
 import type { ProjectModel } from '../generated/prisma/models/Project';
 import type { IterationModel } from '../generated/prisma/models/Iteration';
+import type { ReferenceModel } from '../generated/prisma/models/Reference';
 
 /**
  * Catalog tool family for the Workspace MCP Server (architecture-001
@@ -26,6 +27,16 @@ import type { IterationModel } from '../generated/prisma/models/Iteration';
  * on the same `workspaceMcpServer` instance ticket 002 built, reusing its
  * `locks.ts` helper and `resolveWorkspacePath` path-containment mechanism
  * (never reimplemented here).
+ *
+ * Sprint 005 ticket 002 adds four more tools to this same file/registry
+ * (architecture-update.md's Workspace MCP Server section): `add_reference`,
+ * `remove_reference`, `set_iteration_state` -- all locked/versioned writes
+ * following the same conventions as the tools above -- and `search_catalog`,
+ * a read-only, unlocked tool (D9, matching `fsTools.ts`'s `read_file`/`stat`)
+ * that reuses `description.ts`'s `embedText` and `search.ts`'s
+ * `nearestNeighbors`/`keywordSearch` rather than adding a new
+ * embedding-API integration (see `search_catalog`'s own doc comment and
+ * architecture-update.md R8).
  *
  * Talks to the Prisma client directly rather than through
  * `ServiceRegistry` -- these tools are MCP-tool-shaped, not request-scoped
@@ -748,13 +759,299 @@ export async function createAgentPage(
 }
 
 // ---------------------------------------------------------------------------
+// add_reference
+// ---------------------------------------------------------------------------
+
+export interface AddReferenceArgs {
+  projectId: number;
+  assetId: number;
+  /** `'style' | 'composition' | 'template'` (per `Reference.role`'s
+   * documented values in schema.prisma). */
+  role: string;
+}
+
+/** `add_reference` -- creates a `Reference` row linking an `Asset` to a
+ * `Project` with a `role`. `Reference` has existed in `schema.prisma`
+ * since architecture-001 with zero prior writers outside generated Prisma
+ * client code (confirmed by grep) -- this is its first real writer.
+ * Lock/version pattern: same as `createIteration` -- locks `projects/<id>`
+ * around the write; `Reference` has no `version` field, so there is no
+ * optimistic-lock check to perform. */
+export async function addReference(
+  args: AddReferenceArgs,
+  options: CatalogToolsOptions = {}
+): Promise<ReferenceModel> {
+  const prismaClient = options.prismaClient ?? defaultPrisma;
+  const versioning = options.versioning ?? defaultVersioningService;
+
+  const project = await prismaClient.project.findUnique({ where: { id: args.projectId } });
+  if (!project) throw new Error(`add_reference: no Project with id ${args.projectId}`);
+
+  const asset = await prismaClient.asset.findUnique({ where: { id: args.assetId } });
+  if (!asset) throw new Error(`add_reference: no Asset with id ${args.assetId}`);
+
+  const resourceKey = projectResourceKey(project);
+  let reference: ReferenceModel;
+  await acquireLock('directory', resourceKey, options.lockHolder, prismaClient);
+  try {
+    reference = await prismaClient.reference.create({
+      data: { projectId: args.projectId, assetId: args.assetId, role: args.role },
+    });
+  } finally {
+    await releaseLock('directory', resourceKey, prismaClient);
+  }
+
+  versioning.recordChange(resolveWorkspacePath(resourceKey));
+  return reference;
+}
+
+// ---------------------------------------------------------------------------
+// remove_reference
+// ---------------------------------------------------------------------------
+
+export interface RemoveReferenceArgs {
+  referenceId: number;
+}
+
+export interface RemoveReferenceResult {
+  id: number;
+  deleted: true;
+}
+
+/** `remove_reference` -- deletes exactly the targeted `Reference` row.
+ * Lock/version pattern: same as `add_reference` -- locks the owning
+ * project's `projects/<id>` resourceKey (looked up from the row itself,
+ * since the caller only supplies `referenceId`) around the delete; no
+ * `version` field to check. */
+export async function removeReference(
+  args: RemoveReferenceArgs,
+  options: CatalogToolsOptions = {}
+): Promise<RemoveReferenceResult> {
+  const prismaClient = options.prismaClient ?? defaultPrisma;
+  const versioning = options.versioning ?? defaultVersioningService;
+
+  const existing = await prismaClient.reference.findUnique({ where: { id: args.referenceId } });
+  if (!existing) throw new Error(`remove_reference: no Reference with id ${args.referenceId}`);
+
+  const project = await prismaClient.project.findUnique({ where: { id: existing.projectId } });
+  if (!project) throw new Error(`remove_reference: no Project with id ${existing.projectId}`);
+
+  const resourceKey = projectResourceKey(project);
+  await acquireLock('directory', resourceKey, options.lockHolder, prismaClient);
+  try {
+    await prismaClient.reference.delete({ where: { id: args.referenceId } });
+  } finally {
+    await releaseLock('directory', resourceKey, prismaClient);
+  }
+
+  versioning.recordChange(resolveWorkspacePath(resourceKey));
+  return { id: args.referenceId, deleted: true };
+}
+
+// ---------------------------------------------------------------------------
+// set_iteration_state
+// ---------------------------------------------------------------------------
+
+export interface SetIterationStateArgs {
+  iterationId: number;
+  accepted?: boolean;
+  /** `'front' | 'back' | null` -- `null` clears this iteration's own role
+   * without affecting any other iteration. */
+  role?: 'front' | 'back' | null;
+}
+
+/** `set_iteration_state` -- updates `Iteration.accepted`/`Iteration.role`
+ * (ticket 001's new columns) inside one `prisma.$transaction`, the *sole*
+ * enforcement point (architecture-update.md R4: an application-level
+ * invariant, not a DB constraint) for two independent exclusivity rules
+ * from stakeholder rounds 6-7:
+ *
+ *  - setting `accepted: true` on one iteration clears `accepted` from
+ *    every *other* iteration in the *same* project (an iteration in a
+ *    different project is never touched);
+ *  - setting `role: 'front'` (or `'back'`) on one iteration clears that
+ *    *same* role from whichever other iteration in the same project
+ *    previously held it -- `'front'` and `'back'` are independently
+ *    exclusive, so setting one never disturbs whoever currently holds the
+ *    other.
+ *
+ * Passing `accepted: false` or `role: null` only ever changes this
+ * iteration's own row -- there is no other row to clear when turning a
+ * flag *off*. Lock/version pattern: locks `projects/<id>` (looked up via
+ * the iteration's own `projectId`) around the whole transaction, matching
+ * every other project-scoped write in this file. */
+export async function setIterationState(
+  args: SetIterationStateArgs,
+  options: CatalogToolsOptions = {}
+): Promise<IterationModel> {
+  const prismaClient = options.prismaClient ?? defaultPrisma;
+  const versioning = options.versioning ?? defaultVersioningService;
+
+  if (args.accepted === undefined && args.role === undefined) {
+    throw new Error('set_iteration_state: at least one of accepted or role must be provided');
+  }
+
+  const existing = await prismaClient.iteration.findUnique({ where: { id: args.iterationId } });
+  if (!existing) throw new Error(`set_iteration_state: no Iteration with id ${args.iterationId}`);
+
+  const project = await prismaClient.project.findUnique({ where: { id: existing.projectId } });
+  if (!project) throw new Error(`set_iteration_state: no Project with id ${existing.projectId}`);
+
+  const resourceKey = projectResourceKey(project);
+  let updated: IterationModel;
+  await acquireLock('directory', resourceKey, options.lockHolder, prismaClient);
+  try {
+    updated = await prismaClient.$transaction(async (tx: any) => {
+      if (args.accepted === true) {
+        await tx.iteration.updateMany({
+          where: { projectId: existing.projectId, id: { not: args.iterationId }, accepted: true },
+          data: { accepted: false },
+        });
+      }
+      if (args.role === 'front' || args.role === 'back') {
+        await tx.iteration.updateMany({
+          where: { projectId: existing.projectId, id: { not: args.iterationId }, role: args.role },
+          data: { role: null },
+        });
+      }
+
+      const updateData: Record<string, unknown> = {};
+      if (args.accepted !== undefined) updateData.accepted = args.accepted;
+      if (args.role !== undefined) updateData.role = args.role;
+
+      return tx.iteration.update({ where: { id: args.iterationId }, data: updateData });
+    });
+  } finally {
+    await releaseLock('directory', resourceKey, prismaClient);
+  }
+
+  versioning.recordChange(resolveWorkspacePath(resourceKey));
+  return updated;
+}
+
+// ---------------------------------------------------------------------------
+// search_catalog
+// ---------------------------------------------------------------------------
+
+export interface SearchCatalogArgs {
+  query: string;
+  /** Max results per underlying search path before merging/deduping.
+   * Defaults to `DEFAULT_SEARCH_K`. */
+  k?: number;
+}
+
+export interface SearchCatalogMatch {
+  ownerType: string;
+  ownerId: number;
+  /** Which underlying search path(s) surfaced this `(ownerType, ownerId)`
+   * pair -- a match found by both is listed once with both entries, not
+   * duplicated. */
+  matchedVia: ('vector' | 'keyword')[];
+  /** Cosine similarity from the vector path, in [-1, 1]; absent for a
+   * match the keyword path alone surfaced. */
+  score?: number;
+  /** `Asset.path`, for an `ownerType: 'asset'` match only. */
+  path?: string;
+  /** Denormalized human-readable label: an asset's description text, or a
+   * knowledge entry's name -- enough for the client to render/highlight
+   * the match without a second lookup. */
+  label?: string;
+}
+
+const DEFAULT_SEARCH_K = 10;
+
+/** `search_catalog` -- **read-only, no lock** (same D9-consistent pattern
+ * as `fsTools.ts`'s `read_file`/`stat`, not the write tools above).
+ *
+ * Embeds `query` via `description.ts`'s existing, already-implemented
+ * `embedText` -- **not** a new embedding-API call. `embedText` is the
+ * only function that has ever produced an `Embedding` row (see
+ * `description.ts`'s module header), so query-time text has to go through
+ * that same deterministic hash-based function to land in the same
+ * embedding space as the stored vectors; mixing in a real embedding model
+ * for queries against hash-based stored vectors would make results worse,
+ * not better (architecture-update.md R8). The resulting vector is run
+ * through `search.ts`'s `nearestNeighbors`, and the raw query text is run
+ * through `search.ts`'s `keywordSearch` (FTS5) -- both existing, already-
+ * implemented, purely-local functions; this tool makes zero network calls.
+ *
+ * The two result sets are merged/deduped by `(ownerType, ownerId)`
+ * (architecture-001's "FTS5 as a cheap pre-filter... hybrid retrieval"),
+ * then denormalized with enough fields (`path`/`label`) for the client to
+ * render a match without a second round-trip. */
+export async function searchCatalog(
+  args: SearchCatalogArgs,
+  options: CatalogToolsOptions = {}
+): Promise<SearchCatalogMatch[]> {
+  const prismaClient = options.prismaClient ?? defaultPrisma;
+  const k = args.k ?? DEFAULT_SEARCH_K;
+
+  const queryVector = embedText(args.query);
+  const vectorResults = await nearestNeighbors(queryVector, k);
+  const keywordResults = keywordSearch(args.query, { limit: k });
+
+  const merged = new Map<string, SearchCatalogMatch>();
+  for (const r of vectorResults) {
+    merged.set(`${r.ownerType}:${r.ownerId}`, {
+      ownerType: r.ownerType,
+      ownerId: r.ownerId,
+      score: r.score,
+      matchedVia: ['vector'],
+    });
+  }
+  for (const r of keywordResults) {
+    const key = `${r.ownerType}:${r.ownerId}`;
+    const existing = merged.get(key);
+    if (existing) {
+      existing.matchedVia.push('keyword');
+    } else {
+      merged.set(key, { ownerType: r.ownerType, ownerId: r.ownerId, matchedVia: ['keyword'] });
+    }
+  }
+
+  const matches = Array.from(merged.values());
+
+  const assetIds = matches.filter((m) => m.ownerType === 'asset').map((m) => m.ownerId);
+  const entryIds = matches.filter((m) => m.ownerType === 'knowledge_entry').map((m) => m.ownerId);
+
+  const [assets, entries] = await Promise.all([
+    assetIds.length
+      ? prismaClient.asset.findMany({ where: { id: { in: assetIds } }, include: { description: true } })
+      : Promise.resolve([]),
+    entryIds.length ? prismaClient.knowledgeEntry.findMany({ where: { id: { in: entryIds } } }) : Promise.resolve([]),
+  ]);
+
+  const assetById = new Map<number, any>(assets.map((a: any) => [a.id, a]));
+  const entryById = new Map<number, any>(entries.map((e: any) => [e.id, e]));
+
+  for (const match of matches) {
+    if (match.ownerType === 'asset') {
+      const asset = assetById.get(match.ownerId);
+      if (asset) {
+        match.path = asset.path;
+        match.label = asset.description?.description;
+      }
+    } else if (match.ownerType === 'knowledge_entry') {
+      const entry = entryById.get(match.ownerId);
+      if (entry) {
+        match.label = entry.name;
+      }
+    }
+  }
+
+  return matches;
+}
+
+// ---------------------------------------------------------------------------
 // MCP registration
 // ---------------------------------------------------------------------------
 
 /** Registers `create_knowledge_entry`, `propose_correction`,
  * `resolve_correction`, `add_asset_to_collection`, `create_project`,
- * `create_iteration`, `create_agent_page` -- and no others -- on `server`
- * (expected to be the `workspaceMcpServer` instance from `./server.ts`). */
+ * `create_iteration`, `create_agent_page`, `add_reference`,
+ * `remove_reference`, `set_iteration_state`, `search_catalog` -- and no
+ * others -- on `server` (expected to be the `workspaceMcpServer` instance
+ * from `./server.ts`). */
 export function registerCatalogTools(server: McpServer, options: CatalogToolsOptions = {}) {
   server.tool(
     'create_knowledge_entry',
@@ -846,5 +1143,46 @@ export function registerCatalogTools(server: McpServer, options: CatalogToolsOpt
       contentType: z.string().optional(),
     },
     async (args) => textResult(await createAgentPage(args, options))
+  );
+
+  server.tool(
+    'add_reference',
+    "Create a Reference row linking an Asset to a Project with a role ('style' | 'composition' | 'template').",
+    {
+      projectId: z.number().int(),
+      assetId: z.number().int(),
+      role: z.string(),
+    },
+    async (args) => textResult(await addReference(args, options))
+  );
+
+  server.tool(
+    'remove_reference',
+    'Delete a Reference row by id.',
+    {
+      referenceId: z.number().int(),
+    },
+    async (args) => textResult(await removeReference(args, options))
+  );
+
+  server.tool(
+    'set_iteration_state',
+    "Update an Iteration's accepted/role flags. Setting accepted: true clears accepted from every other Iteration in the same project; setting role: 'front' (or 'back') clears that same role from whichever other Iteration in the same project held it. 'front' and 'back' are independently exclusive.",
+    {
+      iterationId: z.number().int(),
+      accepted: z.boolean().optional(),
+      role: z.enum(['front', 'back']).nullable().optional(),
+    },
+    async (args) => textResult(await setIterationState(args, options))
+  );
+
+  server.tool(
+    'search_catalog',
+    'Hybrid vector + keyword search over the Catalog & Knowledge Store (Asset/KnowledgeEntry rows), merged and deduped by (ownerType, ownerId).',
+    {
+      query: z.string(),
+      k: z.number().int().optional(),
+    },
+    async (args) => textResult(await searchCatalog(args, options))
   );
 }

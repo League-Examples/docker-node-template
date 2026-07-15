@@ -31,7 +31,7 @@ import {
   type WorkspaceToolHandler,
 } from '../../server/src/agent/turn';
 import { createMockAdapter, type MockProviderScript } from '../../server/src/agent/providers/mock';
-import { createKnowledgeEntry } from '../../server/src/agent-mcp/catalogTools';
+import { createKnowledgeEntry, addAssetToCollection, addReference, createIteration } from '../../server/src/agent-mcp/catalogTools';
 import { acquireLock, releaseLock } from '../../server/src/agent-mcp/locks';
 import { resolveWorkspacePath } from '../../server/src/services/workspaceDirectorySync';
 import { createRealImageVisionClient } from '../../server/src/agent/realImageVisionClient';
@@ -42,11 +42,16 @@ const marker = `t005turn${Date.now()}`;
 
 let ownerId: number;
 let knowledgeDirId: number;
+let assetsDirId: number;
 let projectAId: number;
 let projectBId: number;
 
 const cleanup = {
   knowledgeEntryIds: [] as number[],
+  referenceIds: [] as number[],
+  assetIds: [] as number[],
+  collectionIds: [] as number[],
+  iterationIds: [] as number[],
   projectIds: [] as number[],
   workspaceDirectoryIds: [] as number[],
 };
@@ -81,6 +86,12 @@ beforeAll(async () => {
   knowledgeDirId = dir.id;
   cleanup.workspaceDirectoryIds.push(dir.id);
 
+  const assetsDir = await prisma.workspaceDirectory.create({
+    data: { path: `${marker}/assets`, kind: 'collection' },
+  });
+  assetsDirId = assetsDir.id;
+  cleanup.workspaceDirectoryIds.push(assetsDir.id);
+
   const projectA = await prisma.project.create({ data: { title: `${marker}-project-a`, ownerUserId: ownerId } });
   projectAId = projectA.id;
   cleanup.projectIds.push(projectAId);
@@ -92,6 +103,10 @@ beforeAll(async () => {
 
 afterAll(async () => {
   await prisma.chatMessage.deleteMany({ where: { projectId: { in: cleanup.projectIds } } });
+  await prisma.reference.deleteMany({ where: { id: { in: cleanup.referenceIds } } });
+  await prisma.iteration.deleteMany({ where: { id: { in: cleanup.iterationIds } } });
+  await prisma.asset.deleteMany({ where: { id: { in: cleanup.assetIds } } });
+  await prisma.collection.deleteMany({ where: { id: { in: cleanup.collectionIds } } });
   await prisma.knowledgeEntry.deleteMany({ where: { id: { in: cleanup.knowledgeEntryIds } } });
   await prisma.project.deleteMany({ where: { id: { in: cleanup.projectIds } } });
   await prisma.workspaceDirectory.deleteMany({ where: { id: { in: cleanup.workspaceDirectoryIds } } });
@@ -538,5 +553,112 @@ describe('runTurn -- generate_image routes through the real ImageVisionClient en
 
     const iterations = await prisma.iteration.findMany({ where: { projectId: projectAId } });
     expect(iterations).toHaveLength(0);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Ticket 005-002: add_reference/remove_reference/set_iteration_state/
+// search_catalog reachable through the same scripted-turn dispatch table
+// (Sprint 003's SUC-003 pattern) that already proves out create_knowledge_entry
+// above -- one scripted runTurn call per tool, per the ticket's Testing Plan.
+// ---------------------------------------------------------------------------
+
+describe('runTurn -- ticket 005-002 tools dispatch through the mock adapter', () => {
+  it('dispatches an add_reference tool call, creating a Reference row', async () => {
+    const asset = await addAssetToCollection(
+      { directoryId: assetsDirId, collectionName: `${marker}-turn-ref-collection`, path: `${marker}/assets/turn-ref.png`, hash: 'turn-ref-hash' },
+      { versioning: makeVersioningSpy() }
+    );
+    cleanup.assetIds.push(asset.id);
+    cleanup.collectionIds.push(asset.collectionId);
+
+    const toolCallArgs = { projectId: projectAId, assetId: asset.id, role: 'style' };
+    const script: MockProviderScript = [
+      { kind: 'tool_calls', calls: [{ id: 'ref-1', name: 'add_reference', args: toolCallArgs }] },
+      { kind: 'message', content: 'Added the reference.' },
+    ];
+
+    const result = await runTurn(
+      { projectId: projectAId, message: 'Add this asset as a style reference.' },
+      { provider: createMockAdapter(script), versioning: makeVersioningSpy() }
+    );
+
+    expect(result.toolCalls[0]).toMatchObject({ name: 'add_reference', args: toolCallArgs });
+    const referenceId = (result.toolCalls[0].result as any).id;
+    cleanup.referenceIds.push(referenceId);
+
+    const dbReference = await prisma.reference.findUnique({ where: { id: referenceId } });
+    expect(dbReference).toMatchObject({ projectId: projectAId, assetId: asset.id, role: 'style' });
+  });
+
+  it('dispatches a remove_reference tool call, deleting the targeted Reference row', async () => {
+    const asset = await addAssetToCollection(
+      { directoryId: assetsDirId, collectionName: `${marker}-turn-remove-ref-collection`, path: `${marker}/assets/turn-remove-ref.png`, hash: 'turn-remove-ref-hash' },
+      { versioning: makeVersioningSpy() }
+    );
+    cleanup.assetIds.push(asset.id);
+    cleanup.collectionIds.push(asset.collectionId);
+
+    const reference = await addReference(
+      { projectId: projectAId, assetId: asset.id, role: 'composition' },
+      { versioning: makeVersioningSpy() }
+    );
+
+    const script: MockProviderScript = [
+      { kind: 'tool_calls', calls: [{ id: 'ref-2', name: 'remove_reference', args: { referenceId: reference.id } }] },
+      { kind: 'message', content: 'Removed the reference.' },
+    ];
+
+    const result = await runTurn(
+      { projectId: projectAId, message: 'Remove that reference.' },
+      { provider: createMockAdapter(script), versioning: makeVersioningSpy() }
+    );
+
+    expect(result.toolCalls[0]).toMatchObject({ name: 'remove_reference', args: { referenceId: reference.id } });
+    expect((result.toolCalls[0].result as any).deleted).toBe(true);
+
+    const dbReference = await prisma.reference.findUnique({ where: { id: reference.id } });
+    expect(dbReference).toBeNull();
+  });
+
+  it('dispatches a set_iteration_state tool call, updating Iteration.accepted', async () => {
+    const iteration = await createIteration(
+      { projectId: projectAId, imagePath: 'turn-state.png', promptUsed: 'p' },
+      { versioning: makeVersioningSpy() }
+    );
+    cleanup.iterationIds.push(iteration.id);
+
+    const toolCallArgs = { iterationId: iteration.id, accepted: true };
+    const script: MockProviderScript = [
+      { kind: 'tool_calls', calls: [{ id: 'state-1', name: 'set_iteration_state', args: toolCallArgs }] },
+      { kind: 'message', content: 'Marked as accepted.' },
+    ];
+
+    const result = await runTurn(
+      { projectId: projectAId, message: 'Accept this iteration.' },
+      { provider: createMockAdapter(script), versioning: makeVersioningSpy() }
+    );
+
+    expect(result.toolCalls[0]).toMatchObject({ name: 'set_iteration_state', args: toolCallArgs });
+    expect((result.toolCalls[0].result as any).accepted).toBe(true);
+
+    const dbIteration = await prisma.iteration.findUnique({ where: { id: iteration.id } });
+    expect(dbIteration!.accepted).toBe(true);
+  });
+
+  it('dispatches a search_catalog tool call, returning a well-formed (possibly empty) match array with zero network calls', async () => {
+    const toolCallArgs = { query: `turnsearch${marker.replace(/[^a-zA-Z0-9]/g, '')}`, k: 5 };
+    const script: MockProviderScript = [
+      { kind: 'tool_calls', calls: [{ id: 'search-1', name: 'search_catalog', args: toolCallArgs }] },
+      { kind: 'message', content: 'Here is what I found.' },
+    ];
+
+    const result = await runTurn(
+      { projectId: projectAId, message: 'Search the catalog for that term.' },
+      { provider: createMockAdapter(script), versioning: makeVersioningSpy() }
+    );
+
+    expect(result.toolCalls[0]).toMatchObject({ name: 'search_catalog', args: toolCallArgs });
+    expect(Array.isArray(result.toolCalls[0].result)).toBe(true);
   });
 });

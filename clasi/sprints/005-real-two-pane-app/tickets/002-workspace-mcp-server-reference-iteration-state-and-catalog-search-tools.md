@@ -1,7 +1,7 @@
 ---
 id: '002'
 title: 'Workspace MCP Server: reference, iteration-state, and catalog-search tools'
-status: open
+status: in-progress
 use-cases:
 - SUC-003
 - SUC-007
@@ -66,30 +66,30 @@ No change to the seven existing tools' signatures or behavior.
 
 ## Acceptance Criteria
 
-- [ ] `add_reference` creates a `Reference` row scoped to a project;
+- [x] `add_reference` creates a `Reference` row scoped to a project;
       calling it with a `role` of `'style' | 'composition' | 'template'`
       (per the existing `Reference.role` field's documented values)
       persists correctly.
-- [ ] `remove_reference` deletes exactly the targeted row.
-- [ ] `set_iteration_state({ accepted: true })` on one iteration clears
+- [x] `remove_reference` deletes exactly the targeted row.
+- [x] `set_iteration_state({ accepted: true })` on one iteration clears
       `accepted` on any other iteration in the *same* project; iterations
       in a *different* project are unaffected.
-- [ ] `set_iteration_state({ role: 'front' })` on one iteration clears
+- [x] `set_iteration_state({ role: 'front' })` on one iteration clears
       `role: 'front'` from whichever other iteration in the same project
       previously held it; same for `'back'`. Setting front does not
       disturb whichever iteration currently holds `'back'` (and vice
       versa) — the two roles are independently exclusive.
-- [ ] `search_catalog('robots')` (or similar) against fixture
+- [x] `search_catalog('robots')` (or similar) against fixture
       `AssetDescription`/`Embedding` rows returns matches, exercising
       both the `nearestNeighbors`/`embedText` path and the
       `keywordSearch` path, with results merged/deduped.
-- [ ] `search_catalog` makes zero real network calls in tests — it calls
+- [x] `search_catalog` makes zero real network calls in tests — it calls
       only `embedText`/`nearestNeighbors`/`keywordSearch`, all local.
-- [ ] All four tools registered on `workspaceMcpServer` (`server.tool(...)`
+- [x] All four tools registered on `workspaceMcpServer` (`server.tool(...)`
       calls) and present in `turn.ts`'s `DEFAULT_TOOL_HANDLERS`/
       `WORKSPACE_TOOL_DEFINITIONS` so a scripted/mock-adapter turn
       (Sprint 003's SUC-003 test pattern) can call each of them.
-- [ ] The seven existing tools' tests still pass unmodified.
+- [x] The seven existing tools' tests still pass unmodified.
 
 ## Implementation Plan
 
