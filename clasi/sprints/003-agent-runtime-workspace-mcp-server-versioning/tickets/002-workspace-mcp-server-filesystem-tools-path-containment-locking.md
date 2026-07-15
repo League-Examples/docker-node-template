@@ -1,12 +1,14 @@
 ---
-id: "002"
-title: "Workspace MCP Server: filesystem tools, path containment, locking"
-status: open
-use-cases: [SUC-001]
-depends-on: ["001"]
-github-issue: ""
+id: '002'
+title: 'Workspace MCP Server: filesystem tools, path containment, locking'
+status: done
+use-cases:
+- SUC-001
+depends-on:
+- '001'
+github-issue: ''
 issue: workspace-mcp-server.md
-completes_issue: true
+completes_issue: false
 ---
 <!-- CLASI: Before changing code or making plans, review the SE process in CLAUDE.md -->
 
@@ -25,38 +27,38 @@ mutation must hand off to the Versioning Service's commit path.
 
 ## Acceptance Criteria
 
-- [ ] `server/src/agent-mcp/server.ts` creates a second `McpServer`
+- [x] `server/src/agent-mcp/server.ts` creates a second `McpServer`
       instance named distinctly from the existing dev-tooling server
       (e.g. `workspaceMcpServer`), never mounted on any HTTP route --
       connected only in-process.
-- [ ] `read_file`, `move_file`, `create_directory`, `stat` tools are
+- [x] `read_file`, `move_file`, `create_directory`, `stat` tools are
       registered on `workspaceMcpServer` and no others -- no generic
       shell/exec tool exists on this or any MCP instance.
-- [ ] All four tools resolve their path argument(s) through Sprint 002's
+- [x] All four tools resolve their path argument(s) through Sprint 002's
       `resolveWorkspacePath` (imported from
       `services/workspaceDirectorySync.ts`, not reimplemented).
-- [ ] A `read_file`/`stat` call for a path inside `workspace/` succeeds
+- [x] A `read_file`/`stat` call for a path inside `workspace/` succeeds
       and returns file content/metadata.
-- [ ] A `move_file`/`create_directory` call for a path inside
+- [x] A `move_file`/`create_directory` call for a path inside
       `workspace/` succeeds.
-- [ ] A `read_file`, `move_file`, `create_directory`, or `stat` call
+- [x] A `read_file`, `move_file`, `create_directory`, or `stat` call
       whose resolved path escapes `workspace/` (via `../` traversal, an
       absolute path outside the root, or a `move_file` *destination*
       that resolves outside the root even though the source is inside
       it) is rejected before any filesystem I/O occurs.
-- [ ] `move_file`/`create_directory` acquire a `Lock` row
+- [x] `move_file`/`create_directory` acquire a `Lock` row
       (`resourceType: 'directory'`, `resourceKey`: the resolved
       workspace-relative path) before executing and release it after,
       whether the operation succeeds or throws.
-- [ ] A second `move_file`/`create_directory` call for the same
+- [x] A second `move_file`/`create_directory` call for the same
       `resourceKey` while the first's lock is still held is rejected
       (not queued indefinitely) with a clear, catchable error.
-- [ ] `read_file`/`stat` do not acquire a lock (reads are unmoderated
+- [x] `read_file`/`stat` do not acquire a lock (reads are unmoderated
       per D9 -- only mutations lock).
-- [ ] A successful `move_file`/`create_directory` call triggers ticket
+- [x] A successful `move_file`/`create_directory` call triggers ticket
       001's Versioning Service commit path, invoked after the
       filesystem mutation completes, not before.
-- [ ] `server/src/agent-mcp/locks.ts` exports the acquire/release helper
+- [x] `server/src/agent-mcp/locks.ts` exports the acquire/release helper
       used by both this ticket's fs tools and (in ticket 003) the
       catalog tools, written so the Agent Runtime (ticket 005) can import
       it for the `project_turn` lock without duplicating logic.
@@ -116,7 +118,31 @@ None beyond this ticket.
 
 ## Testing
 
-- **Existing tests to run**: `npm test`.
-- **New tests to write**: `tests/server/agent-mcp-fs-tools.test.ts` per
-  Testing Plan above.
-- **Verification command**: `npm test`
+- **Existing tests to run**: `npm test` -- full suite green before and
+  after (`171`/`94` server/client baseline unchanged apart from this
+  ticket's additions), including
+  `tests/server/workspace-directory-sync.test.ts` (confirms
+  `resolveWorkspacePath`'s own contract is unchanged by reuse here) and
+  `tests/server/versioning.test.ts` (confirms the Versioning Service's
+  own contract is unchanged; this ticket only calls its exported
+  `recordChange`, never modifies it).
+- **New tests written**: `tests/server/agent-mcp-fs-tools.test.ts` (27
+  tests) -- tool-surface shape (`registerFsTools`/
+  `createWorkspaceMcpServer` register exactly the four named tools, no
+  others); `read_file`/`stat` success-for-in-root-path, `../` traversal
+  rejection, absolute-path-outside-root rejection, and "never creates a
+  `Lock` row"; `move_file`/`create_directory` success-for-in-root-path,
+  source-escape rejection, destination-escape rejection (the
+  source-inside/destination-outside case named in the acceptance
+  criteria), absolute-path rejection, lock acquired-and-released around
+  the operation, lock released even when the underlying fs call throws,
+  a second call for the same `resourceKey` while the first lock is held
+  rejected with `LockConflictError` (not queued), and
+  `VersioningRecorder.recordChange` invoked exactly once with the
+  resolved absolute path only after the mutation completes; one
+  end-to-end check that a tool registered on a live
+  `createWorkspaceMcpServer()` instance (via its `handler`, the SDK's
+  actual dispatch path) produces the same on-disk effect as calling the
+  exported function directly.
+- **Verification command**: `npm test` -- exit 0, 198 server tests (171
+  baseline + 27 new) / 94 client tests, all passing.
