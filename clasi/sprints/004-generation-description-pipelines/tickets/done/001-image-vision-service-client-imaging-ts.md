@@ -1,7 +1,7 @@
 ---
 id: '001'
 title: Image & Vision Service client (imaging.ts)
-status: open
+status: done
 use-cases:
 - SUC-001
 - SUC-002
@@ -61,34 +61,34 @@ places) -- do not duplicate it.
 
 ## Acceptance Criteria
 
-- [ ] `generateImage` with no reference images calls
+- [x] `generateImage` with no reference images calls
       `/v1/images/generations` (verified against a recorded fixture in
       tests, no live network call); returns image bytes + the model/size/
       quality actually used.
-- [ ] `generateImage` with one or more reference image paths calls
+- [x] `generateImage` with one or more reference image paths calls
       `/v1/images/edits` instead, attaching the reference images.
-- [ ] `classifyAndDescribe` calls OpenRouter's chat-completions endpoint
+- [x] `classifyAndDescribe` calls OpenRouter's chat-completions endpoint
       with an image payload and `OPENROUTER_MODEL`, and parses the
       response into `{ isPhotograph, isLogo, style, peopleReal,
       description, tags }` -- all four classification fields always
       present (never silently omitted, even if the model's answer is
       "unknown").
-- [ ] A simulated OpenAI failure/timeout from `generateImage` throws (or
+- [x] A simulated OpenAI failure/timeout from `generateImage` throws (or
       returns a typed error) rather than returning a partial/garbage
       result; no bytes are returned on failure.
-- [ ] A simulated OpenRouter failure/timeout from `classifyAndDescribe`
+- [x] A simulated OpenRouter failure/timeout from `classifyAndDescribe`
       throws (or returns a typed error) the same way -- this is what
       ticket 003/004's graceful-degradation path catches.
-- [ ] Every successful call (both entry points) logs an approximate
+- [x] Every successful call (both entry points) logs an approximate
       spend estimate via the existing `pino` logger.
-- [ ] `OPENROUTER_API`, `OPENROUTER_MODEL`, `IMAGE_MODEL` exist in
+- [x] `OPENROUTER_API`, `OPENROUTER_MODEL`, `IMAGE_MODEL` exist in
       `config/dev` and `config/prod`; `OPENAI_API_KEY` is not duplicated;
       no secret value appears in any committed file or doc.
-- [ ] `CONFIG_KEYS` in `config.ts` lists the three new keys under "AI
+- [x] `CONFIG_KEYS` in `config.ts` lists the three new keys under "AI
       Services", consistent with the existing `ANTHROPIC_API_KEY`/
       `OPENAI_API_KEY` entries' shape (`group`, `label`, `isSecret`,
       `requiresRestart`).
-- [ ] `npm test` passes with no `OPENAI_API_KEY`/`OPENROUTER_API` set and
+- [x] `npm test` passes with no `OPENAI_API_KEY`/`OPENROUTER_API` set and
       no network access -- every test exercises `imaging.ts` against
       recorded fixtures, never a live API call.
 
@@ -129,3 +129,44 @@ or network access.
 explaining the generation-vs-edits branch and the OpenAI/OpenRouter
 split, mirroring the style of `server/src/agent-mcp/catalogTools.ts`'s
 header. No user-facing docs change.
+
+## Testing Notes
+
+Implemented `server/src/services/imaging.ts` and
+`tests/server/imaging.test.ts` (12 new tests, fixture/stub-backed --
+following Sprint 003's `agent-providers.test.ts` pattern of scripted
+in-file fixtures rather than on-disk JSON files, since that's the actual
+precedent this repo established for provider-adapter tests). Both
+`generateImage` and `classifyAndDescribe` accept an `ImagingCallOptions`
+bag (`fetchImpl`, `openaiApiKey`/`openrouterApiKey`, `imageModel`/
+`openrouterModel`, `logger`) so every test injects a stubbed `fetch` and
+never reaches the network; `beforeEach` also deletes
+`OPENAI_API_KEY`/`OPENROUTER_API`/`IMAGE_MODEL`/`OPENROUTER_MODEL` from
+`process.env` so the suite can't accidentally pass because a developer's
+shell happens to have a real key exported (mirrors
+`agent-providers.test.ts`'s own convention).
+
+Coverage: generations vs. edits branching (including a real temp-file
+reference image read from disk and asserted byte-for-byte inside the
+uploaded `FormData`'s `image[]` part), classify/describe happy path
+(string content and content-array message shapes), the `imageUrl`
+payload variant, default-filling when the model's JSON omits/garbles a
+classification field, one HTTP-failure-status and one
+rejected-request("timeout") case per entry point, and the
+missing-credential error path for both `OPENAI_API_KEY` and
+`OPENROUTER_API`.
+
+Config: added `IMAGE_MODEL=gpt-image-2` and
+`OPENROUTER_MODEL=deepseek/deepseek-v4-pro` to `config/dev/public.env`
+and `config/prod/public.env`, and an empty `OPENROUTER_API=` placeholder
+to `config/dev/secrets.env` and `config/prod/secrets.env` (both via
+`dotconfig load`/`dotconfig save` round-trips, never hand-edited --
+`dotconfig save` reported "No unencrypted secrets detected" both times).
+`OPENAI_API_KEY` was already present in both secrets files and was left
+untouched, not duplicated. `CONFIG_KEYS` in `server/src/services/
+config.ts` gained `OPENROUTER_API` (secret), `OPENROUTER_MODEL` (public),
+`IMAGE_MODEL` (public), all under the existing "AI Services" group.
+
+Full suite: `npm test` exit 0 -- 263 server tests (was 251 + 12 new) /
+94 client tests (unchanged), plus a clean `npx tsc --noEmit` in
+`server/`.
