@@ -1,6 +1,7 @@
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
-import { fileUrl, type IterationDTO } from './types';
+import { fileUrl, type IterationDTO, type PostcardContentDTO, type PostcardContentRegionDTO, type PostcardQr } from './types';
+import PostcardOverlay from './PostcardOverlay';
 
 /**
  * Top portion of the right pane: the project-output view (promoted from
@@ -17,6 +18,24 @@ import { fileUrl, type IterationDTO } from './types';
  * against local state so the UI reflects the new state immediately, ahead
  * of a page reload (which re-fetches from the server and would show the
  * identical result regardless).
+ *
+ * **Rendered-text overlay on the gallery (OOP change, 2026-07-15)**: a
+ * `GET /api/postcards/:projectId` call on mount (mirrors
+ * `PostcardEdit.tsx`'s own load-on-mount fetch) reads back whatever
+ * postcard content was last saved for this project. The iteration
+ * currently holding `role: 'front'` gets `content.front_regions`/
+ * `front_qr` overlaid on its image; the `role: 'back'` iteration gets
+ * `back_regions`/`back_qr`; every other iteration (no role, or a role but
+ * no saved content) renders bare, exactly as before. `IterationImage`
+ * below measures each iteration's actual rendered `<img>` pixel width (the
+ * gallery caps images at 800x800, aspect preserved, so the on-screen size
+ * varies by artwork) and hands that to `PostcardOverlay`, which scales the
+ * inch-based region/QR positions to match. Both of "nothing saved yet"
+ * (`{ content: null }`) and any fetch/parse error leave the gallery at its
+ * bare-image default -- neither is surfaced as an error, same swallow
+ * pattern as `PostcardEdit.tsx`'s own hydration effect. The overlay is
+ * strictly read-only (no move handles, no label tags, no click-to-edit) --
+ * see `PostcardOverlay.tsx`'s own header.
  */
 
 type IterationRole = 'none' | 'front' | 'back';
@@ -69,6 +88,28 @@ export default function OutputPane({ projectId, projectTitle, iterations, onIter
   const [patchError, setPatchError] = useState('');
   const [pdfBusy, setPdfBusy] = useState(false);
   const [pdfError, setPdfError] = useState('');
+
+  // Rendered-text overlay source (see module header). `null` covers both
+  // "nothing saved yet" and a transient fetch/parse error -- either way the
+  // gallery just shows bare images, same as before this OOP change.
+  const [postcardContent, setPostcardContent] = useState<PostcardContentDTO | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const res = await fetch(`/api/postcards/${projectId}`);
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        const data = (await res.json()) as { content: PostcardContentDTO | null };
+        if (!cancelled) setPostcardContent(data?.content ?? null);
+      } catch {
+        if (!cancelled) setPostcardContent(null);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [projectId]);
 
   const frontIteration = iterations.find((iteration) => iteration.role === 'front');
   const backIteration = iterations.find((iteration) => iteration.role === 'back');
@@ -174,62 +215,123 @@ export default function OutputPane({ projectId, projectTitle, iterations, onIter
         // Iterations stack vertically, one per row -- not side by side
         // (round 1's "not back and forth, not doubled up" regression).
         <div className="flex flex-col gap-4">
-          {orderedIterations.map((iteration) => (
-            <div
-              key={iteration.id}
-              data-testid={`iteration-row-${iteration.id}`}
-              className="mx-auto w-full max-w-[800px] rounded border border-slate-200 bg-slate-100"
-            >
-              {/* Media fits within 800x800, aspect ratio preserved,
-                  centered within the row. */}
-              <div className="relative flex items-center justify-center overflow-hidden">
-                <img
-                  src={fileUrl(iteration.imagePath)}
-                  alt={`Iteration ${iteration.seq}`}
-                  className="mx-auto block h-auto max-h-[800px] w-auto max-w-[800px] object-contain"
-                />
-                <div className="absolute left-2 top-2 flex items-center gap-2">
-                  <span className="rounded bg-white/85 px-2 py-0.5 text-sm text-slate-700">
-                    Iteration {iteration.seq}
-                  </span>
-                  {roleOf(iteration) !== 'none' && (
-                    <span
-                      data-testid={`role-badge-${iteration.id}`}
-                      className="rounded-full bg-amber-100 px-2 py-0.5 text-xs font-semibold uppercase text-amber-700"
-                    >
-                      {roleOf(iteration)}
+          {orderedIterations.map((iteration) => {
+            // The rendered-text overlay is keyed off THIS iteration's own
+            // role (see module header) -- an iteration with no role, or a
+            // role but no saved content for that face, renders bare.
+            const role = roleOf(iteration);
+            const overlayRegions =
+              role === 'front' ? postcardContent?.front_regions : role === 'back' ? postcardContent?.back_regions : undefined;
+            const overlayQr = role === 'front' ? postcardContent?.front_qr : role === 'back' ? postcardContent?.back_qr : undefined;
+            return (
+              <div
+                key={iteration.id}
+                data-testid={`iteration-row-${iteration.id}`}
+                className="mx-auto w-full max-w-[800px] rounded border border-slate-200 bg-slate-100"
+              >
+                {/* Media fits within 800x800, aspect ratio preserved,
+                    centered within the row. */}
+                <div className="relative flex items-center justify-center overflow-hidden">
+                  <IterationImage
+                    src={fileUrl(iteration.imagePath)}
+                    alt={`Iteration ${iteration.seq}`}
+                    overlayRegions={overlayRegions}
+                    overlayQr={overlayQr}
+                  />
+                  <div className="absolute left-2 top-2 flex items-center gap-2">
+                    <span className="rounded bg-white/85 px-2 py-0.5 text-sm text-slate-700">
+                      Iteration {iteration.seq}
                     </span>
-                  )}
+                    {roleOf(iteration) !== 'none' && (
+                      <span
+                        data-testid={`role-badge-${iteration.id}`}
+                        className="rounded-full bg-amber-100 px-2 py-0.5 text-xs font-semibold uppercase text-amber-700"
+                      >
+                        {roleOf(iteration)}
+                      </span>
+                    )}
+                  </div>
+                </div>
+                <div className="flex items-center gap-4 border-t border-slate-200 bg-white px-3 py-2 text-sm">
+                  <label className="flex items-center gap-1.5 text-slate-600">
+                    <input
+                      type="checkbox"
+                      aria-label={`Iteration ${iteration.seq} accepted`}
+                      checked={iteration.accepted}
+                      onChange={(event) => void handleAcceptedChange(iteration, event.target.checked)}
+                    />
+                    Accepted
+                  </label>
+                  <label className="ml-auto flex items-center gap-1.5 text-slate-600">
+                    Side
+                    <select
+                      aria-label={`Iteration ${iteration.seq} side`}
+                      value={roleOf(iteration)}
+                      onChange={(event) => void handleRoleChange(iteration, event.target.value as IterationRole)}
+                      className="rounded border border-slate-300 px-2 py-1 text-sm"
+                    >
+                      <option value="none">—</option>
+                      <option value="front">Front</option>
+                      <option value="back">Back</option>
+                    </select>
+                  </label>
                 </div>
               </div>
-              <div className="flex items-center gap-4 border-t border-slate-200 bg-white px-3 py-2 text-sm">
-                <label className="flex items-center gap-1.5 text-slate-600">
-                  <input
-                    type="checkbox"
-                    aria-label={`Iteration ${iteration.seq} accepted`}
-                    checked={iteration.accepted}
-                    onChange={(event) => void handleAcceptedChange(iteration, event.target.checked)}
-                  />
-                  Accepted
-                </label>
-                <label className="ml-auto flex items-center gap-1.5 text-slate-600">
-                  Side
-                  <select
-                    aria-label={`Iteration ${iteration.seq} side`}
-                    value={roleOf(iteration)}
-                    onChange={(event) => void handleRoleChange(iteration, event.target.value as IterationRole)}
-                    className="rounded border border-slate-300 px-2 py-1 text-sm"
-                  >
-                    <option value="none">—</option>
-                    <option value="front">Front</option>
-                    <option value="back">Back</option>
-                  </select>
-                </label>
-              </div>
-            </div>
-          ))}
+            );
+          })}
         </div>
       )}
     </section>
+  );
+}
+
+interface IterationImageProps {
+  src: string;
+  alt: string;
+  overlayRegions?: PostcardContentRegionDTO[];
+  overlayQr?: PostcardQr | null;
+}
+
+/** One iteration's image, plus (when this iteration's face has saved
+ * postcard content) a `PostcardOverlay` scaled to match. Measures the
+ * `<img>`'s own actual rendered pixel width via `getBoundingClientRect` --
+ * both on load (the image has no intrinsic size before then) and via a
+ * `ResizeObserver` (the gallery's `object-contain`/800px-cap sizing can
+ * change with the viewport) -- so the overlay always lines up with
+ * whatever size THIS artwork ends up displayed at, not a hardcoded
+ * assumption. `widthPx` starts at 0 (no overlay rendered) until the first
+ * successful measurement. */
+function IterationImage({ src, alt, overlayRegions, overlayQr }: IterationImageProps) {
+  const imgRef = useRef<HTMLImageElement>(null);
+  const [widthPx, setWidthPx] = useState(0);
+
+  function measure() {
+    const el = imgRef.current;
+    if (el) setWidthPx(el.getBoundingClientRect().width);
+  }
+
+  useEffect(() => {
+    measure();
+    const el = imgRef.current;
+    if (!el || typeof ResizeObserver === 'undefined') return undefined;
+    const observer = new ResizeObserver(() => measure());
+    observer.observe(el);
+    return () => observer.disconnect();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [src]);
+
+  const showOverlay = (overlayRegions && overlayRegions.length > 0) || !!overlayQr;
+
+  return (
+    <div className="relative inline-block">
+      <img
+        ref={imgRef}
+        src={src}
+        alt={alt}
+        onLoad={measure}
+        className="mx-auto block h-auto max-h-[800px] w-auto max-w-[800px] object-contain"
+      />
+      {showOverlay && <PostcardOverlay regions={overlayRegions ?? []} qr={overlayQr} widthPx={widthPx} />}
+    </div>
   );
 }

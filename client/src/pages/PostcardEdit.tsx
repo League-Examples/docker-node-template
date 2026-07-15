@@ -2,8 +2,16 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
 import ChatPanel from './ProjectDetail/ChatPanel';
 import { fileUrl } from './ProjectDetail/types';
-import type { ProjectDetailDTO } from './ProjectDetail/types';
+import type {
+  ProjectDetailDTO,
+  PostcardRegionPosition,
+  PostcardRegionFont,
+  PostcardQr,
+  PostcardContentRegionDTO,
+  PostcardContentDTO,
+} from './ProjectDetail/types';
 import { buildQrGraphic, normalizeQrUrl, displayQrUrl, CAPTION_VIEWBOX_WIDTH, CAPTION_VIEWBOX_HEIGHT } from '../lib/qrCode';
+import { regionBoxStyle, hasExplicitHeight } from '../lib/postcardRegionLayout';
 
 /**
  * `/projects/:id/postcard` -- the real postcard text-region editor (ticket
@@ -52,6 +60,27 @@ import { buildQrGraphic, normalizeQrUrl, displayQrUrl, CAPTION_VIEWBOX_WIDTH, CA
  * package between the two workspaces, so the logic is duplicated but
  * kept in lockstep -- see that file's header). Before a URL is typed, the
  * box still shows a lightweight placeholder (nothing to encode yet).
+ *
+ * **Height-less regions render auto-height, in flow (OOP fix, 2026-07-15)**:
+ * a region's `position.height` is optional (`postcardRender.ts`'s own
+ * contract) -- marketing-imported regions are auto-height, text-flow boxes
+ * that never had one. Previously EVERY region box rendered its text via an
+ * absolutely-positioned `inset-0` layer; with no `height` on the button
+ * itself and nothing else in normal flow, the box collapsed to zero height
+ * and the (correctly-present) text simply never appeared. A region WITHOUT
+ * an explicit `position.height` now renders its text in normal document
+ * flow instead, so the box grows to fit it, matching how
+ * `postcardRender.ts` (and the predecessor system) render height-less
+ * regions. A region WITH an explicit height (freshly-drawn or resized
+ * boxes) is unchanged: fixed size, `overflow:hidden`-clipped text. Both
+ * modes share the exact same move-grip/resize-handle/click-to-edit
+ * mechanics (`hasExplicitHeight` from `../lib/postcardRegionLayout.ts` is
+ * the only branch point) -- resizing a height-less box gives it an
+ * explicit height, which switches it into fixed/clipped mode, by design.
+ * `../lib/postcardRegionLayout.ts`'s `regionBoxStyle`/`hasExplicitHeight`
+ * are shared with `OutputPane.tsx`'s read-only gallery overlay
+ * (`PostcardOverlay`), so a height-less region renders the same way (auto-
+ * height, in flow) everywhere it appears, not just here.
  *
  * **Move/resize handles (OOP change)**: both text-region boxes and the QR
  * box carry two distinct corner handles rather than two same-purpose ones.
@@ -107,21 +136,7 @@ import { buildQrGraphic, normalizeQrUrl, displayQrUrl, CAPTION_VIEWBOX_WIDTH, CA
 export type PostcardSide = 'front' | 'back';
 const SIDES: PostcardSide[] = ['front', 'back'];
 
-export interface PostcardRegionPosition {
-  top: string;
-  left?: string;
-  right?: string;
-  width: string;
-  /** Drawn boxes keep their exact drawn height; content is clipped, not
-   * overflowed (stakeholder, 2026-07-14; `postcardRender.ts`'s
-   * `position.height` -> `overflow:hidden` contract). */
-  height?: string;
-}
-
-export interface PostcardRegionFont {
-  family: string;
-  size: string;
-}
+export type { PostcardRegionPosition, PostcardRegionFont, PostcardQr, PostcardContentRegionDTO, PostcardContentDTO };
 
 export interface PostcardRegion {
   name: string;
@@ -165,37 +180,6 @@ const QR_OVERLAY_POSITION: PostcardRegionPosition = {
   width: '1.5in',
   height: '1.5in',
 };
-
-/** A face's optional QR overlay: present iff the stakeholder added one via
- * the toolbar's "Add QR" button (`null` = no QR on this face). `position`
- * moves/resizes independently via the same corner-handle drag mechanism
- * `PostcardRegion`s use. Maps 1:1 to the content JSON's `front_qr`/
- * `back_qr` shape. */
-export interface PostcardQr {
-  url: string;
-  position: PostcardRegionPosition;
-}
-
-/** Shape of `GET /api/postcards/:projectId`'s `content` field (when
- * non-null) -- `server/src/services/postcardRender.ts`'s `PostcardContent`,
- * as seen from the client. Only the fields this page hydrates from are
- * listed; `front_image`/`back_image`/`front_extra_html`/`back_extra_html`
- * are read (and re-sent) elsewhere, so they're omitted here rather than
- * duplicated. */
-interface PostcardContentRegionDTO {
-  name: string;
-  label: string;
-  style: string;
-  text: string;
-  position: PostcardRegionPosition;
-  font: PostcardRegionFont;
-}
-interface PostcardContentDTO {
-  front_regions?: PostcardContentRegionDTO[];
-  back_regions?: PostcardContentRegionDTO[];
-  front_qr?: PostcardQr;
-  back_qr?: PostcardQr;
-}
 
 /** Debounce window for autosaving edits (box add/delete/move/resize, text
  * commit, QR add/url-set/move/resize/delete) -- see the module header. */
@@ -806,58 +790,81 @@ export default function PostcardEdit() {
               </p>
             )}
 
-            {regions.map((region) => (
-              <button
-                key={region.name}
-                type="button"
-                data-testid={`postcard-region-box-${region.name}`}
-                aria-label={`Edit ${region.label}`}
-                onClick={() => {
-                  if (movedRef.current) {
-                    movedRef.current = false;
-                    return; // a corner-handle drag just ended; not a click
-                  }
-                  openRegionEditor(region);
-                }}
-                className="absolute cursor-pointer border border-dashed border-indigo-400 bg-indigo-50/60 text-left text-[9px] leading-tight hover:bg-indigo-100"
-                style={{
-                  top: region.position.top,
-                  left: region.position.left,
-                  right: region.position.right,
-                  width: region.position.width,
-                  height: region.position.height,
-                }}
-              >
-                {/* Text content, clipped to the box bounds (round-10: overflow
-                    clipped, not shown). overflow-hidden lives here, not on the
-                    button, so the label tag below can straddle the top border. */}
-                <span
-                  data-testid={`postcard-region-text-${region.name}`}
-                  className="absolute inset-0 overflow-hidden p-1 pt-2"
+            {regions.map((region) => {
+              // A region WITHOUT an explicit position.height (marketing-
+              // imported, auto-height, text-flow boxes) renders in normal
+              // document flow -- the box grows to fit its text, matching
+              // postcardRender.ts's own height-less-region contract (OOP
+              // fix, 2026-07-15: these were previously colliding with the
+              // text layer's `absolute inset-0`, which collapsed the box
+              // to zero height since nothing else in the button was in
+              // flow). A region WITH an explicit height (freshly-drawn or
+              // resized boxes) keeps the fixed-size, clipped-overflow
+              // behavior. Resizing a height-less box always sets an
+              // explicit height (`handlePreviewMouseMove`'s resize branch),
+              // so a resize switches a box from auto-height into
+              // fixed/clipped mode -- expected, not a bug.
+              const explicitHeight = hasExplicitHeight(region.position);
+              return (
+                <button
+                  key={region.name}
+                  type="button"
+                  data-testid={`postcard-region-box-${region.name}`}
+                  aria-label={`Edit ${region.label}`}
+                  onClick={() => {
+                    if (movedRef.current) {
+                      movedRef.current = false;
+                      return; // a corner-handle drag just ended; not a click
+                    }
+                    openRegionEditor(region);
+                  }}
+                  className="absolute cursor-pointer border border-dashed border-indigo-400 bg-indigo-50/60 text-left text-[9px] leading-tight hover:bg-indigo-100"
+                  style={regionBoxStyle(region.position)}
                 >
-                  {regionText[region.name]}
-                </span>
-                {/* Label tag: sits centered on the top border at the upper-left,
-                    left-aligned -- white background + solid border laid over the
-                    dashed box outline. The whole tag is the MOVE grip: grab it
-                    to drag the box. */}
-                <span
-                  data-testid={`region-move-${region.name}`}
-                  onMouseDown={(event) => handleMoveStart(event, 'region', 'move', region.name)}
-                  className="absolute left-1 top-0 -translate-y-1/2 cursor-move rounded-sm border border-solid border-indigo-500 bg-white px-1 font-semibold text-indigo-700"
-                >
-                  {region.label}
-                </span>
-                {/* Bottom-right corner handle resizes the box (top-left corner
-                    stays fixed, width/height follow the pointer). Move is the
-                    label tag above. */}
-                <span
-                  data-testid={`move-handle-br-${region.name}`}
-                  onMouseDown={(event) => handleMoveStart(event, 'region', 'resize', region.name)}
-                  className="absolute -bottom-1 -right-1 h-2.5 w-2.5 cursor-nwse-resize rounded-sm border border-white bg-indigo-600"
-                />
-              </button>
-            ))}
+                  {explicitHeight ? (
+                    // Fixed-size mode: text is clipped to the box bounds
+                    // (round-10: overflow clipped, not shown).
+                    // overflow-hidden lives here, not on the button, so the
+                    // label tag below can straddle the top border.
+                    <span
+                      data-testid={`postcard-region-text-${region.name}`}
+                      className="absolute inset-0 overflow-hidden p-1 pt-2"
+                    >
+                      {regionText[region.name]}
+                    </span>
+                  ) : (
+                    // Auto-height mode: text sits in normal document flow,
+                    // so the button (which has no explicit height of its
+                    // own) grows to fit it instead of collapsing.
+                    <span
+                      data-testid={`postcard-region-text-${region.name}`}
+                      className="block whitespace-pre-wrap p-1 pt-3"
+                    >
+                      {regionText[region.name]}
+                    </span>
+                  )}
+                  {/* Label tag: sits centered on the top border at the upper-left,
+                      left-aligned -- white background + solid border laid over the
+                      dashed box outline. The whole tag is the MOVE grip: grab it
+                      to drag the box. */}
+                  <span
+                    data-testid={`region-move-${region.name}`}
+                    onMouseDown={(event) => handleMoveStart(event, 'region', 'move', region.name)}
+                    className="absolute left-1 top-0 -translate-y-1/2 cursor-move rounded-sm border border-solid border-indigo-500 bg-white px-1 font-semibold text-indigo-700"
+                  >
+                    {region.label}
+                  </span>
+                  {/* Bottom-right corner handle resizes the box (top-left corner
+                      stays fixed, width/height follow the pointer). Move is the
+                      label tag above. */}
+                  <span
+                    data-testid={`move-handle-br-${region.name}`}
+                    onMouseDown={(event) => handleMoveStart(event, 'region', 'resize', region.name)}
+                    className="absolute -bottom-1 -right-1 h-2.5 w-2.5 cursor-nwse-resize rounded-sm border border-white bg-indigo-600"
+                  />
+                </button>
+              );
+            })}
 
             {drawRect && (
               <div
@@ -890,13 +897,7 @@ export default function PostcardEdit() {
                   setEditingQrSide(side);
                 }}
                 className="absolute cursor-pointer border border-dashed border-slate-300 bg-white/80 p-0 text-left hover:border-indigo-400"
-                style={{
-                  top: qr.position.top,
-                  left: qr.position.left,
-                  right: qr.position.right,
-                  width: qr.position.width,
-                  height: qr.position.height,
-                }}
+                style={regionBoxStyle(qr.position)}
               >
                 {qrGraphic ? (
                   /* Real, scannable QR code (fills the box's WIDTH, not

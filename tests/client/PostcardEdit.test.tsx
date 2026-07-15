@@ -826,6 +826,154 @@ describe('PostcardEdit -- load-on-mount hydration + debounced autosave (OOP chan
   }, 10000);
 });
 
+describe('PostcardEdit -- height-less regions render auto-height, in flow (OOP fix, 2026-07-15)', () => {
+  it('a hydrated region with no position.height renders visible, in normal flow, not clipped/collapsed', async () => {
+    stubFetch(projectFixture(), (url, init) => {
+      if (url === '/api/postcards/7' && (!init || !init.method)) {
+        return {
+          ok: true,
+          json: async () => ({
+            content: contentFixture({
+              front_regions: [
+                {
+                  name: 'front_body',
+                  label: 'Body copy',
+                  style: '',
+                  text: 'IMPORTED MARKETING TEXT',
+                  // No `height` -- exactly the shape marketing-imported
+                  // regions carry (auto-height, text-flow boxes).
+                  position: { top: '1.0in', left: '0.5in', width: '3.4in' },
+                  font: { family: 'Georgia, serif', size: '15.5px' },
+                },
+              ],
+              front_qr: undefined,
+            }),
+          }),
+        } as Response;
+      }
+      return undefined;
+    });
+    renderPage();
+    await settle();
+
+    const box = await screen.findByTestId('postcard-region-box-front_body');
+    // No explicit height style -- the box is left to auto-height to its
+    // content, not collapsed to a fixed (and, since nothing sized it,
+    // zero) height.
+    expect(box.style.height).toBe('');
+
+    const textEl = screen.getByTestId('postcard-region-text-front_body');
+    expect(textEl).toHaveTextContent('IMPORTED MARKETING TEXT');
+    // The text layer is in normal document flow -- NOT the absolutely-
+    // positioned, clipped layer a height-having box uses (that combination
+    // is exactly what collapsed height-less boxes to nothing before this
+    // fix: an absolute inset-0 layer contributes nothing to an
+    // otherwise-empty, height-less button's own height).
+    expect(textEl).not.toHaveClass('absolute');
+    expect(textEl).not.toHaveClass('inset-0');
+    expect(textEl).not.toHaveClass('overflow-hidden');
+    assertNoLibraryDrawer();
+  });
+
+  it('a hydrated region WITH position.height keeps the fixed-size, clipped-overflow behavior', async () => {
+    stubFetch(projectFixture(), (url, init) => {
+      if (url === '/api/postcards/7' && (!init || !init.method)) {
+        return { ok: true, json: async () => ({ content: contentFixture() }) } as Response;
+      }
+      return undefined;
+    });
+    renderPage();
+    await settle();
+
+    const box = await screen.findByTestId('postcard-region-box-front_headline');
+    expect(box).toHaveStyle({ height: '0.73in' });
+    const textEl = screen.getByTestId('postcard-region-text-front_headline');
+    expect(textEl).toHaveClass('absolute');
+    expect(textEl).toHaveClass('inset-0');
+    expect(textEl).toHaveClass('overflow-hidden');
+    assertNoLibraryDrawer();
+  });
+
+  it('resizing a height-less box gives it an explicit height, switching it into fixed/clipped mode', async () => {
+    stubFetch(projectFixture(), (url, init) => {
+      if (url === '/api/postcards/7' && (!init || !init.method)) {
+        return {
+          ok: true,
+          json: async () => ({
+            content: contentFixture({
+              front_regions: [
+                {
+                  name: 'front_body',
+                  label: 'Body copy',
+                  style: '',
+                  text: 'IMPORTED MARKETING TEXT',
+                  position: { top: '1.0in', left: '0.5in', width: '3.4in' },
+                  font: { family: 'Georgia, serif', size: '15.5px' },
+                },
+              ],
+              front_qr: undefined,
+            }),
+          }),
+        } as Response;
+      }
+      return undefined;
+    });
+    renderPage();
+    await settle();
+    await screen.findByTestId('postcard-region-box-front_body');
+
+    // Before resizing, the box is height-less/auto-flow.
+    expect(screen.getByTestId('postcard-region-text-front_body')).not.toHaveClass('overflow-hidden');
+
+    const preview = screen.getByTestId('postcard-preview');
+    fireEvent.mouseDown(screen.getByTestId('move-handle-br-front_body'), { clientX: 500, clientY: 200 });
+    fireEvent.mouseMove(preview, { clientX: 550, clientY: 230 });
+    fireEvent.mouseUp(preview);
+
+    const box = screen.getByTestId('postcard-region-box-front_body');
+    expect(box.style.height).not.toBe('');
+    expect(screen.getByTestId('postcard-region-text-front_body')).toHaveClass('overflow-hidden');
+    assertNoLibraryDrawer();
+  });
+
+  it('all 6 imported back-face regions from project 11 (Robot-Riot-Postcard) render visible, auto-height, not collapsed', async () => {
+    // Verbatim shape from
+    // server/workspace/projects/11/outputs/postcard-content.json's
+    // back_regions -- none carry a position.height (marketing-imported,
+    // auto-height text-flow boxes).
+    const backRegions = [
+      { name: 'back_headline', label: 'Headline', style: 'font-weight:900; color:#CC1616; letter-spacing:1px;', text: 'ROBOT RIOT\n\n', position: { top: '1.0in', left: '0.5in', width: '3.4in' }, font: { family: "'Arial Black', Arial, sans-serif", size: '34px' } },
+      { name: 'back_datetime', label: 'Date & location', style: 'font-weight:700; color:#16223C;', text: 'Saturday, July 11 · 1:00 PM · The Robot Garage', position: { top: '1.49in', left: '0.5in', width: '3.4in' }, font: { family: 'Arial, Helvetica, sans-serif', size: '18px' } },
+      { name: 'back_body', label: 'Body copy', style: 'line-height:1.5; color:#101010;', text: "You build the robot.", position: { top: '1.86in', left: '0.5in', width: '3.4in' }, font: { family: "Georgia, 'Times New Roman', serif", size: '15.5px' } },
+      { name: 'back_cta', label: 'Call to action', style: 'font-weight:800; color:#C96A10;', text: "Scan to sign up — it's free!", position: { top: '3.25in', left: '0.5in', width: '3.4in' }, font: { family: 'Arial, Helvetica, sans-serif', size: '16px' } },
+      { name: 'back_url', label: 'QR caption — URL', style: 'text-align:center; font-weight:700; color:#16223C;', text: 'jointheleague.org/0G', position: { top: '2.73in', right: '0.5in', width: '1.5in' }, font: { family: 'Arial, Helvetica, sans-serif', size: '13px' } },
+      { name: 'back_nonprofit', label: 'QR caption — nonprofit/EIN', style: 'text-align:center; color:#666; line-height:1.35;', text: 'The League of Amazing Programmers is a 501(c)(3) nonprofit\nEIN 20-4744610', position: { top: '2.95in', right: '0.5in', width: '1.5in' }, font: { family: 'Arial, Helvetica, sans-serif', size: '10px' } },
+    ];
+    stubFetch(projectFixture(), (url, init) => {
+      if (url === '/api/postcards/7' && (!init || !init.method)) {
+        return {
+          ok: true,
+          json: async () => ({ content: contentFixture({ front_regions: [], back_regions: backRegions, front_qr: undefined }) }),
+        } as Response;
+      }
+      return undefined;
+    });
+    const user = userEvent.setup();
+    renderPage();
+    await settle();
+    await user.click(screen.getByRole('button', { name: /^back$/i }));
+
+    for (const region of backRegions) {
+      const box = await screen.findByTestId(`postcard-region-box-${region.name}`);
+      expect(box.style.height).toBe('');
+      const textEl = screen.getByTestId(`postcard-region-text-${region.name}`);
+      expect(textEl).not.toHaveClass('overflow-hidden');
+      expect(textEl.textContent).not.toBe('');
+    }
+    assertNoLibraryDrawer();
+  });
+});
+
 describe('PostcardEdit -- Save + Generate PDF (AC9/AC10)', () => {
   it('is disabled until an iteration is marked front', async () => {
     stubFetch(

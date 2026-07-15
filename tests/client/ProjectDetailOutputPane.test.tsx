@@ -341,6 +341,199 @@ describe('OutputPane -- PDF button', () => {
   });
 });
 
+/** A `GET /api/postcards/:projectId` "content exists" response body used by
+ * the rendered-text-overlay tests below -- one front region, one back
+ * region, and a front QR, enough to prove regions/QR route to the
+ * correct-role iteration and nowhere else. */
+function overlayContentFixture() {
+  return {
+    front_regions: [
+      {
+        name: 'front_headline',
+        label: 'Headline',
+        style: '',
+        text: 'FRONT TEXT',
+        position: { top: '1.0in', left: '0.5in', width: '3.4in' }, // no height -> auto-flow
+        font: { family: 'Arial, sans-serif', size: '24px' },
+      },
+    ],
+    back_regions: [
+      {
+        name: 'back_body',
+        label: 'Body',
+        style: '',
+        text: 'BACK TEXT',
+        position: { top: '0.52in', left: '1.04in', width: '1.46in', height: '0.73in' },
+        font: { family: 'Arial, sans-serif', size: '14px' },
+      },
+    ],
+    front_qr: {
+      url: 'https://example.org/rsvp',
+      position: { top: '1.15in', right: '0.5in', width: '1.5in', height: '1.5in' },
+    },
+  };
+}
+
+/** Stubs the img at `index` (within `screen.getAllByRole('img')`, gallery
+ * order) as having rendered at `widthPx` wide, then fires its `load` event
+ * -- jsdom performs no real layout, so `IterationImage`'s
+ * `getBoundingClientRect()` measurement has to be stubbed by hand to
+ * exercise the overlay's scale-to-displayed-size logic. */
+function measureImage(index: number, widthPx: number, heightPx = widthPx / 1.5) {
+  const img = screen.getAllByRole('img')[index];
+  Object.defineProperty(img, 'getBoundingClientRect', {
+    value: () => ({ width: widthPx, height: heightPx, top: 0, left: 0, right: widthPx, bottom: heightPx, x: 0, y: 0, toJSON() {} }),
+    configurable: true,
+  });
+  fireEvent.load(img);
+  return img;
+}
+
+describe('OutputPane -- rendered-text overlay on the gallery (OOP change, 2026-07-15)', () => {
+  it('overlays front_regions/front_qr on the role:"front" iteration, scaled to its displayed image size', async () => {
+    const iterations = [
+      iteration({ id: 1, seq: 1, role: 'front', imagePath: 'projects/7/iterations/1.png' }),
+      iteration({ id: 2, seq: 2, role: 'back', imagePath: 'projects/7/iterations/2.png' }),
+    ];
+    const fetchMock = vi.fn((url: RequestInfo | URL, init?: RequestInit) => {
+      if (String(url) === '/api/postcards/7' && (!init || !init.method)) {
+        return Promise.resolve({ ok: true, json: async () => ({ content: overlayContentFixture() }) } as Response);
+      }
+      return Promise.resolve({ ok: false, status: 404 } as Response);
+    });
+    vi.stubGlobal('fetch', fetchMock);
+
+    renderOutputPane(iterations);
+
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledWith('/api/postcards/7'));
+
+    // Gallery order is most-recent-first (seq desc): index 0 is iteration 2
+    // (back), index 1 is iteration 1 (front).
+    measureImage(1, 600); // front image displayed at 600px wide -> 100px/in
+
+    const frontOverlay = await screen.findByTestId('overlay-region-front_headline');
+    expect(frontOverlay).toHaveStyle({ top: '100.00px', left: '50.00px', width: '340.00px' });
+    // Height-less -> no explicit height, same auto-flow rule as the editor.
+    expect(frontOverlay.style.height).toBe('');
+    expect(screen.getByTestId('overlay-region-text-front_headline')).toHaveTextContent('FRONT TEXT');
+
+    const frontQr = screen.getByTestId('overlay-qr');
+    expect(frontQr).toHaveStyle({ top: '115.00px', right: '50.00px', width: '150.00px', height: '150.00px' });
+    expect(screen.getByTestId('overlay-qr-graphic')).toBeInTheDocument();
+
+    // The back iteration's own overlay never shows front content.
+    expect(screen.queryByTestId('overlay-region-back_body')).not.toBeInTheDocument();
+  });
+
+  it('overlays back_regions on the role:"back" iteration only, independently scaled to ITS image size', async () => {
+    const iterations = [
+      iteration({ id: 1, seq: 1, role: 'front', imagePath: 'projects/7/iterations/1.png' }),
+      iteration({ id: 2, seq: 2, role: 'back', imagePath: 'projects/7/iterations/2.png' }),
+    ];
+    const fetchMock = vi.fn((url: RequestInfo | URL, init?: RequestInit) => {
+      if (String(url) === '/api/postcards/7' && (!init || !init.method)) {
+        return Promise.resolve({ ok: true, json: async () => ({ content: overlayContentFixture() }) } as Response);
+      }
+      return Promise.resolve({ ok: false, status: 404 } as Response);
+    });
+    vi.stubGlobal('fetch', fetchMock);
+
+    renderOutputPane(iterations);
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledWith('/api/postcards/7'));
+
+    // Gallery order is most-recent-first: index 0 is iteration 2 (back).
+    measureImage(0, 300); // back image displayed narrower -> 50px/in
+
+    const backOverlay = await screen.findByTestId('overlay-region-back_body');
+    expect(backOverlay).toHaveStyle({ top: '26.00px', left: '52.00px', width: '73.00px', height: '36.50px' });
+    expect(screen.getByTestId('overlay-region-text-back_body')).toHaveTextContent('BACK TEXT');
+
+    // The front iteration shows no back content, and (no front_qr on this
+    // face in this fixture's routing) no QR either.
+    expect(screen.queryByTestId('overlay-region-front_headline')).not.toBeInTheDocument();
+  });
+
+  it('renders bare images (no overlay) when the project has no saved postcard content', async () => {
+    const iterations = [iteration({ id: 1, seq: 1, role: 'front' })];
+    const fetchMock = vi.fn((url: RequestInfo | URL, init?: RequestInit) => {
+      if (String(url) === '/api/postcards/7' && (!init || !init.method)) {
+        return Promise.resolve({ ok: true, json: async () => ({ content: null }) } as Response);
+      }
+      return Promise.resolve({ ok: false, status: 404 } as Response);
+    });
+    vi.stubGlobal('fetch', fetchMock);
+
+    renderOutputPane(iterations);
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledWith('/api/postcards/7'));
+    measureImage(0, 600);
+
+    expect(screen.queryByTestId('postcard-overlay')).not.toBeInTheDocument();
+  });
+
+  it('renders bare images when the GET /api/postcards/:id request fails (no throw, no error UI)', async () => {
+    const iterations = [iteration({ id: 1, seq: 1, role: 'front' })];
+    const fetchMock = vi.fn().mockResolvedValue({ ok: false, status: 500 });
+    vi.stubGlobal('fetch', fetchMock);
+
+    renderOutputPane(iterations);
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledWith('/api/postcards/7'));
+    measureImage(0, 600);
+
+    expect(screen.queryByTestId('postcard-overlay')).not.toBeInTheDocument();
+    expect(screen.getAllByRole('img')).toHaveLength(1);
+  });
+
+  it('a role-less iteration (or one whose face has no saved regions) renders bare, even with content loaded for the OTHER face', async () => {
+    const iterations = [
+      iteration({ id: 1, seq: 1, role: null }), // no side marked at all
+    ];
+    const fetchMock = vi.fn((url: RequestInfo | URL, init?: RequestInit) => {
+      if (String(url) === '/api/postcards/7' && (!init || !init.method)) {
+        return Promise.resolve({ ok: true, json: async () => ({ content: overlayContentFixture() }) } as Response);
+      }
+      return Promise.resolve({ ok: false, status: 404 } as Response);
+    });
+    vi.stubGlobal('fetch', fetchMock);
+
+    renderOutputPane(iterations);
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledWith('/api/postcards/7'));
+    measureImage(0, 600);
+
+    expect(screen.queryByTestId('postcard-overlay')).not.toBeInTheDocument();
+  });
+
+  it('the overlay carries no editing affordances -- no move-grip labels, no resize handles, no click-to-edit', async () => {
+    const iterations = [iteration({ id: 1, seq: 1, role: 'front' })];
+    const fetchMock = vi.fn((url: RequestInfo | URL, init?: RequestInit) => {
+      if (String(url) === '/api/postcards/7' && (!init || !init.method)) {
+        return Promise.resolve({ ok: true, json: async () => ({ content: overlayContentFixture() }) } as Response);
+      }
+      return Promise.resolve({ ok: false, status: 404 } as Response);
+    });
+    vi.stubGlobal('fetch', fetchMock);
+
+    renderOutputPane(iterations);
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledWith('/api/postcards/7'));
+    measureImage(0, 600);
+
+    await screen.findByTestId('overlay-region-front_headline');
+    // No editor-only affordances anywhere in the gallery.
+    expect(screen.queryByTestId('region-move-front_headline')).not.toBeInTheDocument();
+    expect(screen.queryByTestId('move-handle-br-front_headline')).not.toBeInTheDocument();
+    expect(screen.queryByTestId('move-handle-tl-qr')).not.toBeInTheDocument();
+    expect(screen.queryByTestId('move-handle-br-qr')).not.toBeInTheDocument();
+    // The overlay is not an interactive button -- no role="button" inside it.
+    const overlay = screen.getByTestId('postcard-overlay');
+    expect(overlay.querySelector('button')).toBeNull();
+    // It never intercepts pointer events, so the row's own controls stay usable.
+    expect(overlay.className).toMatch(/pointer-events-none/);
+
+    // Existing gallery controls remain -- this feature only adds an overlay.
+    expect(screen.getByLabelText('Iteration 1 accepted')).toBeInTheDocument();
+    expect(screen.getByLabelText('Iteration 1 side')).toBeInTheDocument();
+  });
+});
+
 describe('OutputPane -- Text Entry navigation', () => {
   it('navigates to /projects/:id/postcard', () => {
     renderOutputPane([iteration()]);

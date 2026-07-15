@@ -52,6 +52,63 @@ export interface ProjectDetailDTO {
   chatMessages: ChatMessageDTO[];
 }
 
+/**
+ * Postcard content-JSON shapes (`server/src/services/postcardRender.ts`'s
+ * `PostcardContent`, as seen from the client) -- shared between
+ * `PostcardEdit.tsx` (the editable text-region editor) and `OutputPane.tsx`'s
+ * `PostcardOverlay` (the read-only iteration-gallery overlay, OOP change
+ * 2026-07-15) so both render a `position.height`-less region the same way
+ * (auto-height, normal document flow) rather than each carrying its own
+ * copy of the rule. Only the fields either consumer reads are listed here;
+ * `front_image`/`back_image`/`front_extra_html`/`back_extra_html` are read
+ * (and re-sent) elsewhere, so they're omitted rather than duplicated.
+ */
+export interface PostcardRegionPosition {
+  top: string;
+  left?: string;
+  right?: string;
+  width: string;
+  /** Drawn/resized boxes keep their exact size; content is clipped, not
+   * overflowed (stakeholder, 2026-07-14; `postcardRender.ts`'s
+   * `position.height` -> `overflow:hidden` contract). Omitted means the
+   * region auto-heights to fit its text, in normal document flow -- the
+   * common case for marketing-imported regions, which never had an
+   * explicit drawn height to begin with. */
+  height?: string;
+}
+
+export interface PostcardRegionFont {
+  family: string;
+  size: string;
+}
+
+/** A face's optional QR overlay: `{ url, position }`,
+ * `postcardRender.ts`'s `PostcardQrSchema`. */
+export interface PostcardQr {
+  url: string;
+  position: PostcardRegionPosition;
+}
+
+/** One region as it appears in `GET /api/postcards/:projectId`'s
+ * `content.front_regions`/`content.back_regions` (the inverse of
+ * `PostcardEdit.tsx`'s `toContentRegion`). */
+export interface PostcardContentRegionDTO {
+  name: string;
+  label: string;
+  style: string;
+  text: string;
+  position: PostcardRegionPosition;
+  font: PostcardRegionFont;
+}
+
+/** `GET /api/postcards/:projectId`'s `content` field, when non-null. */
+export interface PostcardContentDTO {
+  front_regions?: PostcardContentRegionDTO[];
+  back_regions?: PostcardContentRegionDTO[];
+  front_qr?: PostcardQr;
+  back_qr?: PostcardQr;
+}
+
 /** Mirrors `agent-mcp/catalogTools.ts`'s `SearchCatalogMatch` -- the shape
  * a `search_catalog` tool call's `tool_call_finished` SSE event carries as
  * its `result` (ticket 010, SUC-015). `LibraryDrawer.tsx` renders these
