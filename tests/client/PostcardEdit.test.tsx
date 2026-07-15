@@ -30,6 +30,30 @@ function projectFixture(overrides: Record<string, unknown> = {}) {
   };
 }
 
+/** A `GET /api/postcards/:projectId` "content exists" response body --
+ * one region + a QR, enough to prove hydration mapped both back into
+ * editor state. */
+function contentFixture(overrides: Record<string, unknown> = {}) {
+  return {
+    front_regions: [
+      {
+        name: 'front_headline',
+        label: 'Headline',
+        style: '',
+        text: 'HELLO WORLD',
+        position: { top: '0.52in', left: '1.04in', width: '1.46in', height: '0.73in' },
+        font: { family: 'Arial, sans-serif', size: '14px' },
+      },
+    ],
+    back_regions: [],
+    front_qr: {
+      url: 'https://example.org/hydrated',
+      position: { top: '1.15in', right: '0.5in', width: '1.5in', height: '1.5in' },
+    },
+    ...overrides,
+  };
+}
+
 function stubFetch(
   project: unknown,
   extra?: (url: string, init: RequestInit | undefined) => Response | undefined,
@@ -708,6 +732,98 @@ describe('PostcardEdit -- asset browser never renders (AC7)', () => {
     await user.click(screen.getByRole('button', { name: /^back$/i }));
     assertNoLibraryDrawer();
   });
+});
+
+describe('PostcardEdit -- load-on-mount hydration + debounced autosave (OOP change, 2026-07-15)', () => {
+  it('hydrates a previously-saved region and QR from GET /api/postcards/:id on mount, without any user interaction', async () => {
+    stubFetch(projectFixture(), (url, init) => {
+      if (url === '/api/postcards/7' && (!init || !init.method)) {
+        return { ok: true, json: async () => ({ content: contentFixture() }) } as Response;
+      }
+      return undefined;
+    });
+    renderPage();
+    await settle();
+
+    expect(await screen.findByTestId('postcard-region-box-front_headline')).toBeInTheDocument();
+    expect(screen.getByTestId('postcard-region-text-front_headline')).toHaveTextContent('HELLO WORLD');
+    expect(screen.getByTestId('postcard-qr-box')).toBeInTheDocument();
+    assertNoLibraryDrawer();
+  });
+
+  it('leaves editor state at defaults (no throw, no console error) when nothing was saved yet ({ content: null })', async () => {
+    stubFetch(projectFixture(), (url, init) => {
+      if (url === '/api/postcards/7' && (!init || !init.method)) {
+        return { ok: true, json: async () => ({ content: null }) } as Response;
+      }
+      return undefined;
+    });
+    renderPage();
+    await settle();
+
+    expect(screen.queryByTestId('postcard-region-box-front_headline')).not.toBeInTheDocument();
+    expect(screen.queryByTestId('postcard-qr-box')).not.toBeInTheDocument();
+    assertNoLibraryDrawer();
+  });
+
+  it('does not autosave the hydration itself -- no PUT fires from mount alone, even after the debounce window elapses', async () => {
+    const fetchMock = stubFetch(projectFixture(), (url, init) => {
+      if (url === '/api/postcards/7' && (!init || !init.method)) {
+        return { ok: true, json: async () => ({ content: contentFixture() }) } as Response;
+      }
+      return undefined;
+    });
+    renderPage();
+    await settle();
+    await screen.findByTestId('postcard-region-box-front_headline');
+
+    // Real-timer wait comfortably past the 700ms autosave debounce -- if
+    // hydration's own setState calls wrongly scheduled an autosave, a PUT
+    // would show up here.
+    await new Promise((resolve) => setTimeout(resolve, 900));
+    const putCalls = fetchMock.mock.calls.filter(
+      ([url, init]) => url === '/api/postcards/7' && (init as RequestInit | undefined)?.method === 'PUT',
+    );
+    expect(putCalls).toHaveLength(0);
+  }, 10000);
+
+  it('schedules a debounced PUT of the current content payload after a genuine edit (box draw)', async () => {
+    const user = userEvent.setup();
+    const fetchMock = stubFetch(projectFixture(), (url, init) => {
+      if (url === '/api/postcards/7' && init?.method === 'PUT') return { ok: true, json: async () => ({}) } as Response;
+      return undefined;
+    });
+    renderPage();
+    await settle();
+    await drawFrontHeadlineBox(user);
+
+    await waitFor(
+      () => {
+        const putCall = fetchMock.mock.calls.find(
+          ([url, init]) => url === '/api/postcards/7' && (init as RequestInit | undefined)?.method === 'PUT',
+        );
+        expect(putCall).toBeTruthy();
+      },
+      { timeout: 3000 },
+    );
+
+    const putCall = fetchMock.mock.calls.find(
+      ([url, init]) => url === '/api/postcards/7' && (init as RequestInit | undefined)?.method === 'PUT',
+    )!;
+    const body = JSON.parse((putCall[1] as RequestInit).body as string);
+    expect(body.front_image).toBe('projects/7/iterations/1.png');
+    expect(body.front_regions).toEqual([
+      {
+        name: 'front_headline',
+        label: 'Headline',
+        style: '',
+        text: '',
+        position: { top: '0.52in', left: '1.04in', width: '1.46in', height: '0.73in' },
+        font: { family: 'Arial, sans-serif', size: '14px' },
+      },
+    ]);
+    assertNoLibraryDrawer();
+  }, 10000);
 });
 
 describe('PostcardEdit -- Save + Generate PDF (AC9/AC10)', () => {

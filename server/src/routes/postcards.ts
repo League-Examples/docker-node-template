@@ -46,6 +46,20 @@ import { renderPostcardPdf } from '../services/postcardPdf';
  * this file's original gate anticipated: a normal, authenticated
  * project-owner user is not necessarily an admin.
  *
+ * **`GET /api/postcards/:projectId`** (Sprint 005 OOP follow-up, 2026-07-15):
+ * the read side of the PUT above, so the client editor (`PostcardEdit.tsx`)
+ * can hydrate a previously-saved layout on mount instead of starting from
+ * client-only state that vanished on reload. Reads back whatever
+ * `postcard-content.json` the PUT handler most recently persisted, via the
+ * exact same `resolveWorkspacePath` read the PDF route below already does.
+ * Two distinguishable outcomes for the client: `200 { content: null }` when
+ * nothing has been saved yet for this project (no prior PUT -- NOT a 404,
+ * since the project itself is real and the client shouldn't treat "nothing
+ * saved" as an error), and `200 { content: <PostcardContent> }` once
+ * something has. A malformed/corrupted stored file (should not happen in
+ * practice -- only this route's own PUT ever writes it) maps to 400 via
+ * `parsePostcardContent`, mirroring the PDF route's re-parse below.
+ *
  * **`POST /api/postcards/:projectId/pdf`** (ticket 006): the second half
  * of the pipeline. Reads back whatever `postcard-content.json` the PUT
  * handler above most recently persisted for this project (no request
@@ -118,6 +132,44 @@ postcardsRouter.put('/postcards/:projectId', requireAuth, async (req, res) => {
     htmlPath: htmlResult.path,
     html,
   });
+});
+
+postcardsRouter.get('/postcards/:projectId', requireAuth, async (req, res) => {
+  const projectId = Number.parseInt(String(req.params.projectId), 10);
+  if (Number.isNaN(projectId)) {
+    res.status(400).json({ error: 'Invalid project id' });
+    return;
+  }
+
+  const project = await defaultPrisma.project.findUnique({ where: { id: projectId } });
+  if (!project) {
+    res.status(404).json({ error: `No project with id ${projectId}` });
+    return;
+  }
+
+  const contentPath = `projects/${projectId}/outputs/postcard-content.json`;
+  let raw: string;
+  try {
+    raw = await fs.readFile(resolveWorkspacePath(contentPath), 'utf8');
+  } catch {
+    // Nothing saved yet -- not an error; the client leaves its editor state
+    // at defaults on this outcome (see this file's module header).
+    res.status(200).json({ content: null });
+    return;
+  }
+
+  let content: PostcardContent;
+  try {
+    content = parsePostcardContent(JSON.parse(raw));
+  } catch (err) {
+    if (err instanceof PostcardValidationError) {
+      res.status(400).json({ error: err.message });
+      return;
+    }
+    throw err;
+  }
+
+  res.status(200).json({ content });
 });
 
 /** Renders `content` (already-validated) to a per-face, single-`.page`

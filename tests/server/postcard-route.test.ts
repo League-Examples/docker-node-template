@@ -442,3 +442,88 @@ describe('PUT /api/postcards/:projectId -- malformed content JSON', () => {
     expect(res.status).toBe(404);
   });
 });
+
+describe('GET /api/postcards/:projectId -- read-back for the editor (OOP follow-up, 2026-07-15)', () => {
+  it('rejects an unauthenticated request with 401', async () => {
+    const res = await request(app).get('/api/postcards/1');
+    expect(res.status).toBe(401);
+  });
+
+  it('returns { content: null } for a project with no prior PUT', async () => {
+    const project = await makeProject(`${marker}-get-nothing-saved`);
+    await makeIteration(project.id, `projects/${project.id}/iterations/iter-1.png`, 1);
+
+    const agent = await loginAsUser();
+    const res = await agent.get(`/api/postcards/${project.id}`);
+
+    expect(res.status).toBe(200);
+    expect(res.body).toEqual({ content: null });
+  });
+
+  it('round-trips: GET returns exactly what a prior PUT persisted', async () => {
+    const project = await makeProject(`${marker}-get-roundtrip`);
+    await makeIteration(project.id, `projects/${project.id}/iterations/iter-1.png`, 1);
+    await makeIteration(project.id, `projects/${project.id}/iterations/iter-2.png`, 2);
+
+    const agent = await loginAsUser();
+    const putRes = await agent.put(`/api/postcards/${project.id}`).send({
+      front_image: `projects/${project.id}/iterations/iter-1.png`,
+      back_image: `projects/${project.id}/iterations/iter-2.png`,
+      front_regions: [region({ name: 'front_headline' })],
+      front_qr: {
+        url: 'https://example.org/rsvp',
+        position: { top: '1.15in', right: '0.5in', width: '1.5in', height: '1.5in' },
+      },
+    });
+    expect(putRes.status).toBe(200);
+
+    const getRes = await agent.get(`/api/postcards/${project.id}`);
+
+    expect(getRes.status).toBe(200);
+    expect(getRes.body.content.front_image).toBe(`projects/${project.id}/iterations/iter-1.png`);
+    expect(getRes.body.content.back_image).toBe(`projects/${project.id}/iterations/iter-2.png`);
+    expect(getRes.body.content.front_regions).toHaveLength(1);
+    expect(getRes.body.content.front_regions[0].name).toBe('front_headline');
+    expect(getRes.body.content.front_qr).toEqual({
+      url: 'https://example.org/rsvp',
+      position: { top: '1.15in', right: '0.5in', width: '1.5in', height: '1.5in' },
+    });
+    expect(getRes.body.content.back_qr).toBeUndefined();
+  });
+
+  it('reflects a re-submission -- GET after a second PUT returns the newest content, not the first', async () => {
+    const project = await makeProject(`${marker}-get-resubmit`);
+    await makeIteration(project.id, `projects/${project.id}/iterations/iter-1.png`, 1);
+    await makeIteration(project.id, `projects/${project.id}/iterations/iter-2.png`, 2);
+
+    const agent = await loginAsAdmin();
+    await agent.put(`/api/postcards/${project.id}`).send({
+      front_image: `projects/${project.id}/iterations/iter-1.png`,
+      front_regions: [region({ text: 'FIRST VERSION' })],
+    });
+    await agent.put(`/api/postcards/${project.id}`).send({
+      front_image: `projects/${project.id}/iterations/iter-2.png`,
+      front_regions: [region({ text: 'SECOND VERSION' })],
+    });
+
+    const getRes = await agent.get(`/api/postcards/${project.id}`);
+    expect(getRes.status).toBe(200);
+    expect(getRes.body.content.front_image).toBe(`projects/${project.id}/iterations/iter-2.png`);
+    expect(getRes.body.content.front_regions[0].text).toBe('SECOND VERSION');
+
+    const allIterations = await prisma.iteration.findMany({ where: { projectId: project.id } });
+    for (const it of allIterations) cleanup.iterationIds.push(it.id);
+  });
+
+  it('returns a 400 for a non-numeric project id', async () => {
+    const agent = await loginAsAdmin();
+    const res = await agent.get('/api/postcards/not-a-number');
+    expect(res.status).toBe(400);
+  });
+
+  it('returns a 404 for a project that does not exist', async () => {
+    const agent = await loginAsAdmin();
+    const res = await agent.get('/api/postcards/999999999');
+    expect(res.status).toBe(404);
+  });
+});

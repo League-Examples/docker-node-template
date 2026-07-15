@@ -62,15 +62,39 @@ import { buildQrGraphic, normalizeQrUrl, displayQrUrl, CAPTION_VIEWBOX_WIDTH, CA
  * (`handleMoveStart`/`handlePreviewMouseMove`) drives both actions for both
  * element kinds, keyed by `moving.action`.
  *
- * **Text-region data is client-side state for the duration of one editing
- * session** -- there is no `GET` of a previously-saved
- * `postcard-content.json` on mount. The ticket's Description and
- * Acceptance Criteria only specify the *write* path (`PUT`); round-tripping
- * a prior save back into the editor on reload would need a new read
- * endpoint on `postcards.ts`, which is out of this ticket's scope (see the
- * ticket file's deviation note). Every "Generate PDF" click still submits
- * a complete, self-consistent content JSON for whatever is currently drawn
- * in this session.
+ * **Load-on-mount + debounced autosave (OOP change, 2026-07-15)**: text
+ * regions and the QR overlay are no longer purely client-side state that
+ * vanishes on reload. On mount (an effect keyed on `projectId`, running in
+ * parallel with `loadProject`), a `GET /api/postcards/:projectId` call
+ * reads back whatever `postcard-content.json` was last persisted for this
+ * project and hydrates `regionsBySide`/`regionText`/`qrBySide` from its
+ * `front_regions`/`back_regions`/`front_qr`/`back_qr` (the inverse of
+ * `toContentRegion` below). `GET`'s two "nothing to hydrate" outcomes --
+ * `200 { content: null }` (no prior save) and any fetch/parse error alike
+ * -- both just leave the editor at its client-only defaults; neither is
+ * surfaced as an error. Preview *images* are unaffected by any of this --
+ * they still come from `Iteration.role`, per the section above.
+ *
+ * Every change to `regionsBySide`/`regionText`/`qrBySide` (box add/delete/
+ * move/resize, text commit, QR add/url-set/move/resize/delete) schedules a
+ * debounced `PUT` of `buildContentPayload()`'s result (`AUTOSAVE_DEBOUNCE_MS`
+ * = 700ms of no further changes; a `useRef`-held timer, cleared and
+ * re-armed on every qualifying change) -- the same payload shape
+ * `handleGeneratePdf`'s own explicit `PUT` sends, factored into
+ * `buildContentPayload()` so there is exactly one place that knows how
+ * editor state maps to the content-JSON shape. The debounce effect
+ * deliberately does NOT fire for the state changes hydration itself makes
+ * (the initial default state, or the one-time population from a successful
+ * `GET`) -- `skipNextAutosaveRef` arms itself before those specific
+ * `setState` calls and is consumed by the very next autosave-effect run, so
+ * only a stakeholder-driven change ever reaches the debounced `PUT`. A
+ * pending autosave is always flushed immediately (bypassing the debounce)
+ * on unmount or a `projectId` change, using a `latestPayloadRef` kept fresh
+ * every render, so no edit is lost to an unmounted timer. Autosave `PUT`
+ * failures are swallowed (logged nowhere, no UI surface) -- distinct from
+ * `handleGeneratePdf`'s own explicit `pdfError` UI, which is unchanged.
+ * Autosave never fires while `buildContentPayload()` returns `null` (no
+ * `frontIteration` yet), mirroring `handleGeneratePdf`'s own guard.
  *
  * **No asset/library browser on this page** -- explicit stakeholder rule.
  * `LibraryDrawer` is never imported here, let alone rendered (verified by
@@ -151,6 +175,31 @@ export interface PostcardQr {
   url: string;
   position: PostcardRegionPosition;
 }
+
+/** Shape of `GET /api/postcards/:projectId`'s `content` field (when
+ * non-null) -- `server/src/services/postcardRender.ts`'s `PostcardContent`,
+ * as seen from the client. Only the fields this page hydrates from are
+ * listed; `front_image`/`back_image`/`front_extra_html`/`back_extra_html`
+ * are read (and re-sent) elsewhere, so they're omitted here rather than
+ * duplicated. */
+interface PostcardContentRegionDTO {
+  name: string;
+  label: string;
+  style: string;
+  text: string;
+  position: PostcardRegionPosition;
+  font: PostcardRegionFont;
+}
+interface PostcardContentDTO {
+  front_regions?: PostcardContentRegionDTO[];
+  back_regions?: PostcardContentRegionDTO[];
+  front_qr?: PostcardQr;
+  back_qr?: PostcardQr;
+}
+
+/** Debounce window for autosaving edits (box add/delete/move/resize, text
+ * commit, QR add/url-set/move/resize/delete) -- see the module header. */
+const AUTOSAVE_DEBOUNCE_MS = 700;
 
 /** Turn a label into a region name unique across both faces (server-side
  * `data-region` identifier, `postcardRender.ts`'s `renderRegion`). */
@@ -239,6 +288,20 @@ export default function PostcardEdit() {
   const [pdfBusy, setPdfBusy] = useState(false);
   const [pdfError, setPdfError] = useState('');
 
+  // Debounced-autosave bookkeeping (see module header). `autosaveTimerRef`
+  // holds the pending debounce timer (cleared/re-armed on every qualifying
+  // change). `latestPayloadRef` is kept fresh every render so the unmount/
+  // projectId-change flush effect below always has the CURRENT payload,
+  // never a stale one captured by an effect closure. `skipNextAutosaveRef`
+  // starts `true` so the autosave effect's very first run (triggered by the
+  // initial-mount render itself) is skipped, and is re-armed immediately
+  // before the load-on-mount effect's own `setState` calls so THAT
+  // hydration-driven change is skipped too -- only a genuine stakeholder
+  // edit ever reaches the debounced PUT.
+  const autosaveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const latestPayloadRef = useRef<Record<string, unknown> | null>(null);
+  const skipNextAutosaveRef = useRef(true);
+
   const loadProject = useCallback(async () => {
     setLoading(true);
     setLoadError('');
@@ -259,6 +322,54 @@ export default function PostcardEdit() {
     if (!Number.isNaN(projectId)) void loadProject();
   }, [projectId, loadProject]);
 
+  // Load-on-mount: hydrate a previously-saved layout, if any (see module
+  // header). Runs in parallel with `loadProject` above -- it needs only
+  // `projectId`, not `project` itself. Both of "nothing saved yet"
+  // (`{ content: null }`) and any fetch/parse error leave editor state at
+  // its client-only defaults; neither is surfaced as an error.
+  useEffect(() => {
+    if (Number.isNaN(projectId)) return;
+    let cancelled = false;
+    (async () => {
+      try {
+        const res = await fetch(`/api/postcards/${projectId}`);
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        const data = (await res.json()) as { content: PostcardContentDTO | null };
+        const content = data?.content;
+        if (cancelled || !content) return;
+
+        const hydratedRegions: Record<PostcardSide, PostcardRegion[]> = { front: [], back: [] };
+        const hydratedText: Record<string, string> = {};
+        for (const s of SIDES) {
+          const contentRegions = s === 'front' ? content.front_regions : content.back_regions;
+          for (const region of contentRegions ?? []) {
+            hydratedRegions[s].push({
+              name: region.name,
+              label: region.label,
+              style: region.style,
+              position: region.position,
+              font: region.font,
+            });
+            hydratedText[region.name] = region.text;
+          }
+        }
+
+        // Arm the skip guard BEFORE these setState calls -- they're the
+        // hydration write the autosave effect below must ignore.
+        skipNextAutosaveRef.current = true;
+        setRegionsBySide(hydratedRegions);
+        setRegionText(hydratedText);
+        setQrBySide({ front: content.front_qr ?? null, back: content.back_qr ?? null });
+      } catch {
+        // Nothing saved yet, or a transient fetch/parse error -- leave the
+        // editor at its client-only defaults (see module header).
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [projectId]);
+
   const frontIteration = project?.iterations.find((iteration) => iteration.role === 'front');
   const backIteration = project?.iterations.find((iteration) => iteration.role === 'back');
   const iterationBySide = { front: frontIteration, back: backIteration } as const;
@@ -270,6 +381,85 @@ export default function PostcardEdit() {
   // the full module grid, so it shouldn't be called more than once for
   // the same URL within a single render pass.
   const qrGraphic = qr && qr.url.trim() ? buildQrGraphic(normalizeQrUrl(qr.url)) : null;
+
+  /** Content-JSON payload for the CURRENT editor state -- the single shared
+   * builder both `handleGeneratePdf`'s explicit PUT and the debounced
+   * autosave effect below send (see module header). `null` when there's no
+   * front image yet (mirrors `handleGeneratePdf`'s own `!frontIteration`
+   * guard -- a PUT needs at least `front_image`). */
+  function buildContentPayload(): Record<string, unknown> | null {
+    if (!frontIteration) return null;
+    const content: Record<string, unknown> = {
+      front_image: frontIteration.imagePath,
+      front_regions: regionsBySide.front.map((r) => toContentRegion(r, regionText)),
+      back_regions: regionsBySide.back.map((r) => toContentRegion(r, regionText)),
+    };
+    if (backIteration) content.back_image = backIteration.imagePath;
+    // Structured, optional-per-face QR (`postcardRender.ts`'s
+    // `PostcardQrSchema`) -- omitted entirely when a face has no QR
+    // (AC1: no QR by default), not sent as an empty placeholder.
+    if (qrBySide.front) content.front_qr = qrBySide.front;
+    if (qrBySide.back) content.back_qr = qrBySide.back;
+    return content;
+  }
+
+  // Keep `latestPayloadRef` fresh every render (not just on the deps the
+  // autosave effect below watches) so the unmount/projectId-change flush
+  // effect always sends the truly-current state, never a stale closure.
+  useEffect(() => {
+    latestPayloadRef.current = buildContentPayload();
+  });
+
+  // Debounced autosave: any change to regionsBySide/regionText/qrBySide
+  // schedules a PUT of the current buildContentPayload() after
+  // AUTOSAVE_DEBOUNCE_MS of no further changes -- except the one run this
+  // effect itself skips via skipNextAutosaveRef (see that ref's own
+  // comment, and the module header).
+  useEffect(() => {
+    if (skipNextAutosaveRef.current) {
+      skipNextAutosaveRef.current = false;
+      return;
+    }
+    if (autosaveTimerRef.current) {
+      clearTimeout(autosaveTimerRef.current);
+      autosaveTimerRef.current = null;
+    }
+    const payload = buildContentPayload();
+    if (!payload || Number.isNaN(projectId)) return;
+    autosaveTimerRef.current = setTimeout(() => {
+      autosaveTimerRef.current = null;
+      void fetch(`/api/postcards/${projectId}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      }).catch(() => {
+        // Autosave failures are swallowed -- distinct from `pdfError`,
+        // which stays an explicit, user-visible failure only for the
+        // "Generate PDF" button's own PUT/POST round trip.
+      });
+    }, AUTOSAVE_DEBOUNCE_MS);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [regionsBySide, regionText, qrBySide]);
+
+  // Flush a still-pending autosave immediately on unmount or a projectId
+  // change, rather than letting an unmounted timer's PUT either fire late
+  // or (if the timer were cleared without resending) get lost entirely.
+  useEffect(() => {
+    return () => {
+      if (autosaveTimerRef.current) {
+        clearTimeout(autosaveTimerRef.current);
+        autosaveTimerRef.current = null;
+        const payload = latestPayloadRef.current;
+        if (payload) {
+          void fetch(`/api/postcards/${projectId}`, {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(payload),
+          }).catch(() => {});
+        }
+      }
+    };
+  }, [projectId]);
 
   function handleRegionTextChange(name: string, value: string) {
     setRegionText((prev) => ({ ...prev, [name]: value }));
@@ -463,24 +653,16 @@ export default function PostcardEdit() {
    * button (ticket 005-009), but carrying this page's actual regions/QR
    * overlays rather than just the two image paths -- the PUT persists the
    * edits (this ticket's "Save" acceptance criterion), the POST renders
-   * and streams back the PDF, opened in a new tab. */
+   * and streams back the PDF, opened in a new tab. Shares
+   * `buildContentPayload()` with the debounced autosave effect above, so
+   * both send the identical content-JSON shape. */
   async function handleGeneratePdf() {
-    if (!frontIteration || pdfBusy) return;
+    if (pdfBusy) return;
+    const content = buildContentPayload();
+    if (!content) return;
     setPdfBusy(true);
     setPdfError('');
     try {
-      const content: Record<string, unknown> = {
-        front_image: frontIteration.imagePath,
-        front_regions: regionsBySide.front.map((r) => toContentRegion(r, regionText)),
-        back_regions: regionsBySide.back.map((r) => toContentRegion(r, regionText)),
-      };
-      if (backIteration) content.back_image = backIteration.imagePath;
-      // Structured, optional-per-face QR (`postcardRender.ts`'s
-      // `PostcardQrSchema`) -- omitted entirely when a face has no QR
-      // (AC1: no QR by default), not sent as an empty placeholder.
-      if (qrBySide.front) content.front_qr = qrBySide.front;
-      if (qrBySide.back) content.back_qr = qrBySide.back;
-
       const putRes = await fetch(`/api/postcards/${projectId}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
