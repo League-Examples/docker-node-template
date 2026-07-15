@@ -1,7 +1,7 @@
 ---
 id: '011'
 title: NewProject page
-status: in-progress
+status: done
 use-cases:
 - SUC-004
 depends-on:
