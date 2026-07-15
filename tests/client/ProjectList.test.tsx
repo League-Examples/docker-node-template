@@ -235,6 +235,60 @@ describe('ProjectList hero-image selection rule (SUC-010)', () => {
     expect(card.querySelector('img')).toHaveAttribute('src', '/api/files/projects/2/iterations/3.png');
   });
 
+  it('within a front STREAM of many iterations (Sprint 005 OOP change, 2026-07-15: role is stream membership), the ACCEPTED one wins even when a newer front iteration is unaccepted', async () => {
+    stubFetch({
+      projects: (view) =>
+        view === 'mine'
+          ? [
+              {
+                id: 5,
+                title: 'Postcard E',
+                status: 'active',
+                detailsHeader: { outputType: 'Postcard' },
+                iterations: [
+                  { id: 50, seq: 1, imagePath: 'projects/5/iterations/1.png', accepted: true, role: 'front' },
+                  { id: 51, seq: 2, imagePath: 'projects/5/iterations/2.png', accepted: false, role: 'front' },
+                  { id: 52, seq: 3, imagePath: 'projects/5/iterations/3.png', accepted: false, role: 'front' },
+                ],
+              },
+            ]
+          : [],
+    });
+    renderPage();
+
+    const card = (await screen.findByText('Postcard E')).closest('a')!;
+    // The whole front stream shares role: 'front' now -- only the
+    // ACCEPTED one (seq 1, not the most recent seq 3) is the hero.
+    expect(card.querySelector('img')).toHaveAttribute('src', '/api/files/projects/5/iterations/1.png');
+    expect(within(card).getByText('Front — Iteration 1 (accepted)')).toBeInTheDocument();
+  });
+
+  it('within a front stream with nothing accepted yet, falls back to the most recent front-stream iteration (never the back)', async () => {
+    stubFetch({
+      projects: (view) =>
+        view === 'mine'
+          ? [
+              {
+                id: 6,
+                title: 'Postcard F',
+                status: 'active',
+                detailsHeader: { outputType: 'Postcard' },
+                iterations: [
+                  { id: 60, seq: 1, imagePath: 'projects/6/iterations/1.png', accepted: false, role: 'front' },
+                  { id: 61, seq: 2, imagePath: 'projects/6/iterations/2.png', accepted: false, role: 'front' },
+                  { id: 62, seq: 3, imagePath: 'projects/6/iterations/3.png', accepted: true, role: 'back' },
+                ],
+              },
+            ]
+          : [],
+    });
+    renderPage();
+
+    const card = (await screen.findByText('Postcard F')).closest('a')!;
+    expect(card.querySelector('img')).toHaveAttribute('src', '/api/files/projects/6/iterations/2.png');
+    expect(within(card).getByText('Front — Iteration 2')).toBeInTheDocument();
+  });
+
   it('uses a single accepted iteration with no role directly', async () => {
     stubFetch({
       projects: (view) =>

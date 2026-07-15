@@ -124,6 +124,7 @@ function buildFetchMock() {
   };
 
   let projectCreated = false;
+  let postcardContent: Record<string, unknown> | null = null;
   const project = {
     id: 42,
     title: 'Untitled project',
@@ -219,9 +220,14 @@ function buildFetchMock() {
       // see module header), even though this SSE stream itself only tells
       // the chat panel *that* generation happened, not the new gallery
       // state (`ChatPanel.tsx`/`ProjectDetail/index.tsx`'s own contract).
+      // Sprint 005 OOP change, 2026-07-15: the new row is tagged into
+      // whichever stream tab was active when the message was sent
+      // (`body.activeFace`, defaulting to `'front'`), mirroring
+      // `realImageVisionClient.ts`'s own `role: input.activeFace ?? 'front'`.
       const seq = project.iterations.length + 1;
       const imagePath = `projects/${project.id}/iterations/${seq}.png`;
-      project.iterations.push({ id: seq, projectId: project.id, seq, imagePath, accepted: false, role: null });
+      const role: 'front' | 'back' = body.activeFace === 'back' ? 'back' : 'front';
+      project.iterations.push({ id: seq, projectId: project.id, seq, imagePath, accepted: false, role });
 
       const replyText =
         chatTurn === 1
@@ -277,7 +283,15 @@ function buildFetchMock() {
       return Promise.resolve({ ok: true, json: async () => ({ ...target }) } as Response);
     }
 
+    // `usePostcardEditorState`'s load-on-mount GET (Sprint 005 OOP change,
+    // 2026-07-15) + the debounced-autosave/PDF-button PUT it also fires --
+    // tracked in-memory the same way every other mutation in this mock is,
+    // so a GET after a PUT reflects what was actually saved.
+    if (url === `/api/postcards/${project.id}` && method === 'GET') {
+      return Promise.resolve({ ok: true, json: async () => ({ content: postcardContent }) } as Response);
+    }
     if (url === `/api/postcards/${project.id}` && method === 'PUT') {
+      postcardContent = JSON.parse(String(init?.body ?? '{}'));
       return Promise.resolve({ ok: true, json: async () => ({}) } as Response);
     }
 
@@ -365,10 +379,15 @@ describe('Full walkthrough (sprint 005 capstone, sprint.md Success Criteria)', (
       // The output pane doesn't show either generated iteration yet --
       // this app's documented "surfaces on the next reload" design (see
       // module header). Confirm that's still true before reloading.
-      expect(screen.getByText('No iterations yet.')).toBeInTheDocument();
+      expect(screen.getByText('No front iterations yet.')).toBeInTheDocument();
 
       // ---- Reload (navigate out and back in) to pick up the generated
-      // iterations, then mark the first one accepted and as the front. ----
+      // iterations, then mark the first one accepted. Both generated
+      // iterations already landed in the Front stream (Sprint 005 OOP
+      // change, 2026-07-15: `generate_image` tags new iterations into
+      // whichever tab is active, and this walkthrough never switches off
+      // the default Front tab) -- no separate "mark as front" step is
+      // needed anymore; accepting is the only remaining action. ----
       fireEvent.click(screen.getByRole('link', { name: 'Back to projects' }));
       const projectCard = (await screen.findByText('Untitled project')).closest('a')!;
       fireEvent.click(projectCard);
@@ -379,11 +398,11 @@ describe('Full walkthrough (sprint 005 capstone, sprint.md Success Criteria)', (
       fireEvent.click(screen.getByLabelText('Iteration 1 accepted'));
       await waitFor(() => expect(screen.getByLabelText('Iteration 1 accepted')).toBeChecked());
 
-      fireEvent.change(screen.getByLabelText('Iteration 1 side'), { target: { value: 'front' } });
-      await waitFor(() => expect(screen.getByTestId('role-badge-1')).toHaveTextContent('front'));
-
-      // ---- Edit postcard text. ----
-      fireEvent.click(screen.getByRole('link', { name: 'Text Entry' }));
+      // ---- Edit postcard text INLINE -- accepting iteration 1 (above)
+      // immediately reveals its `PostcardFaceEditor` right in the stream;
+      // there is no separate "Text Entry" page/navigation anymore
+      // (Sprint 005 OOP change, 2026-07-15: `pages/PostcardEdit.tsx`
+      // deleted). ----
       const preview = await screen.findByTestId('postcard-preview');
       expect(screen.getByRole('img', { name: /front preview/i })).toHaveAttribute(
         'src',
@@ -401,8 +420,10 @@ describe('Full walkthrough (sprint 005 capstone, sprint.md Success Criteria)', (
       await user.type(within(editDialog).getByLabelText(/headline text/i), 'ROBOTS WELCOME{Enter}');
       expect(screen.getByTestId('postcard-region-text-front_headline')).toHaveTextContent('ROBOTS WELCOME');
 
-      // ---- Generate a PDF. ----
-      await user.click(screen.getByRole('button', { name: /generate pdf/i }));
+      // ---- Generate a PDF (the fixed-header PDF button, moved from the
+      // deleted `PostcardEdit.tsx` page to `ProjectDetail/index.tsx`). ----
+      await waitFor(() => expect(screen.getByRole('button', { name: 'PDF' })).toBeEnabled());
+      await user.click(screen.getByRole('button', { name: 'PDF' }));
       await waitFor(() => {
         expect(fetchMock).toHaveBeenCalledWith('/api/postcards/42', expect.objectContaining({ method: 'PUT' }));
         expect(fetchMock).toHaveBeenCalledWith('/api/postcards/42/pdf', expect.objectContaining({ method: 'POST' }));

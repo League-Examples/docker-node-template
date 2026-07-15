@@ -645,6 +645,16 @@ export interface CreateIterationArgs {
   /** Explicit sequence number; defaults to one past the project's current
    * highest `seq`. */
   seq?: number;
+  /** Stream membership (Sprint 005 OOP change, 2026-07-15: `Iteration.role`
+   * is now which FRONT/BACK stream this iteration belongs to, not a
+   * single-holder "the front"/"the back" slot -- many iterations can share
+   * the same role). Omitted defaults to `null` (no stream), preserving the
+   * pre-existing behavior for any caller that doesn't pass it (e.g. a
+   * manually-created test iteration). `realImageVisionClient.ts`'s
+   * `generate_image` path is the one production caller that always passes
+   * this -- tagged with whichever tab (`front`/`back`) was active in the
+   * client when the chat turn that triggered generation was sent. */
+  role?: 'front' | 'back' | null;
 }
 
 /** `create_iteration` -- always inserts a new `Iteration` row (no update
@@ -673,6 +683,7 @@ export async function createIteration(
         imagePath: args.imagePath,
         promptUsed: args.promptUsed,
         modelParams: args.modelParams,
+        role: args.role ?? null,
       },
     });
   } finally {
@@ -876,7 +887,10 @@ export async function removeReference(
 export interface SetIterationStateArgs {
   iterationId: number;
   accepted?: boolean;
-  /** `'front' | 'back' | null` -- `null` clears this iteration's own role
+  /** `'front' | 'back' | null` -- STREAM MEMBERSHIP (Sprint 005 OOP change,
+   * 2026-07-15), not a single-holder "the front"/"the back" slot. Many
+   * iterations may share the same role at once (the whole front stream, or
+   * the whole back stream); `null` clears this iteration's own role
    * without affecting any other iteration. */
   role?: 'front' | 'back' | null;
 }
@@ -884,17 +898,28 @@ export interface SetIterationStateArgs {
 /** `set_iteration_state` -- updates `Iteration.accepted`/`Iteration.role`
  * (ticket 001's new columns) inside one `prisma.$transaction`, the *sole*
  * enforcement point (architecture-update.md R4: an application-level
- * invariant, not a DB constraint) for two independent exclusivity rules
- * from stakeholder rounds 6-7:
+ * invariant, not a DB constraint) for this model's one remaining
+ * exclusivity rule:
  *
  *  - setting `accepted: true` on one iteration clears `accepted` from
- *    every *other* iteration in the *same* project (an iteration in a
- *    different project is never touched);
- *  - setting `role: 'front'` (or `'back'`) on one iteration clears that
- *    *same* role from whichever other iteration in the same project
- *    previously held it -- `'front'` and `'back'` are independently
- *    exclusive, so setting one never disturbs whoever currently holds the
- *    other.
+ *    every *other* iteration that shares the SAME `(projectId, role)`
+ *    pair -- i.e. the same stream. A different project is never touched,
+ *    and (Sprint 005 OOP change, 2026-07-15) neither is a different
+ *    stream within the SAME project: accepting a front-stream iteration
+ *    never clears whatever is currently accepted in the back stream, and
+ *    vice versa. `role` is what "the same stream" means here -- if this
+ *    call also sets `role` in the same request, the NEW role is what's
+ *    used to scope the clear (an iteration accepted while simultaneously
+ *    being (re)tagged into a stream joins that stream's one-accepted
+ *    slot, not its old one).
+ *
+ * **Role exclusivity dropped (Sprint 005 OOP change, 2026-07-15)**: the
+ * old rule -- setting `role: 'front'` cleared `role` from whichever other
+ * iteration previously held it -- assumed `role` meant "the single
+ * front/back slot". Under the new stream-membership meaning, MANY
+ * iterations legitimately share a role at once, so setting one
+ * iteration's role must never disturb any other iteration's role. Setting
+ * `role` here only ever changes this row.
  *
  * Passing `accepted: false` or `role: null` only ever changes this
  * iteration's own row -- there is no other row to clear when turning a
@@ -924,17 +949,22 @@ export async function setIterationState(
   try {
     updated = await prismaClient.$transaction(async (tx: any) => {
       if (args.accepted === true) {
+        // Same-stream exclusivity only (per (projectId, role)) -- the
+        // effective role is the one THIS update leaves the row with: the
+        // incoming `role` argument if supplied, else its current role.
+        const effectiveRole = args.role !== undefined ? args.role : existing.role;
         await tx.iteration.updateMany({
-          where: { projectId: existing.projectId, id: { not: args.iterationId }, accepted: true },
+          where: {
+            projectId: existing.projectId,
+            id: { not: args.iterationId },
+            accepted: true,
+            role: effectiveRole,
+          },
           data: { accepted: false },
         });
       }
-      if (args.role === 'front' || args.role === 'back') {
-        await tx.iteration.updateMany({
-          where: { projectId: existing.projectId, id: { not: args.iterationId }, role: args.role },
-          data: { role: null },
-        });
-      }
+      // Role is stream membership, not a single-holder slot (see this
+      // function's own header) -- setting it never touches any other row.
 
       const updateData: Record<string, unknown> = {};
       if (args.accepted !== undefined) updateData.accepted = args.accepted;
@@ -1270,13 +1300,14 @@ export function registerCatalogTools(server: McpServer, options: CatalogToolsOpt
 
   server.tool(
     'create_iteration',
-    'Add a new Iteration row to a Project. Always inserts -- never overwrites an existing iteration.',
+    'Add a new Iteration row to a Project. Always inserts -- never overwrites an existing iteration. Optional role tags which stream (front/back) it joins.',
     {
       projectId: z.number().int(),
       imagePath: z.string(),
       promptUsed: z.string(),
       modelParams: z.any().optional(),
       seq: z.number().int().optional(),
+      role: z.enum(['front', 'back']).nullable().optional(),
     },
     async (args) => textResult(await createIteration(args, options))
   );
@@ -1315,7 +1346,7 @@ export function registerCatalogTools(server: McpServer, options: CatalogToolsOpt
 
   server.tool(
     'set_iteration_state',
-    "Update an Iteration's accepted/role flags. Setting accepted: true clears accepted from every other Iteration in the same project; setting role: 'front' (or 'back') clears that same role from whichever other Iteration in the same project held it. 'front' and 'back' are independently exclusive.",
+    "Update an Iteration's accepted/role flags. role is stream membership ('front'|'back'); many Iterations may share a role. Setting accepted: true clears accepted from every OTHER Iteration sharing the same (projectId, role) stream only -- accepting a front-stream Iteration never disturbs the back stream's accepted Iteration, or vice versa. Setting role never affects any other Iteration's role.",
     {
       iterationId: z.number().int(),
       accepted: z.boolean().optional(),

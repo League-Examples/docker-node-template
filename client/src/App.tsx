@@ -1,10 +1,9 @@
-import { BrowserRouter, Routes, Route } from 'react-router-dom';
+import { BrowserRouter, Routes, Route, Navigate, useParams } from 'react-router-dom';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { AuthProvider } from './context/AuthContext';
 import AppLayout from './components/AppLayout';
 import ProjectList from './pages/ProjectList';
 import ProjectDetail from './pages/ProjectDetail';
-import PostcardEdit from './pages/PostcardEdit';
 import Login from './pages/Login';
 
 import About from './pages/About';
@@ -25,6 +24,16 @@ import UsersPanel from './pages/admin/UsersPanel';
 
 const queryClient = new QueryClient();
 
+/** Sprint 005 OOP change, 2026-07-15: `pages/PostcardEdit.tsx` and its
+ * `/projects/:id/postcard` route are deleted -- text-region editing moved
+ * inline onto `/projects/:id` itself (`ProjectDetail/OutputPane.tsx`'s
+ * accepted-iteration editor). A stale bookmark/link to the old route
+ * redirects straight to the project view rather than 404ing. */
+function RedirectToProject() {
+  const { id } = useParams<{ id: string }>();
+  return <Navigate to={`/projects/${id}`} replace />;
+}
+
 function App() {
   return (
     <BrowserRouter>
@@ -41,7 +50,7 @@ function App() {
             <Route element={<AppLayout />}>
               <Route path="/" element={<ProjectList />} />
               <Route path="/projects/:id" element={<ProjectDetail />} />
-              <Route path="/projects/:id/postcard" element={<PostcardEdit />} />
+              <Route path="/projects/:id/postcard" element={<RedirectToProject />} />
 
               <Route path="/about" element={<About />} />
               <Route path="/account" element={<Account />} />

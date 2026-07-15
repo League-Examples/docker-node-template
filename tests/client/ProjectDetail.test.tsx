@@ -52,6 +52,13 @@ function stubFetch(project: unknown) {
     if (url === '/api/projects?view=all') {
       return Promise.resolve({ ok: true, json: async () => ({ projects: [] }) } as Response);
     }
+    // `usePostcardEditorState`'s load-on-mount GET (Sprint 005 OOP change,
+    // 2026-07-15) -- always fired once by `ProjectDetail/index.tsx`, unless
+    // a test overrides `fetch` itself with a more specific stub. Nothing
+    // saved yet by default; `loaded` still flips `true` on this 2xx.
+    if (url === '/api/postcards/7' && (!init || !init.method)) {
+      return Promise.resolve({ ok: true, json: async () => ({ content: null }) } as Response);
+    }
     return Promise.resolve({ ok: false, status: 404, json: async () => ({}) } as Response);
   });
   vi.stubGlobal('fetch', fn);
@@ -129,7 +136,7 @@ describe('ProjectDetail -- reference strip render + remove', () => {
 });
 
 describe('ProjectDetail -- reload persists accepted/role state (via OutputPane props)', () => {
-  it('a fresh mount re-fetches and reflects the currently persisted accepted/role marks', async () => {
+  it('a fresh mount re-fetches and reflects the currently persisted accepted/role marks, filtered to the active (Front) stream', async () => {
     stubFetch(
       projectFixture({
         iterations: [
@@ -142,8 +149,148 @@ describe('ProjectDetail -- reload persists accepted/role state (via OutputPane p
 
     await screen.findByText('Spring Open House Flyer');
     expect(screen.getByLabelText('Iteration 1 accepted')).toBeChecked();
-    expect(screen.getByLabelText('Iteration 2 accepted')).not.toBeChecked();
-    expect(screen.getByTestId('role-badge-1')).toHaveTextContent('front');
+    // Iteration 2 has role: null -- it belongs to neither stream, so it
+    // never renders on the Front tab (the default active tab).
+    expect(screen.queryByLabelText('Iteration 2 accepted')).not.toBeInTheDocument();
+  });
+});
+
+describe('ProjectDetail -- Front/Back tabs (Sprint 005 OOP change, 2026-07-15)', () => {
+  function twoStreamFixture() {
+    return projectFixture({
+      iterations: [
+        { id: 1, projectId: 7, seq: 1, imagePath: 'projects/7/iterations/1.png', accepted: true, role: 'front' },
+        { id: 2, projectId: 7, seq: 2, imagePath: 'projects/7/iterations/2.png', accepted: true, role: 'back' },
+      ],
+    });
+  }
+
+  it('a new/reopened project starts on the Front tab, showing only the front stream', async () => {
+    stubFetch(twoStreamFixture());
+    renderPage();
+
+    await screen.findByText('Spring Open House Flyer');
+    expect(screen.getByRole('button', { name: 'Front' })).toHaveAttribute('aria-pressed', 'true');
+    expect(screen.getByTestId('iteration-row-1')).toBeInTheDocument();
+    expect(screen.queryByTestId('iteration-row-2')).not.toBeInTheDocument();
+  });
+
+  it('clicking Back switches the stream shown, without a new GET /api/projects/:id', async () => {
+    const fetchMock = stubFetch(twoStreamFixture());
+    renderPage();
+
+    await screen.findByText('Spring Open House Flyer');
+    fireEvent.click(screen.getByRole('button', { name: 'Back' }));
+
+    expect(screen.getByRole('button', { name: 'Back' })).toHaveAttribute('aria-pressed', 'true');
+    expect(screen.getByTestId('iteration-row-2')).toBeInTheDocument();
+    expect(screen.queryByTestId('iteration-row-1')).not.toBeInTheDocument();
+
+    const getCalls = fetchMock.mock.calls.filter(([url, init]) => url === '/api/projects/7' && !init?.method);
+    expect(getCalls).toHaveLength(1);
+  });
+});
+
+describe('ProjectDetail -- back arrow', () => {
+  it('navigates to the project list at /', async () => {
+    stubFetch(projectFixture());
+    renderPage();
+    await screen.findByText('Spring Open House Flyer');
+
+    fireEvent.click(screen.getByRole('link', { name: 'Back to projects' }));
+    expect(screen.getByText('Project list')).toBeInTheDocument();
+  });
+});
+
+describe('ProjectDetail -- no Text Entry link / no /postcard navigation (Sprint 005 OOP change, 2026-07-15)', () => {
+  it('renders no "Text Entry" link anywhere on the page', async () => {
+    stubFetch(projectFixture());
+    renderPage();
+    await screen.findByText('Spring Open House Flyer');
+    expect(screen.queryByRole('link', { name: 'Text Entry' })).not.toBeInTheDocument();
+  });
+});
+
+describe('ProjectDetail -- PDF button (moved here from OutputPane.tsx, Sprint 005 OOP change, 2026-07-15)', () => {
+  it('is disabled until a stream has an accepted iteration and the postcard content has loaded', async () => {
+    stubFetch(projectFixture({ iterations: [] }));
+    renderPage();
+    await screen.findByText('Spring Open House Flyer');
+    expect(screen.getByRole('button', { name: 'PDF' })).toBeDisabled();
+  });
+
+  it('flushes pending autosave, PUTs the built content payload, POSTs .../pdf, and opens the result', async () => {
+    const project = projectFixture({
+      iterations: [
+        { id: 1, projectId: 7, seq: 1, imagePath: 'projects/7/iterations/1.png', accepted: true, role: 'front' },
+      ],
+    });
+    const pdfBlob = new Blob(['%PDF-1.7 fake'], { type: 'application/pdf' });
+    const fetchMock = vi.fn((input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input);
+      if (url === '/api/projects/7' && (!init || !init.method)) {
+        return Promise.resolve({ ok: true, json: async () => project } as Response);
+      }
+      if (url === '/api/catalog/tree') return Promise.resolve({ ok: true, json: async () => ({ directories: [] }) } as Response);
+      if (url === '/api/projects?view=all') return Promise.resolve({ ok: true, json: async () => ({ projects: [] }) } as Response);
+      if (url === '/api/postcards/7' && (!init || !init.method)) {
+        return Promise.resolve({ ok: true, json: async () => ({ content: null }) } as Response);
+      }
+      if (url === '/api/postcards/7' && init?.method === 'PUT') {
+        return Promise.resolve({ ok: true, json: async () => ({}) } as Response);
+      }
+      if (url === '/api/postcards/7/pdf' && init?.method === 'POST') {
+        return Promise.resolve({ ok: true, blob: async () => pdfBlob } as Response);
+      }
+      return Promise.resolve({ ok: false, status: 404 } as Response);
+    });
+    vi.stubGlobal('fetch', fetchMock);
+    vi.stubGlobal('URL', { ...URL, createObjectURL: vi.fn().mockReturnValue('blob:fake-pdf-url') });
+    const openMock = vi.fn();
+    vi.stubGlobal('open', openMock);
+
+    renderPage();
+    await screen.findByText('Spring Open House Flyer');
+    await waitFor(() => expect(screen.getByRole('button', { name: 'PDF' })).toBeEnabled());
+
+    fireEvent.click(screen.getByRole('button', { name: 'PDF' }));
+
+    await waitFor(() => {
+      const putCall = fetchMock.mock.calls.find(([u, i]) => String(u) === '/api/postcards/7' && (i as RequestInit | undefined)?.method === 'PUT');
+      expect(putCall).toBeTruthy();
+      const body = JSON.parse((putCall![1] as RequestInit).body as string);
+      expect(body.front_image).toBe('projects/7/iterations/1.png');
+    });
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledWith('/api/postcards/7/pdf', expect.objectContaining({ method: 'POST' })));
+    await waitFor(() => expect(openMock).toHaveBeenCalledWith('blob:fake-pdf-url', '_blank'));
+  });
+
+  it('surfaces an error rather than silently failing when PDF generation fails', async () => {
+    const project = projectFixture({
+      iterations: [
+        { id: 1, projectId: 7, seq: 1, imagePath: 'projects/7/iterations/1.png', accepted: true, role: 'front' },
+      ],
+    });
+    const fetchMock = vi.fn((input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input);
+      if (url === '/api/projects/7' && (!init || !init.method)) {
+        return Promise.resolve({ ok: true, json: async () => project } as Response);
+      }
+      if (url === '/api/catalog/tree') return Promise.resolve({ ok: true, json: async () => ({ directories: [] }) } as Response);
+      if (url === '/api/projects?view=all') return Promise.resolve({ ok: true, json: async () => ({ projects: [] }) } as Response);
+      if (url === '/api/postcards/7' && (!init || !init.method)) {
+        return Promise.resolve({ ok: true, json: async () => ({ content: null }) } as Response);
+      }
+      return Promise.resolve({ ok: false, status: 500 } as Response);
+    });
+    vi.stubGlobal('fetch', fetchMock);
+
+    renderPage();
+    await screen.findByText('Spring Open House Flyer');
+    await waitFor(() => expect(screen.getByRole('button', { name: 'PDF' })).toBeEnabled());
+
+    fireEvent.click(screen.getByRole('button', { name: 'PDF' }));
+    await screen.findByText(/failed to generate the pdf/i);
   });
 });
 

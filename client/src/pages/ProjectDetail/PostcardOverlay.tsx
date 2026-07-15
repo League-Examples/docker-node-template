@@ -23,7 +23,7 @@ import PostcardQrBaseLayer from '../../lib/PostcardQrBaseLayer';
  *
  * **Two-layer WYSIWYG split (OOP change, 2026-07-15)**: each region's box +
  * text now renders through `../../lib/PostcardRegionBaseLayer.tsx`, the
- * SINGLE shared base-layer component `PostcardEdit.tsx`'s editor also
+ * SINGLE shared base-layer component `PostcardFaceEditor.tsx`'s editor also
  * renders (for its own chrome-free base text layer, underneath a
  * completely separate chrome `<button>` sibling carrying the dashed
  * border/label/resize-handle) -- this is what makes the gallery preview
@@ -40,7 +40,7 @@ import PostcardQrBaseLayer from '../../lib/PostcardQrBaseLayer';
  *
  * The QR graphic/caption render through the analogous
  * `../../lib/PostcardQrBaseLayer.tsx`, the same shared component
- * `PostcardEdit.tsx` uses for its own chrome-free base QR render.
+ * `PostcardFaceEditor.tsx` uses for its own chrome-free base QR render.
  */
 
 interface PostcardOverlayProps {
@@ -64,7 +64,7 @@ export default function PostcardOverlay({ regions, qr, widthPx }: PostcardOverla
       {regions.map((region) => (
         // WYSIWYG two-layer split (OOP change, 2026-07-15): the box + text
         // rendering itself now lives in `../../lib/PostcardRegionBaseLayer.tsx`,
-        // the SAME component `PostcardEdit.tsx`'s editor renders for its own
+        // the SAME component `PostcardFaceEditor.tsx`'s editor renders for its own
         // (chrome-free) base text layer -- this is what guarantees the
         // gallery preview can never drift from the editor's WYSIWYG base
         // render again.

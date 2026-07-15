@@ -5,7 +5,7 @@ import { scaleFontSize, splitTextParagraphs } from './postcardRegionLayout';
 
 /**
  * Shared WYSIWYG text-region renderer (OOP change, 2026-07-15) -- the SINGLE
- * implementation both `PostcardEdit.tsx` (the editable text-region editor,
+ * implementation both `PostcardFaceEditor.tsx` (the editable text-region editor,
  * 1:1 CSS `in`/reference-px units) and `ProjectDetail/PostcardOverlay.tsx`
  * (the read-only gallery overlay, scaled to whatever pixel width its image
  * ends up displayed at) render a region's TEXT through, so the two can never
@@ -34,7 +34,7 @@ import { scaleFontSize, splitTextParagraphs } from './postcardRegionLayout';
  *
  * Renders as a single tagged element (no extra DOM wrapper) so both call
  * sites can keep their existing `data-testid`/`className` at the exact same
- * DOM position they held before this component existed -- `PostcardEdit.tsx`
+ * DOM position they held before this component existed -- `PostcardFaceEditor.tsx`
  * keeps its dashed boundary box, move-grip label, resize handle, and
  * click-to-edit entirely outside this component; only the innermost text
  * rendering routes through it.
@@ -53,7 +53,7 @@ export interface PostcardRegionContentProps {
   widthPx?: number;
   className?: string;
   'data-testid'?: string;
-  /** Set `true` for an invisible sizing-clone usage (`PostcardEdit.tsx`'s
+  /** Set `true` for an invisible sizing-clone usage (`PostcardFaceEditor.tsx`'s
    * auto-height chrome-sizing clone) so assistive tech skips the
    * duplicate, non-visible text node. */
   'aria-hidden'?: boolean;

@@ -72,7 +72,7 @@ describe('New project -- empty-project render (SUC-004)', () => {
     await screen.findByText('Untitled project');
 
     expect(screen.getByTestId('project-details-header')).toHaveTextContent(/no project details yet/i);
-    expect(screen.getByText('No iterations yet.')).toBeInTheDocument();
+    expect(screen.getByText('No front iterations yet.')).toBeInTheDocument();
     expect(screen.queryByTestId('project-references')).not.toBeInTheDocument();
   });
 
@@ -159,7 +159,7 @@ describe('New project -- button-click -> POST -> navigate -> empty ProjectDetail
     // Lands on the blank/empty-project experience -- no separate NewProject
     // route or component, per this ticket's Description.
     expect(screen.getByTestId('project-details-header')).toHaveTextContent(/no project details yet/i);
-    expect(screen.getByText('No iterations yet.')).toBeInTheDocument();
+    expect(screen.getByText('No front iterations yet.')).toBeInTheDocument();
     expect(screen.getByTestId('chat-empty-state')).toBeInTheDocument();
   });
 });

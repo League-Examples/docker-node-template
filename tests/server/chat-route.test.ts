@@ -145,6 +145,59 @@ describe('POST /api/projects/:projectId/chat -- auth gate', () => {
   });
 });
 
+// ---------------------------------------------------------------------------
+// Sprint 005 OOP change, 2026-07-15: `activeFace` threading -- the client
+// includes which stream tab is active, and this route forwards it straight
+// through to `runTurn` so a `generate_image` call this turn dispatches tags
+// its new Iteration into that stream (`turn.ts`'s `RunTurnInput.activeFace`).
+// ---------------------------------------------------------------------------
+
+describe('POST /api/projects/:projectId/chat -- activeFace threading', () => {
+  function stubRunTurn() {
+    mockRunTurn.mockImplementation(async (_input: any, options: any) => {
+      options.onEvent({ type: 'status', status: 'completed' });
+      return {
+        finalMessage: 'ok',
+        messages: [],
+        toolCalls: [],
+        commit: { committed: true, pushed: false },
+        consultedKnowledge: [],
+      };
+    });
+  }
+
+  it('forwards a valid activeFace ("back") to runTurn', async () => {
+    stubRunTurn();
+    const agent = await loginAsAdmin();
+    await bufferedPost(agent, '/api/projects/1/chat').send({ message: 'hi', activeFace: 'back' });
+
+    expect(mockRunTurn).toHaveBeenCalledTimes(1);
+    const [input] = mockRunTurn.mock.calls[0];
+    expect(input).toMatchObject({ activeFace: 'back' });
+  });
+
+  it('forwards a valid activeFace ("front") to runTurn', async () => {
+    stubRunTurn();
+    const agent = await loginAsAdmin();
+    await bufferedPost(agent, '/api/projects/1/chat').send({ message: 'hi', activeFace: 'front' });
+
+    const [input] = mockRunTurn.mock.calls[0];
+    expect(input).toMatchObject({ activeFace: 'front' });
+  });
+
+  it('treats a missing/invalid activeFace as unspecified (undefined), not a 400 -- runTurn applies its own default', async () => {
+    stubRunTurn();
+    const agent = await loginAsAdmin();
+
+    await bufferedPost(agent, '/api/projects/1/chat').send({ message: 'hi' });
+    expect(mockRunTurn.mock.calls[0][0].activeFace).toBeUndefined();
+
+    mockRunTurn.mockClear();
+    await bufferedPost(agent, '/api/projects/1/chat').send({ message: 'hi', activeFace: 'sideways' });
+    expect(mockRunTurn.mock.calls[0][0].activeFace).toBeUndefined();
+  });
+});
+
 describe('POST /api/projects/:projectId/chat -- streams a scripted turn', () => {
   it('streams the expected SSE event sequence for a successful turn', async () => {
     mockRunTurn.mockImplementation(async (input: any, options: any) => {

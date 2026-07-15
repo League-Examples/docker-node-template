@@ -8,13 +8,13 @@ import { displayQrUrl, CAPTION_VIEWBOX_WIDTH, CAPTION_VIEWBOX_HEIGHT, type QrGra
  * `PostcardRegionBaseLayer.tsx` applies to text regions, applied to the QR
  * code: this component is the SINGLE implementation both
  * `ProjectDetail/PostcardOverlay.tsx` (the read-only gallery overlay) and
- * `PostcardEdit.tsx` (the editable editor's chrome-free base QR render)
+ * `PostcardFaceEditor.tsx` (the editable editor's chrome-free base QR render)
  * render the QR graphic + URL caption through, so the two can never
  * independently drift.
  *
  * Deliberately NO editing chrome: no move/resize handles, no click
  * handler, no "click to set a QR URL" placeholder (that's an editing-only
- * affordance -- `PostcardEdit.tsx`'s own separate chrome
+ * affordance -- `PostcardFaceEditor.tsx`'s own separate chrome
  * `<button data-testid="postcard-qr-box">` renders it, on top of this
  * layer, only when `!qrGraphic`). Renders nothing (not even an empty
  * placeholder box) inside its positioned wrapper when `qrGraphic` is

@@ -22,6 +22,16 @@ export interface GenerateImageInput {
   /** Free-form model parameters (size, style, etc.) -- passed through
    * unmodified; the stub does not interpret them. */
   modelParams?: unknown;
+  /** Which stream tab was active in the client when this turn's chat
+   * message was sent (Sprint 005 OOP change, 2026-07-15: "new iterations
+   * join the currently-active tab's stream"). `turn.ts`'s `dispatchToolCall`
+   * threads this through from `RunTurnInput.activeFace` -- never supplied
+   * by the model itself, since it describes UI state the model has no
+   * reason to reason about. The stub ignores it (it never creates an
+   * `Iteration` row); `realImageVisionClient.ts` forwards it to
+   * `create_iteration`'s `role` argument, defaulting to `'front'` when
+   * absent (matching "a new project starts on Front"). */
+  activeFace?: 'front' | 'back';
 }
 
 export interface GenerateImageResult {

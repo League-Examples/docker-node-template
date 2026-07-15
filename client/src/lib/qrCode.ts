@@ -2,7 +2,7 @@ import { create } from 'qrcode';
 
 /**
  * Real, scannable QR code rendering (OOP change, 2026-07-15) for the
- * postcard editor's QR overlay (`pages/PostcardEdit.tsx`) -- mirrors
+ * postcard editor's QR overlay (`pages/PostcardFaceEditor.tsx`) -- mirrors
  * `server/src/services/qrCode.ts`'s SAME approach (an SVG `<path>` built
  * from `qrcode`'s synchronous, canvas-free `create()`) so the editor
  * preview and the server-rendered PDF show the identical graphic for a

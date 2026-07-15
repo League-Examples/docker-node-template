@@ -133,28 +133,38 @@ interface CatalogDirectory {
  * `Iteration`'s creation order within its project) stands in for
  * "recency" — the schema carries no separate acceptedAt timestamp, and
  * iterations are always created and accepted in sequence.
+ *
+ * **Sprint 005 OOP change, 2026-07-15**: `role` is now stream membership
+ * (MANY iterations can be `role: 'front'`), not a single front/back slot,
+ * and `accepted` is one-accepted-PER-STREAM. "The postcard's front" is
+ * therefore the front stream's ACCEPTED iteration -- not just any
+ * `role: 'front'` iteration as the old (pre-Sprint-005) rule read. Falls
+ * back to the front stream's most recent iteration when nothing in it is
+ * accepted yet (still never the back), then to the pre-existing
+ * accepted/non-back/last-overall chain for a project with no front-stream
+ * iteration at all (a legacy/pre-migration project, or every iteration is
+ * `role: null`).
  */
 export function selectHeroIteration(iterations: IterationSummary[]): IterationSummary | null {
   if (!iterations || iterations.length === 0) return null;
 
-  // A postcard's hero is ALWAYS its front face: if any iteration is marked
-  // `role: 'front'`, it wins outright, regardless of accepted state (a
-  // postcard whose back is the only accepted side must still show the front
-  // on the project list -- stakeholder correction).
-  const fronts = iterations.filter((iteration) => iteration.role === 'front');
-  if (fronts.length > 0) {
-    return fronts.reduce((latest, current) => (current.seq > latest.seq ? current : latest));
+  const frontStream = iterations.filter((iteration) => iteration.role === 'front');
+  const acceptedFront = frontStream.filter((iteration) => iteration.accepted);
+  if (acceptedFront.length > 0) {
+    return acceptedFront.reduce((latest, current) => (current.seq > latest.seq ? current : latest));
+  }
+  if (frontStream.length > 0) {
+    // No accepted front yet -- the most recent front-stream iteration is
+    // still the best stand-in for "the postcard's front" (never the back).
+    return frontStream.reduce((latest, current) => (current.seq > latest.seq ? current : latest));
   }
 
+  // No front-stream iteration at all -- fall back to whatever's accepted,
+  // preferring non-back, else the last iteration overall.
   const accepted = iterations.filter((iteration) => iteration.accepted);
   if (accepted.length === 0) {
-    // Nothing accepted -- fall back to the last iteration overall.
     return iterations.reduce((latest, current) => (current.seq > latest.seq ? current : latest));
   }
-
-  // No explicit front: accepted/unmarked wins over an accepted back -- a
-  // postcard's hero is never its back (round 6). Only fall back to an
-  // accepted back iteration if it's the only accepted one there is.
   const nonBack = accepted.filter((iteration) => iteration.role !== 'back');
   const pool = nonBack.length > 0 ? nonBack : accepted;
   return pool.reduce((latest, current) => (current.seq > latest.seq ? current : latest));

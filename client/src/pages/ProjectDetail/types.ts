@@ -55,7 +55,7 @@ export interface ProjectDetailDTO {
 /**
  * Postcard content-JSON shapes (`server/src/services/postcardRender.ts`'s
  * `PostcardContent`, as seen from the client) -- shared between
- * `PostcardEdit.tsx` (the editable text-region editor) and `OutputPane.tsx`'s
+ * `PostcardFaceEditor.tsx` (the editable text-region editor) and `OutputPane.tsx`'s
  * `PostcardOverlay` (the read-only iteration-gallery overlay, OOP change
  * 2026-07-15) so both render a `position.height`-less region the same way
  * (auto-height, normal document flow) rather than each carrying its own
@@ -91,7 +91,7 @@ export interface PostcardQr {
 
 /** One region as it appears in `GET /api/postcards/:projectId`'s
  * `content.front_regions`/`content.back_regions` (the inverse of
- * `PostcardEdit.tsx`'s `toContentRegion`). */
+ * `../../lib/postcardFaceEditing.ts`'s `toContentRegion`). */
 export interface PostcardContentRegionDTO {
   name: string;
   label: string;

@@ -103,13 +103,11 @@ describe('App routing scaffold (005-007)', () => {
     expect(screen.getByTestId('user-menu-trigger')).toBeInTheDocument();
   });
 
-  it('resolves "/projects/:id/postcard" inside the AppLayout shell', async () => {
-    // Ticket 005-012 replaced the ticket-007 placeholder with the real
-    // text editor (`PostcardEdit.tsx`), which fetches the same
-    // `GET /api/projects/:id` as ProjectDetail.
+  it('redirects "/projects/:id/postcard" to "/projects/:id" (Sprint 005 OOP change, 2026-07-15: PostcardEdit.tsx deleted, editing moved inline)', async () => {
     navigateTo('/projects/42/postcard');
     render(<App />);
-    expect(await screen.findByText(/Text editor — Project 42/)).toBeInTheDocument();
+    expect(await screen.findByText('Project 42')).toBeInTheDocument();
+    expect(window.location.pathname).toBe('/projects/42');
     expect(screen.getByTestId('user-menu-trigger')).toBeInTheDocument();
   });
 });

@@ -328,7 +328,7 @@ export const WORKSPACE_TOOL_DEFINITIONS: ProviderToolDefinition[] = [
   {
     name: 'set_iteration_state',
     description:
-      "Update an Iteration's accepted/role flags. Setting accepted: true clears accepted from every other Iteration in the same project; setting role: 'front' (or 'back') clears that same role from whichever other Iteration in the same project held it. 'front' and 'back' are independently exclusive.",
+      "Update an Iteration's accepted/role flags. role is stream membership ('front'|'back'); many Iterations may share a role. Setting accepted: true clears accepted from every OTHER Iteration sharing the same (projectId, role) stream only. Setting role never affects any other Iteration's role.",
     inputSchema: {
       type: 'object',
       properties: {
@@ -493,6 +493,17 @@ export interface TurnVersioningService extends VersioningRecorder {
 export interface RunTurnInput {
   projectId: number;
   message: string;
+  /** Which stream tab (`'front'` | `'back'`) was active in the client when
+   * this message was sent (Sprint 005 OOP change, 2026-07-15: "new
+   * iterations join the currently-active tab's stream"). Threaded straight
+   * through to any `generate_image` tool call this turn dispatches (see
+   * `dispatchToolCall` below) -- never surfaced to the provider/model
+   * itself (it's not in `WORKSPACE_TOOL_DEFINITIONS`'s `generate_image`
+   * `inputSchema`), since it describes client UI state the model has no
+   * reason to supply or reason about. Defaults to `'front'` when omitted
+   * (an older client, or a test that doesn't care), matching "a new
+   * project starts on Front". */
+  activeFace?: 'front' | 'back';
 }
 
 export interface TurnControllerOptions {
@@ -545,6 +556,7 @@ async function dispatchToolCall(
     versioning: VersioningRecorder;
     lockHolder: string;
     prismaClient: any;
+    activeFace: 'front' | 'back';
   }
 ): Promise<unknown> {
   if (call.name === IMAGE_GENERATION_TOOL_NAME) {
@@ -554,6 +566,7 @@ async function dispatchToolCall(
       prompt: args.prompt,
       projectId: ctx.projectId,
       modelParams: args.modelParams,
+      activeFace: ctx.activeFace,
     });
     return result;
   }
@@ -656,6 +669,7 @@ export async function runTurn(input: RunTurnInput, options: TurnControllerOption
             versioning,
             lockHolder: holder,
             prismaClient,
+            activeFace: input.activeFace ?? 'front',
           });
         } catch (err: any) {
           isError = true;

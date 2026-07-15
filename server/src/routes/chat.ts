@@ -43,6 +43,17 @@ chatRouter.post('/projects/:projectId/chat', requireAuth, async (req, res) => {
     return;
   }
 
+  // Sprint 005 OOP change, 2026-07-15: which stream tab was active in the
+  // client when this message was sent -- threaded through to `runTurn` so
+  // any `generate_image` call this turn dispatches tags its new Iteration
+  // into that stream (see `turn.ts`'s `RunTurnInput.activeFace`). Any value
+  // other than the two valid faces (missing, wrong type, typo) is treated
+  // as "unspecified" rather than a 400 -- `runTurn` already defaults to
+  // `'front'` in that case, and this field describes UI convenience, not a
+  // validated business input worth rejecting a whole chat turn over.
+  const activeFaceRaw = req.body?.activeFace;
+  const activeFace = activeFaceRaw === 'front' || activeFaceRaw === 'back' ? activeFaceRaw : undefined;
+
   res.setHeader('Content-Type', 'text/event-stream');
   res.setHeader('Cache-Control', 'no-cache');
   res.setHeader('Connection', 'keep-alive');
@@ -50,7 +61,7 @@ chatRouter.post('/projects/:projectId/chat', requireAuth, async (req, res) => {
 
   try {
     await runTurn(
-      { projectId, message },
+      { projectId, message, activeFace },
       { onEvent: (event) => writeEvent(res, event), imageVisionClient }
     );
   } catch (err: any) {

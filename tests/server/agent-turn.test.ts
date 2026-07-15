@@ -448,6 +448,52 @@ describe('runTurn -- image-generation calls route through the stub ImageVisionCl
     expect(result.toolCalls[0]).toMatchObject({ name: IMAGE_GENERATION_TOOL_NAME });
     expect((result.toolCalls[0].result as any).imagePath).toContain('outputs/test.png');
   });
+
+  // Sprint 005 OOP change, 2026-07-15: "new iterations join the
+  // currently-active tab's stream" -- `RunTurnInput.activeFace` is threaded
+  // straight through to every `generate_image` dispatch, never surfaced to
+  // the provider/model itself (it's not part of `args`).
+  it("threads RunTurnInput.activeFace through to the ImageVisionClient's generateImage call", async () => {
+    const calls: unknown[] = [];
+    const stubClient: ImageVisionClient = {
+      async generateImage(input) {
+        calls.push(input);
+        return { imagePath: `projects/${input.projectId}/outputs/test.png` };
+      },
+    };
+    const script: MockProviderScript = [
+      { kind: 'tool_calls', calls: [{ id: 'img-1', name: IMAGE_GENERATION_TOOL_NAME, args: { prompt: 'a red postcard' } }] },
+      { kind: 'message', content: 'Generated the image.' },
+    ];
+
+    await runTurn(
+      { projectId: projectAId, message: 'Generate an image please.', activeFace: 'back' },
+      { provider: createMockAdapter(script), imageVisionClient: stubClient, versioning: makeVersioningSpy() }
+    );
+
+    expect(calls[0]).toMatchObject({ activeFace: 'back' });
+  });
+
+  it('defaults activeFace to "front" when RunTurnInput omits it (older client, or "a new project starts on Front")', async () => {
+    const calls: unknown[] = [];
+    const stubClient: ImageVisionClient = {
+      async generateImage(input) {
+        calls.push(input);
+        return { imagePath: `projects/${input.projectId}/outputs/test.png` };
+      },
+    };
+    const script: MockProviderScript = [
+      { kind: 'tool_calls', calls: [{ id: 'img-1', name: IMAGE_GENERATION_TOOL_NAME, args: { prompt: 'a red postcard' } }] },
+      { kind: 'message', content: 'Generated the image.' },
+    ];
+
+    await runTurn(
+      { projectId: projectAId, message: 'Generate an image please.' },
+      { provider: createMockAdapter(script), imageVisionClient: stubClient, versioning: makeVersioningSpy() }
+    );
+
+    expect(calls[0]).toMatchObject({ activeFace: 'front' });
+  });
 });
 
 // ---------------------------------------------------------------------------
@@ -515,9 +561,31 @@ describe('runTurn -- generate_image routes through the real ImageVisionClient en
     const iterations = await prisma.iteration.findMany({ where: { projectId: projectAId } });
     expect(iterations).toHaveLength(1);
     expect(iterations[0]).toMatchObject({ seq: 1, imagePath: toolResult.imagePath, promptUsed: 'a postcard mascot' });
+    // Defaults to the 'front' stream when RunTurnInput.activeFace is
+    // omitted (Sprint 005 OOP change, 2026-07-15).
+    expect(iterations[0].role).toBe('front');
 
     const written = await fs.readFile(resolveWorkspacePath(toolResult.imagePath));
     expect(written.equals(Buffer.from('real-client-fixture-bytes'))).toBe(true);
+  });
+
+  it("tags the new Iteration into RunTurnInput.activeFace's stream (Sprint 005 OOP change, 2026-07-15)", async () => {
+    const generateImage = () => Promise.resolve(fixtureImage('back-stream-fixture-bytes'));
+    const realClient = createRealImageVisionClient({ generateImage, versioning: makeVersioningSpy() });
+
+    const script: MockProviderScript = [
+      { kind: 'tool_calls', calls: [{ id: 'img-2', name: IMAGE_GENERATION_TOOL_NAME, args: { prompt: 'a postcard back' } }] },
+      { kind: 'message', content: 'Generated the back.' },
+    ];
+
+    await runTurn(
+      { projectId: projectAId, message: 'Please generate the back.', activeFace: 'back' },
+      { provider: createMockAdapter(script), imageVisionClient: realClient, versioning: makeVersioningSpy() }
+    );
+
+    const iterations = await prisma.iteration.findMany({ where: { projectId: projectAId } });
+    expect(iterations).toHaveLength(1);
+    expect(iterations[0].role).toBe('back');
   });
 
   it('a simulated imaging failure surfaces as a tool-call error result and adds no new Iteration row (AC5, UC-006 E1)', async () => {

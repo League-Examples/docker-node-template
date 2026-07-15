@@ -515,8 +515,8 @@ describe('POST /api/projects/:id/references, DELETE /api/projects/:id/references
   });
 });
 
-describe('PATCH /api/projects/:id/iterations/:iterId -- set_iteration_state exclusivity', () => {
-  it('round-trips accepted exclusivity through set_iteration_state', async () => {
+describe('PATCH /api/projects/:id/iterations/:iterId -- set_iteration_state exclusivity (Sprint 005 OOP change, 2026-07-15: role is stream membership)', () => {
+  it('round-trips accepted exclusivity through set_iteration_state, scoped to iterations sharing the same role', async () => {
     const project = await makeProject(userAId, `${marker}-iter-accept`);
     const iterA = await makeIteration(project.id, `projects/${project.id}/iterations/a.png`, 1);
     const iterB = await makeIteration(project.id, `projects/${project.id}/iterations/b.png`, 2);
@@ -531,34 +531,46 @@ describe('PATCH /api/projects/:id/iterations/:iterId -- set_iteration_state excl
     expect(res2.body.accepted).toBe(true);
     expect(mockSetIterationState).toHaveBeenCalledTimes(2);
 
+    // Both iterations share the same role (null, the default), so
+    // accepting B still clears A's accepted flag.
     const refreshedA = await prisma.iteration.findUnique({ where: { id: iterA.id } });
     expect(refreshedA?.accepted).toBe(false);
   });
 
-  it('round-trips front/back role exclusivity independently through set_iteration_state', async () => {
+  it('accepting a front-stream iteration never clears an already-accepted back-stream iteration (per-(project, role) exclusivity)', async () => {
+    const project = await makeProject(userAId, `${marker}-iter-stream-accept`);
+    const front = await makeIteration(project.id, `projects/${project.id}/iterations/f.png`, 1);
+    const back = await makeIteration(project.id, `projects/${project.id}/iterations/b.png`, 2);
+
+    const agent = await loginAsUserA();
+    await agent.patch(`/api/projects/${project.id}/iterations/${front.id}`).send({ role: 'front', accepted: true });
+    await agent.patch(`/api/projects/${project.id}/iterations/${back.id}`).send({ role: 'back', accepted: true });
+
+    const refreshedFront = await prisma.iteration.findUnique({ where: { id: front.id } });
+    const refreshedBack = await prisma.iteration.findUnique({ where: { id: back.id } });
+    expect(refreshedFront?.accepted).toBe(true); // untouched -- different stream
+    expect(refreshedBack?.accepted).toBe(true);
+  });
+
+  it('role is stream membership, not exclusive -- setting role never affects any other iteration\'s role (old front/back single-holder exclusivity dropped)', async () => {
     const project = await makeProject(userAId, `${marker}-iter-role`);
     const iterA = await makeIteration(project.id, `projects/${project.id}/iterations/a.png`, 1);
     const iterB = await makeIteration(project.id, `projects/${project.id}/iterations/b.png`, 2);
 
     const agent = await loginAsUserA();
     await agent.patch(`/api/projects/${project.id}/iterations/${iterA.id}`).send({ role: 'front' });
-    await agent.patch(`/api/projects/${project.id}/iterations/${iterB.id}`).send({ role: 'back' });
 
     let refreshedA = await prisma.iteration.findUnique({ where: { id: iterA.id } });
     expect(refreshedA?.role).toBe('front');
-    let refreshedB = await prisma.iteration.findUnique({ where: { id: iterB.id } });
-    expect(refreshedB?.role).toBe('back');
 
-    // Moving front to B clears A's front but leaves B's back untouched --
-    // front/back are independently exclusive (SUC-007 AC2).
-    const moveRes = await agent.patch(`/api/projects/${project.id}/iterations/${iterB.id}`).send({ role: 'front' });
-    expect(moveRes.status).toBe(200);
-    expect(moveRes.body.role).toBe('front');
+    // Tagging iterB into the SAME 'front' stream must NOT clear iterA's
+    // role -- many iterations can share a stream now.
+    const res = await agent.patch(`/api/projects/${project.id}/iterations/${iterB.id}`).send({ role: 'front' });
+    expect(res.status).toBe(200);
+    expect(res.body.role).toBe('front');
 
     refreshedA = await prisma.iteration.findUnique({ where: { id: iterA.id } });
-    expect(refreshedA?.role).toBeNull();
-    refreshedB = await prisma.iteration.findUnique({ where: { id: iterB.id } });
-    expect(refreshedB?.role).toBe('front');
+    expect(refreshedA?.role).toBe('front');
   });
 
   it('returns 400 when neither accepted nor role is provided', async () => {

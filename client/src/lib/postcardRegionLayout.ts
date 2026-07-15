@@ -3,7 +3,7 @@ import type { PostcardRegionPosition } from '../pages/ProjectDetail/types';
 
 /**
  * Height-aware region/QR layout helpers (OOP change, 2026-07-15) -- the
- * single source of truth both `PostcardEdit.tsx` (the editable text-region
+ * single source of truth both `PostcardFaceEditor.tsx` (the editable text-region
  * editor, 1:1 CSS `in` units on its fixed 6in x 4in canvas) and
  * `OutputPane.tsx`'s `PostcardOverlay` (the read-only iteration-gallery
  * overlay, which renders atop an image that can be displayed at any pixel

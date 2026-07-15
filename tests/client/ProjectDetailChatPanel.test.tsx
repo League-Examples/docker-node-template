@@ -103,12 +103,32 @@ describe('ChatPanel -- send + streamed TurnEvent rendering', () => {
         expect.objectContaining({
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ message: 'Make it warmer' }),
+          body: JSON.stringify({ message: 'Make it warmer', activeFace: 'front' }),
         }),
       );
     });
 
     await screen.findByText('Iteration 4 coming up.');
+  });
+
+  it('includes the activeFace prop in the POST body (Sprint 005 OOP change, 2026-07-15)', async () => {
+    const frames = sseFrames([{ type: 'message', content: 'ok' }]);
+    const fetchMock = vi.fn().mockResolvedValue({ ok: true, body: fakeStreamBody([frames]) });
+    vi.stubGlobal('fetch', fetchMock);
+
+    render(<ChatPanel projectId={7} initialMessages={[]} activeFace="back" />);
+    fireEvent.change(screen.getByLabelText('Message Claude…'), { target: { value: 'Add a QR code' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Send' }));
+
+    await waitFor(() => {
+      expect(fetchMock).toHaveBeenCalledWith(
+        '/api/projects/7/chat',
+        expect.objectContaining({
+          body: JSON.stringify({ message: 'Add a QR code', activeFace: 'back' }),
+        }),
+      );
+    });
+    await screen.findByText('ok');
   });
 
   it('shows lightweight status text for tool_call_started/finished (search_catalog)', async () => {

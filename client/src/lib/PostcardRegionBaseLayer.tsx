@@ -6,7 +6,7 @@ import PostcardRegionContent from './PostcardRegionContent';
  * Shared "final-product" base-layer renderer for a single postcard text
  * region (OOP change, 2026-07-15) -- the SINGLE implementation both
  * `ProjectDetail/PostcardOverlay.tsx` (the read-only gallery overlay) and
- * `PostcardEdit.tsx` (the editable text-region editor) render a region's
+ * `PostcardFaceEditor.tsx` (the editable text-region editor) render a region's
  * BOX + TEXT through, so the two can never independently drift from each
  * other again. This is exactly the wrapper-div-plus-`PostcardRegionContent`
  * JSX `PostcardOverlay.tsx` already used inline before this component
@@ -15,9 +15,9 @@ import PostcardRegionContent from './PostcardRegionContent';
  * product."
  *
  * Deliberately carries NO editing chrome: no padding, no border, no label,
- * no resize handle, no click handler. `PostcardEdit.tsx` renders this
+ * no resize handle, no click handler. `PostcardFaceEditor.tsx` renders this
  * component for a region's visible text, then layers a completely separate
- * sibling `<button>` (unstyled here, entirely in `PostcardEdit.tsx`) on TOP
+ * sibling `<button>` (unstyled here, entirely in `PostcardFaceEditor.tsx`) on TOP
  * of it, at the same `regionBoxStyle` geometry, to carry the dashed
  * boundary/label/resize-handle/click-to-edit affordances -- see that file's
  * region-rendering block for the chrome layer and its own auto-height
@@ -27,14 +27,14 @@ import PostcardRegionContent from './PostcardRegionContent';
  * caller) so this component can never intercept a click/drag meant for
  * whatever sits on top of it -- harmless for `PostcardOverlay.tsx`, which
  * already wraps its entire overlay in `pointer-events-none`; load-bearing
- * for `PostcardEdit.tsx`, whose chrome `<button>` sibling needs every
+ * for `PostcardFaceEditor.tsx`, whose chrome `<button>` sibling needs every
  * pointer event to reach IT, not this plain text div underneath.
  */
 
 export interface PostcardRegionBaseLayerProps {
   position: PostcardRegionPosition;
   /** The region's current text. An explicit prop (not read off a static
-   * DTO field) so `PostcardEdit.tsx` can pass its own live, editable
+   * DTO field) so `PostcardFaceEditor.tsx` can pass its own live, editable
    * `regionText[name]` state, not a snapshot. */
   text: string;
   font: PostcardRegionFont;

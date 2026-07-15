@@ -852,7 +852,7 @@ describe('set_iteration_state', () => {
     expect(refreshedB1!.accepted).toBe(true); // untouched -- different project
   });
 
-  it("role: 'front' clears front from the prior same-project holder without disturbing whoever holds 'back'", async () => {
+  it("role: 'front' is stream membership, not exclusive (Sprint 005 OOP change, 2026-07-15) -- does not clear any other iteration's role, including a prior 'front' holder", async () => {
     const project = await makeProject(`${marker}-state-role-project`);
     const iter1 = await createIteration({ projectId: project.id, imagePath: 'r1.png', promptUsed: 'p' }, { versioning: spyVersioning() });
     const iter2 = await createIteration({ projectId: project.id, imagePath: 'r2.png', promptUsed: 'p' }, { versioning: spyVersioning() });
@@ -867,8 +867,10 @@ describe('set_iteration_state', () => {
 
     const refreshed1 = await prisma.iteration.findUnique({ where: { id: iter1.id } });
     const refreshed3 = await prisma.iteration.findUnique({ where: { id: iter3.id } });
-    expect(refreshed1!.role).toBeNull(); // front cleared from the prior holder
-    expect(refreshed3!.role).toBe('back'); // untouched -- front/back are independently exclusive
+    // Both iter1 and iter2 now share role: 'front' (the whole front
+    // stream) -- setting one never disturbs the other, or 'back'.
+    expect(refreshed1!.role).toBe('front');
+    expect(refreshed3!.role).toBe('back');
   });
 
   it('acquires and releases a Lock row around the transaction', async () => {
@@ -894,6 +896,99 @@ describe('set_iteration_state', () => {
     await expect(setIterationState({ iterationId: -1, accepted: true }, { versioning: spyVersioning() })).rejects.toThrow(
       /no Iteration/
     );
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Sprint 005 OOP change, 2026-07-15: `role` is now STREAM MEMBERSHIP (many
+// Iterations may share 'front'/'back'), and `accepted` exclusivity is
+// per-(projectId, role) instead of project-wide -- accepting a front-stream
+// Iteration must never clear an already-accepted back-stream Iteration, and
+// setting `role` must never touch any other Iteration's role.
+// ---------------------------------------------------------------------------
+
+describe('set_iteration_state -- Sprint 005 stream-membership model', () => {
+  it('role is not exclusive -- many Iterations can share role: "front" at once', async () => {
+    const project = await makeProject(`${marker}-stream-role-project`);
+    const iter1 = await createIteration({ projectId: project.id, imagePath: 's1.png', promptUsed: 'p' }, { versioning: spyVersioning() });
+    const iter2 = await createIteration({ projectId: project.id, imagePath: 's2.png', promptUsed: 'p' }, { versioning: spyVersioning() });
+    cleanup.iterationIds.push(iter1.id, iter2.id);
+
+    await setIterationState({ iterationId: iter1.id, role: 'front' }, { versioning: spyVersioning() });
+    const updated = await setIterationState({ iterationId: iter2.id, role: 'front' }, { versioning: spyVersioning() });
+    expect(updated.role).toBe('front');
+
+    // Both remain 'front' -- setting role never clears any other Iteration.
+    const refreshed1 = await prisma.iteration.findUnique({ where: { id: iter1.id } });
+    expect(refreshed1!.role).toBe('front');
+  });
+
+  it('accepting a front-stream Iteration clears accepted only from OTHER front-stream Iterations, never the back stream', async () => {
+    const project = await makeProject(`${marker}-stream-accept-project`);
+    const front1 = await createIteration({ projectId: project.id, imagePath: 'sf1.png', promptUsed: 'p' }, { versioning: spyVersioning() });
+    const front2 = await createIteration({ projectId: project.id, imagePath: 'sf2.png', promptUsed: 'p' }, { versioning: spyVersioning() });
+    const back1 = await createIteration({ projectId: project.id, imagePath: 'sb1.png', promptUsed: 'p' }, { versioning: spyVersioning() });
+    cleanup.iterationIds.push(front1.id, front2.id, back1.id);
+
+    await setIterationState({ iterationId: front1.id, role: 'front' }, { versioning: spyVersioning() });
+    await setIterationState({ iterationId: front2.id, role: 'front' }, { versioning: spyVersioning() });
+    await setIterationState({ iterationId: back1.id, role: 'back' }, { versioning: spyVersioning() });
+
+    await setIterationState({ iterationId: front1.id, accepted: true }, { versioning: spyVersioning() });
+    await setIterationState({ iterationId: back1.id, accepted: true }, { versioning: spyVersioning() });
+
+    // Accepting front2 clears front1's accepted (same stream) but must
+    // leave back1's accepted untouched (different stream, same project).
+    const updated = await setIterationState({ iterationId: front2.id, accepted: true }, { versioning: spyVersioning() });
+    expect(updated.accepted).toBe(true);
+
+    const refreshedFront1 = await prisma.iteration.findUnique({ where: { id: front1.id } });
+    const refreshedBack1 = await prisma.iteration.findUnique({ where: { id: back1.id } });
+    expect(refreshedFront1!.accepted).toBe(false); // same stream -- cleared
+    expect(refreshedBack1!.accepted).toBe(true); // different stream -- untouched
+  });
+
+  it('accepting while simultaneously (re)tagging role scopes the clear to the NEW role, not the old one', async () => {
+    const project = await makeProject(`${marker}-stream-retag-project`);
+    const existingFront = await createIteration({ projectId: project.id, imagePath: 'rf1.png', promptUsed: 'p' }, { versioning: spyVersioning() });
+    const moving = await createIteration({ projectId: project.id, imagePath: 'rf2.png', promptUsed: 'p' }, { versioning: spyVersioning() });
+    cleanup.iterationIds.push(existingFront.id, moving.id);
+
+    await setIterationState({ iterationId: existingFront.id, role: 'front', accepted: true }, { versioning: spyVersioning() });
+    // `moving` starts with no role/accepted, then is tagged into 'front'
+    // AND accepted in the same call -- it should clear existingFront's
+    // accepted (the role it's joining), not whatever role it held before.
+    const updated = await setIterationState(
+      { iterationId: moving.id, role: 'front', accepted: true },
+      { versioning: spyVersioning() }
+    );
+    expect(updated.role).toBe('front');
+    expect(updated.accepted).toBe(true);
+
+    const refreshed = await prisma.iteration.findUnique({ where: { id: existingFront.id } });
+    expect(refreshed!.accepted).toBe(false);
+  });
+});
+
+describe('create_iteration -- role stream-membership tagging (Sprint 005 OOP change, 2026-07-15)', () => {
+  it('creates an Iteration tagged with the supplied role', async () => {
+    const project = await makeProject(`${marker}-create-role-project`);
+    const iter = await createIteration(
+      { projectId: project.id, imagePath: 'tagged.png', promptUsed: 'p', role: 'back' },
+      { versioning: spyVersioning() }
+    );
+    cleanup.iterationIds.push(iter.id);
+    expect(iter.role).toBe('back');
+
+    const persisted = await prisma.iteration.findUnique({ where: { id: iter.id } });
+    expect(persisted!.role).toBe('back');
+  });
+
+  it('defaults role to null when omitted (pre-existing callers are unaffected)', async () => {
+    const project = await makeProject(`${marker}-create-norole-project`);
+    const iter = await createIteration({ projectId: project.id, imagePath: 'untagged.png', promptUsed: 'p' }, { versioning: spyVersioning() });
+    cleanup.iterationIds.push(iter.id);
+    expect(iter.role).toBeNull();
   });
 });
 
