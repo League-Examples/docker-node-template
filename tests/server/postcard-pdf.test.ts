@@ -189,10 +189,23 @@ describe('resolveImageSourcesForRaster', () => {
     await fs.rm(testRoot, { recursive: true, force: true });
   });
 
-  it('rewrites a workspace-relative src to an absolute file:// URL', () => {
-    const html = '<img class="bg" src="projects/1/iterations/iter-1.png">';
+  it('inlines a workspace-relative src as a base64 data: URI (Chromium blocks file:// from a setContent origin)', async () => {
+    const bytes = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0x01, 0x02, 0x03]);
+    const rel = 'projects/1/iterations/iter-1.png';
+    const abs = path.join(testRoot, rel);
+    await fs.mkdir(path.dirname(abs), { recursive: true });
+    await fs.writeFile(abs, bytes);
+
+    const html = `<img class="bg" src="${rel}">`;
     const rewritten = resolveImageSourcesForRaster(html);
-    expect(rewritten).toBe(`<img class="bg" src="file://${path.join(testRoot, 'projects/1/iterations/iter-1.png')}">`);
+    expect(rewritten).toBe(`<img class="bg" src="data:image/png;base64,${bytes.toString('base64')}">`);
+    // Crucially NOT a file:// URL -- that would silently fail to load.
+    expect(rewritten).not.toContain('file://');
+  });
+
+  it('leaves a workspace-relative src unchanged when the file is missing (degrades to a blank image)', () => {
+    const html = '<img class="bg" src="projects/1/iterations/does-not-exist.png">';
+    expect(resolveImageSourcesForRaster(html)).toBe(html);
   });
 
   it('leaves already-absolute http(s)/data/file sources unchanged', () => {
@@ -207,11 +220,19 @@ describe('resolveImageSourcesForRaster', () => {
     expect(resolveImageSourcesForRaster(html)).toBe(html);
   });
 
-  it('rewrites multiple src attributes independently (background image + QR overlay)', () => {
-    const html =
-      '<img class="bg" src="projects/1/iterations/iter-1.png"><div><img src="projects/1/outputs/qr.png"></div>';
+  it('inlines multiple src attributes independently as data: URIs (background image + QR overlay)', async () => {
+    const bgBytes = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x10, 0x11]);
+    const qrBytes = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x20, 0x21]);
+    const bgRel = 'projects/1/iterations/iter-1.png';
+    const qrRel = 'projects/1/outputs/qr.png';
+    await fs.mkdir(path.join(testRoot, 'projects/1/outputs'), { recursive: true });
+    await fs.writeFile(path.join(testRoot, bgRel), bgBytes);
+    await fs.writeFile(path.join(testRoot, qrRel), qrBytes);
+
+    const html = `<img class="bg" src="${bgRel}"><div><img src="${qrRel}"></div>`;
     const rewritten = resolveImageSourcesForRaster(html);
-    expect(rewritten).toContain(`file://${path.join(testRoot, 'projects/1/iterations/iter-1.png')}`);
-    expect(rewritten).toContain(`file://${path.join(testRoot, 'projects/1/outputs/qr.png')}`);
+    expect(rewritten).toContain(`data:image/png;base64,${bgBytes.toString('base64')}`);
+    expect(rewritten).toContain(`data:image/png;base64,${qrBytes.toString('base64')}`);
+    expect(rewritten).not.toContain('file://');
   });
 });

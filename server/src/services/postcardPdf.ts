@@ -1,4 +1,4 @@
-import { existsSync } from 'node:fs';
+import { existsSync, readFileSync } from 'node:fs';
 import sharp from 'sharp';
 import { PDFDocument, degrees } from 'pdf-lib';
 import { resolveWorkspacePath } from './workspaceDirectorySync';
@@ -148,12 +148,44 @@ const RELATIVE_SRC_RE = /src="([^"]+)"/g;
  * upstream of this module; only `extra_html`-supplied sources (e.g. a QR
  * overlay) reach this fallback, and a broken one should degrade to a
  * missing image in the raster, not abort the whole PDF. */
+function imageMimeForPath(filePath: string): string {
+  const ext = filePath.slice(filePath.lastIndexOf('.') + 1).toLowerCase();
+  switch (ext) {
+    case 'png':
+      return 'image/png';
+    case 'jpg':
+    case 'jpeg':
+      return 'image/jpeg';
+    case 'webp':
+      return 'image/webp';
+    case 'gif':
+      return 'image/gif';
+    case 'svg':
+      return 'image/svg+xml';
+    case 'heic':
+      return 'image/heic';
+    default:
+      return 'application/octet-stream';
+  }
+}
+
+/**
+ * Inline each workspace-relative `<img src>` as a base64 `data:` URI before
+ * the HTML is fed to Chromium via `page.setContent`. A `file://` src (the
+ * previous approach) is BLOCKED by Chromium as a subresource load from the
+ * `about:blank`-origin document `setContent` creates -- so the artwork
+ * silently failed to load and every PDF face rendered blank white. A `data:`
+ * URI carries the bytes in the markup itself and loads regardless of origin.
+ * Already-absolute (`http`/`data`/`file`) srcs and unreadable files are left
+ * untouched -- a missing file degrades to a blank image, not an aborted PDF.
+ */
 export function resolveImageSourcesForRaster(html: string): string {
   return html.replace(RELATIVE_SRC_RE, (match, src: string) => {
     if (/^(https?:|data:|file:)/i.test(src)) return match;
     try {
       const absolute = resolveWorkspacePath(src);
-      return `src="file://${absolute}"`;
+      const bytes = readFileSync(absolute);
+      return `src="data:${imageMimeForPath(absolute)};base64,${bytes.toString('base64')}"`;
     } catch {
       return match;
     }
@@ -186,9 +218,9 @@ export const rasterizeWithChromium: FaceRasterizer = async (html) => {
     });
     // `setContent`'s `waitUntil` only supports `'load'`/`'domcontentloaded'`
     // (unlike `goto`'s `'networkidle0'`) -- `'load'` is sufficient here
-    // since every image this pipeline embeds is a local `file://` URL
+    // since every image this pipeline embeds is an inline `data:` URI
     // (rewritten by `resolveImageSourcesForRaster` above), which blocks the
-    // `load` event exactly like any other same-origin resource.
+    // `load` event exactly like any other resource but needs no network.
     await page.setContent(resolveImageSourcesForRaster(html), { waitUntil: 'load' });
     const pageElement = await page.$('.page');
     if (!pageElement) {
