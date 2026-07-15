@@ -15,6 +15,16 @@ import type { ChatMessageDTO } from './types';
  * `GET /api/projects/:id`'s `chatMessages` field (ticket 006) -- this
  * component makes no fetch of its own on mount, so a project with prior
  * conversation is never rendered blank.
+ *
+ * **Ticket 010 seam (SUC-015)**: the library drawer's conversational filter
+ * needs to observe every `tool_call_finished` event this component already
+ * parses out of the stream, without opening a second SSE connection. Rather
+ * than exposing a separate hook/event-emitter, this component takes an
+ * optional `onToolCallFinished` prop and calls it from the same
+ * `handleTurnEvent` switch that already renders tool-call status text --
+ * `ProjectDetail/index.tsx` forwards `search_catalog` results down to
+ * `LibraryDrawer.tsx` from there. The stream itself is never duplicated:
+ * `postSseStream` is still only ever invoked from `handleSend` below.
  */
 
 export type ChatBubbleFrom = 'user' | 'assistant';
@@ -28,6 +38,11 @@ export interface ChatBubble {
 interface ChatPanelProps {
   projectId: number;
   initialMessages: ChatMessageDTO[];
+  /** Ticket 010: invoked for every `tool_call_finished` event, alongside
+   * (not instead of) this component's own status-text handling. Optional
+   * so every existing test/caller that doesn't care about tool calls is
+   * unaffected. */
+  onToolCallFinished?: (name: string, result: unknown, isError: boolean) => void;
 }
 
 /** Turn-controller `TurnEvent` union (`server/src/agent/turn.ts`), typed
@@ -68,7 +83,7 @@ function chatMessagesToBubbles(messages: ChatMessageDTO[]): ChatBubble[] {
     }));
 }
 
-export default function ChatPanel({ projectId, initialMessages }: ChatPanelProps) {
+export default function ChatPanel({ projectId, initialMessages, onToolCallFinished }: ChatPanelProps) {
   const [messages, setMessages] = useState<ChatBubble[]>(() => chatMessagesToBubbles(initialMessages));
   const [input, setInput] = useState('');
   const [sending, setSending] = useState(false);
@@ -98,6 +113,7 @@ export default function ChatPanel({ projectId, initialMessages }: ChatPanelProps
         break;
       case 'tool_call_finished':
         setStatusText('');
+        onToolCallFinished?.(event.name, event.result, event.isError);
         break;
       case 'message':
         setStatusText('');

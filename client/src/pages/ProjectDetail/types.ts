@@ -52,6 +52,22 @@ export interface ProjectDetailDTO {
   chatMessages: ChatMessageDTO[];
 }
 
+/** Mirrors `agent-mcp/catalogTools.ts`'s `SearchCatalogMatch` -- the shape
+ * a `search_catalog` tool call's `tool_call_finished` SSE event carries as
+ * its `result` (ticket 010, SUC-015). `LibraryDrawer.tsx` renders these
+ * directly: an `ownerType: 'asset'` match with a `path` gets a real
+ * thumbnail via `fileUrl`; a `knowledge_entry` match (no `path`) renders as
+ * a label-only card and is never double-click-addable (`Reference.assetId`
+ * has no knowledge-entry equivalent). */
+export interface SearchCatalogMatch {
+  ownerType: string;
+  ownerId: number;
+  matchedVia: ('vector' | 'keyword')[];
+  score?: number;
+  path?: string;
+  label?: string;
+}
+
 /** Renders any workspace-relative path (an `Iteration.imagePath` or an
  * `Asset.path`) via ticket 004's `GET /api/files/*` route -- same helper
  * `ProjectList.tsx` already established for this exact purpose. */

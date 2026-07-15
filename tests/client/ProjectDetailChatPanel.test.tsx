@@ -209,6 +209,39 @@ describe('ChatPanel -- never uses EventSource', () => {
   });
 });
 
+describe('ChatPanel -- forwards tool_call_finished events (ticket 010 seam for LibraryDrawer)', () => {
+  it('calls onToolCallFinished(name, result, isError) for every finished tool call, alongside its own status handling', async () => {
+    const matches = [{ ownerType: 'asset', ownerId: 100, matchedVia: ['vector'], path: 'assets/logo-robot.png' }];
+    const frames = sseFrames([
+      { type: 'tool_call_finished', callId: '1', name: 'search_catalog', args: { query: 'robots' }, result: matches, isError: false },
+      { type: 'message', content: 'Found some robots.' },
+    ]);
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue({ ok: true, body: fakeStreamBody([frames]) }));
+
+    const onToolCallFinished = vi.fn();
+    render(<ChatPanel projectId={7} initialMessages={[]} onToolCallFinished={onToolCallFinished} />);
+    fireEvent.change(screen.getByLabelText('Message Claude…'), { target: { value: 'show me the robots' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Send' }));
+
+    await screen.findByText('Found some robots.');
+    expect(onToolCallFinished).toHaveBeenCalledWith('search_catalog', matches, false);
+  });
+
+  it('is a no-op when the prop is omitted (every existing caller is unaffected)', async () => {
+    const frames = sseFrames([
+      { type: 'tool_call_finished', callId: '1', name: 'search_catalog', args: {}, result: [], isError: false },
+      { type: 'message', content: 'ok' },
+    ]);
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue({ ok: true, body: fakeStreamBody([frames]) }));
+
+    render(<ChatPanel projectId={7} initialMessages={[]} />);
+    fireEvent.change(screen.getByLabelText('Message Claude…'), { target: { value: 'go' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Send' }));
+
+    await screen.findByText('ok');
+  });
+});
+
 describe('ChatPanel -- non-admin authenticated user can start and continue a turn', () => {
   it('sends a first message, then a follow-up, both via the same POST endpoint (role-agnostic client)', async () => {
     const fetchMock = vi

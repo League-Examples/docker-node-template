@@ -30,6 +30,13 @@ function projectFixture(overrides: Record<string, unknown> = {}) {
   };
 }
 
+/** Ticket 010 mounts `LibraryDrawer` as a sibling of `OutputPane`/
+ * `ChatPanel`, so every render of the real `ProjectDetail` page now also
+ * fires `GET /api/catalog/tree` and `GET /api/projects?view=all` on mount
+ * (the drawer's own two background loads). Stubbed here with an empty
+ * catalog/project list by default -- these tests are about the page-level
+ * `GET /api/projects/:id` rehydration and reference strip, not the
+ * drawer's own contents (covered by `ProjectDetailLibraryDrawer.test.tsx`). */
 function stubFetch(project: unknown) {
   const fn = vi.fn((input: RequestInfo | URL, init?: RequestInit) => {
     const url = String(input);
@@ -38,6 +45,12 @@ function stubFetch(project: unknown) {
     }
     if (url.startsWith('/api/projects/7/references/') && init?.method === 'DELETE') {
       return Promise.resolve({ ok: true, json: async () => ({}) } as Response);
+    }
+    if (url === '/api/catalog/tree') {
+      return Promise.resolve({ ok: true, json: async () => ({ directories: [] }) } as Response);
+    }
+    if (url === '/api/projects?view=all') {
+      return Promise.resolve({ ok: true, json: async () => ({ projects: [] }) } as Response);
     }
     return Promise.resolve({ ok: false, status: 404, json: async () => ({}) } as Response);
   });
@@ -131,5 +144,117 @@ describe('ProjectDetail -- reload persists accepted/role state (via OutputPane p
     expect(screen.getByLabelText('Iteration 1 accepted')).toBeChecked();
     expect(screen.getByLabelText('Iteration 2 accepted')).not.toBeChecked();
     expect(screen.getByTestId('role-badge-1')).toHaveTextContent('front');
+  });
+});
+
+/** A fake `response.body`: yields each string in `chunks` as one
+ * `reader.read()` call, then signals `done` -- same fixture shape as
+ * `ProjectDetailChatPanel.test.tsx`'s `fakeStreamBody`. */
+function fakeStreamBody(chunks: string[]) {
+  const encoder = new TextEncoder();
+  let index = 0;
+  return {
+    getReader() {
+      return {
+        read: async () => {
+          if (index >= chunks.length) return { done: true, value: undefined };
+          const value = encoder.encode(chunks[index]);
+          index += 1;
+          return { done: false, value };
+        },
+      };
+    },
+  };
+}
+
+function sseFrames(events: unknown[]): string {
+  return events.map((event) => `data: ${JSON.stringify(event)}\n\n`).join('');
+}
+
+describe('ProjectDetail -- SUC-015 wiring: chat SSE search_catalog opens the library drawer', () => {
+  it('a scripted tool_call_finished(search_catalog) SSE event updates and opens the drawer, without a page reload', async () => {
+    const searchMatches = [
+      { ownerType: 'asset', ownerId: 100, matchedVia: ['vector'], score: 0.87, path: 'assets/logo-robot.png', label: 'robot logo' },
+    ];
+    const chatFrames = sseFrames([
+      { type: 'tool_call_started', callId: '1', name: 'search_catalog', args: { query: 'robots' } },
+      { type: 'tool_call_finished', callId: '1', name: 'search_catalog', args: { query: 'robots' }, result: searchMatches, isError: false },
+      { type: 'message', content: 'Here are the assets with robots in them.' },
+    ]);
+
+    const fetchMock = vi.fn((input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input);
+      if (url === '/api/projects/7' && (!init || !init.method)) {
+        return Promise.resolve({ ok: true, json: async () => projectFixture() } as Response);
+      }
+      if (url === '/api/catalog/tree') {
+        return Promise.resolve({ ok: true, json: async () => ({ directories: [] }) } as Response);
+      }
+      if (url === '/api/projects?view=all') {
+        return Promise.resolve({ ok: true, json: async () => ({ projects: [] }) } as Response);
+      }
+      if (url === '/api/projects/7/chat' && init?.method === 'POST') {
+        return Promise.resolve({ ok: true, body: fakeStreamBody([chatFrames]) } as Response);
+      }
+      return Promise.resolve({ ok: false, status: 404, json: async () => ({}) } as Response);
+    });
+    vi.stubGlobal('fetch', fetchMock);
+
+    renderPage();
+    await screen.findByText('Spring Open House Flyer');
+
+    // Drawer starts closed -- no result has arrived yet.
+    expect(screen.getByTestId('library-overlay')).toHaveAttribute('data-open', 'false');
+
+    fireEvent.change(screen.getByLabelText('Message Claude…'), {
+      target: { value: 'show me the assets with robots in them' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'Send' }));
+
+    await screen.findByText('Here are the assets with robots in them.');
+
+    // The SSE event -- not a page reload -- drove this: the drawer opened
+    // and now shows exactly the matched item.
+    await waitFor(() => expect(screen.getByTestId('library-overlay')).toHaveAttribute('data-open', 'true'));
+    expect(screen.getByText('robot logo')).toBeInTheDocument();
+
+    const getProjectCalls = fetchMock.mock.calls.filter(([url, init]) => url === '/api/projects/7' && !init?.method);
+    expect(getProjectCalls).toHaveLength(1);
+  });
+
+  it('an empty search_catalog match set opens the drawer to a broaden-your-query state, not an error (UC-014 E1)', async () => {
+    const chatFrames = sseFrames([
+      { type: 'tool_call_finished', callId: '1', name: 'search_catalog', args: { query: 'unicorns' }, result: [], isError: false },
+      { type: 'message', content: "I couldn't find anything matching that." },
+    ]);
+
+    const fetchMock = vi.fn((input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input);
+      if (url === '/api/projects/7' && (!init || !init.method)) {
+        return Promise.resolve({ ok: true, json: async () => projectFixture() } as Response);
+      }
+      if (url === '/api/catalog/tree') {
+        return Promise.resolve({ ok: true, json: async () => ({ directories: [] }) } as Response);
+      }
+      if (url === '/api/projects?view=all') {
+        return Promise.resolve({ ok: true, json: async () => ({ projects: [] }) } as Response);
+      }
+      if (url === '/api/projects/7/chat' && init?.method === 'POST') {
+        return Promise.resolve({ ok: true, body: fakeStreamBody([chatFrames]) } as Response);
+      }
+      return Promise.resolve({ ok: false, status: 404, json: async () => ({}) } as Response);
+    });
+    vi.stubGlobal('fetch', fetchMock);
+
+    renderPage();
+    await screen.findByText('Spring Open House Flyer');
+
+    fireEvent.change(screen.getByLabelText('Message Claude…'), { target: { value: 'show me unicorns' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Send' }));
+
+    await screen.findByText("I couldn't find anything matching that.");
+    await waitFor(() => expect(screen.getByTestId('library-overlay')).toHaveAttribute('data-open', 'true'));
+    expect(screen.getByTestId('library-empty')).toHaveTextContent(/broadening your query/i);
+    expect(screen.queryByTestId('chat-error')).not.toBeInTheDocument();
   });
 });
