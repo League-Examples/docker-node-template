@@ -1,0 +1,4 @@
+Out-of-process mode for the sprint-005 review session.
+Bypasses CLASI role-guard/ticket-state gates so the stakeholder's direct
+OOP review fixes (committed to sprint/005-real-two-pane-app, test-verified)
+aren't blocked. Remove to re-enable CLASI process gates.
