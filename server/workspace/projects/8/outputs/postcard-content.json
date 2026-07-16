@@ -1,0 +1,43 @@
+{
+  "front_image": "projects/Postcard-Frame-Template/iterations/iter-005.png",
+  "back_image": "projects/Postcard-Frame-Template/iterations/iter-002.png",
+  "front_regions": [
+    {
+      "name": "front_banner",
+      "label": "Bottom banner slogan",
+      "style": "padding:0 0.15in; box-sizing:border-box; display:flex; align-items:center; letter-spacing:0.5px; line-height:1; color:#16223C;",
+      "text": "Every student in San Diego should have a shot at a tech career.",
+      "rows": 3,
+      "position": {
+        "top": "3.14in",
+        "left": "0.09in",
+        "width": "4.24in",
+        "height": "0.27in"
+      },
+      "font": {
+        "family": "'Bangers', cursive",
+        "size": "13px"
+      }
+    }
+  ],
+  "back_regions": [
+    {
+      "name": "back_nonprofit",
+      "label": "Nonprofit / EIN line",
+      "style": "text-align:left; color:#555;",
+      "text": "The League of Amazing Programmers is a 501(c)(3) nonprofit. EIN 20-4744610",
+      "rows": 2,
+      "position": {
+        "top": "3.65in",
+        "left": "0.4in",
+        "width": "5.2in"
+      },
+      "font": {
+        "family": "Arial, Helvetica, sans-serif",
+        "size": "10px"
+      }
+    }
+  ],
+  "front_extra_html": "",
+  "back_extra_html": ""
+}
