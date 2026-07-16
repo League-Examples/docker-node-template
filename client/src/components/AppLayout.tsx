@@ -125,7 +125,7 @@ export default function AppLayout() {
     : 'min-w-0 flex-1 overflow-auto p-6';
 
   return (
-    <div className="flex min-h-screen flex-col bg-slate-50 text-slate-800">
+    <div className="flex h-screen flex-col overflow-hidden bg-slate-50 text-slate-800">
       {/* Top bar: app name + account menu. Primary nav is the horizontal
           tab bar below (replaces the old hamburger dropdown). */}
       <header className="flex flex-shrink-0 items-center gap-3 border-b border-slate-200 bg-white px-4 py-2">
