@@ -247,19 +247,20 @@ export default function PostcardFaceEditor({
   }
 
   return (
-    <div className="flex items-start justify-center gap-3">
-      {/* Side toolbar -- the one element-adding tool that isn't a canvas
-          drag, so it gets a button. */}
-      <div className="flex flex-shrink-0 flex-col gap-2 pt-1" aria-label="Tools" role="toolbar">
+    <div className="flex flex-col items-center gap-2">
+      {/* Add-QR tool sits ABOVE the postcard (outside it) so it never
+          shrinks the image -- the accepted postcard stays the same size as
+          the read-only iteration rows (max-w-[800px]). */}
+      <div className="flex w-full max-w-[800px] items-center gap-2" aria-label="Tools" role="toolbar">
         <button
           type="button"
           onClick={onAddQr}
           disabled={!!qr}
           aria-label="Add QR code"
           title={qr ? 'This face already has a QR code' : 'Add a QR code to this face'}
-          className="flex h-9 w-9 items-center justify-center rounded border border-slate-300 bg-white text-[10px] font-bold uppercase leading-none text-slate-600 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-40"
+          className="flex h-8 items-center justify-center rounded border border-slate-300 bg-white px-3 text-xs font-bold uppercase leading-none text-slate-600 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-40"
         >
-          QR
+          + QR code
         </button>
       </div>
 
@@ -269,8 +270,8 @@ export default function PostcardFaceEditor({
         onMouseDown={handlePreviewMouseDown}
         onMouseMove={handlePreviewMouseMove}
         onMouseUp={handlePreviewMouseUp}
-        className="relative flex-shrink-0 cursor-crosshair border-2 border-slate-300 bg-white shadow-sm"
-        style={{ width: '6in', height: '4in' }}
+        className="relative mx-auto w-full max-w-[800px] cursor-crosshair border-2 border-slate-300 bg-white shadow-sm"
+        style={{ aspectRatio: '6 / 4' }}
       >
         <img
           src={fileUrl(imagePath)}
