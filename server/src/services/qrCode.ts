@@ -84,7 +84,9 @@ function displayQrUrl(url: string): string {
 
 function qrGraphicSvg(url: string): string {
   const { size, path } = buildQrPath(normalizeQrUrl(url));
-  return `<svg viewBox="0 0 ${size} ${size}" width="100%" height="100%" preserveAspectRatio="none" shape-rendering="crispEdges" xmlns="http://www.w3.org/2000/svg"><rect width="${size}" height="${size}" fill="#fff"/><path d="${path}" fill="#000"/></svg>`;
+  // No background rect -- the QR renders on a transparent background so the
+  // postcard artwork shows through (stakeholder). Only the dark modules paint.
+  return `<svg viewBox="0 0 ${size} ${size}" width="100%" height="100%" preserveAspectRatio="none" shape-rendering="crispEdges" xmlns="http://www.w3.org/2000/svg"><path d="${path}" fill="#000"/></svg>`;
 }
 
 /** Caption SVG's fixed `viewBox` dimensions -- the `<text>` element's

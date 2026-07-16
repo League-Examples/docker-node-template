@@ -70,7 +70,8 @@ export default function PostcardQrBaseLayer({
               preserveAspectRatio="none"
               shapeRendering="crispEdges"
             >
-              <rect width={qrGraphic.size} height={qrGraphic.size} fill="#fff" />
+              {/* No background rect -- the QR renders on a transparent
+                  background so the postcard shows through (stakeholder). */}
               <path d={qrGraphic.path} fill="#000" />
             </svg>
           </div>
