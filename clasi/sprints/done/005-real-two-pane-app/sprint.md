@@ -1,7 +1,7 @@
 ---
 id: '005'
 title: Real Two-Pane App
-status: planning-docs
+status: closed
 branch: sprint/005-real-two-pane-app
 use-cases: []
 issues:
