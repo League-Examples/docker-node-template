@@ -218,13 +218,39 @@ projectsRouter.post('/projects', requireAuth, async (req, res) => {
     return;
   }
 
+  // OOP follow-up (2026-07-16): `ProjectList.tsx`'s "New project" modal
+  // collects a description alongside the name -- stored in `detailsHeader`
+  // (the same free-form JSON `style`/`outputType`/`goal` already live in,
+  // per ticket 011) rather than a dedicated column, so it rides along on
+  // the existing `ProjectDetailsHeader.tsx` render and `turn.ts`'s
+  // generic, key-agnostic `formatDetailsHeader` agent-context summary with
+  // no further plumbing. Merged onto any caller-supplied `detailsHeader`
+  // (e.g. a future flow that seeds other keys at create time) rather than
+  // replacing it outright.
+  const description = req.body?.description;
+  if (description !== undefined && typeof description !== 'string') {
+    res.status(400).json({ error: 'description must be a string' });
+    return;
+  }
+
+  const suppliedDetailsHeader = req.body?.detailsHeader;
+  const detailsHeader =
+    description !== undefined
+      ? {
+          ...(typeof suppliedDetailsHeader === 'object' && suppliedDetailsHeader !== null
+            ? suppliedDetailsHeader
+            : {}),
+          description,
+        }
+      : suppliedDetailsHeader;
+
   let created;
   try {
     created = await createProject({
       title,
       ownerUserId: userId,
       parentProjectId,
-      detailsHeader: req.body?.detailsHeader,
+      detailsHeader,
     });
   } catch (err) {
     res.status(statusForToolError(err)).json({ error: toolErrorMessage(err) });

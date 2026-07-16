@@ -120,20 +120,43 @@ describe('New project -- empty-project render (SUC-004)', () => {
     expect(header).toHaveTextContent('Announce the open house');
     expect(header).not.toHaveTextContent(/no project details yet/i);
   });
+
+  it('renders a "New project" modal description (detailsHeader.description) even with no style/outputType/goal yet (OOP follow-up, 2026-07-16)', async () => {
+    stubProjectDetailFetch(
+      freshProjectFixture({
+        title: 'Spring Postcard',
+        detailsHeader: { description: 'A postcard announcing the spring open house.' },
+      }),
+      42,
+    );
+    renderProjectDetail(42);
+
+    await screen.findByText('Spring Postcard');
+
+    const header = screen.getByTestId('project-details-header');
+    expect(header).toHaveTextContent('A postcard announcing the spring open house.');
+    expect(header).not.toHaveTextContent(/no project details yet/i);
+    // style/outputType/goal are still unset -- each renders its own
+    // placeholder rather than the whole header going blank.
+    expect(header).toHaveTextContent('Not set yet');
+  });
 });
 
-describe('New project -- button-click -> POST -> navigate -> empty ProjectDetail (SUC-004 integration)', () => {
-  it('clicking "New project" creates a real Project row and lands on its (empty) ProjectDetail', async () => {
+describe('New project -- button-click -> modal -> POST -> navigate -> empty ProjectDetail (SUC-004 integration, OOP follow-up 2026-07-16: name + description modal)', () => {
+  it('clicking "New project", filling the modal, and submitting Create creates a real Project row and lands on its (empty) ProjectDetail', async () => {
     const fetchMock = vi.fn((input: RequestInfo | URL, init?: RequestInit) => {
       const url = String(input);
       if (url.startsWith('/api/projects?view=')) {
         return Promise.resolve({ ok: true, json: async () => ({ projects: [] }) } as Response);
       }
       if (url === '/api/projects' && init?.method === 'POST') {
-        return Promise.resolve({ ok: true, json: async () => ({ id: 42, title: 'Untitled project' }) } as Response);
+        return Promise.resolve({ ok: true, json: async () => ({ id: 42, title: 'Spring Postcard' }) } as Response);
       }
       if (url === '/api/projects/42' && (!init || !init.method)) {
-        return Promise.resolve({ ok: true, json: async () => freshProjectFixture() } as Response);
+        return Promise.resolve({
+          ok: true,
+          json: async () => freshProjectFixture({ title: 'Spring Postcard' }),
+        } as Response);
       }
       if (url === '/api/catalog/tree') {
         return Promise.resolve({ ok: true, json: async () => ({ directories: [] }) } as Response);
@@ -152,12 +175,26 @@ describe('New project -- button-click -> POST -> navigate -> empty ProjectDetail
     );
 
     fireEvent.click(screen.getByRole('button', { name: 'New project' }));
+    expect(screen.getByRole('dialog', { name: 'New project' })).toBeInTheDocument();
 
-    await screen.findByText('Untitled project');
-    expect(fetchMock).toHaveBeenCalledWith('/api/projects', expect.objectContaining({ method: 'POST' }));
+    fireEvent.change(screen.getByLabelText('Project name'), { target: { value: 'Spring Postcard' } });
+    fireEvent.change(screen.getByLabelText('Description'), {
+      target: { value: 'Announce the spring open house.' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'Create' }));
 
-    // Lands on the blank/empty-project experience -- no separate NewProject
-    // route or component, per this ticket's Description.
+    await screen.findByText('Spring Postcard');
+    expect(fetchMock).toHaveBeenCalledWith(
+      '/api/projects',
+      expect.objectContaining({
+        method: 'POST',
+        body: JSON.stringify({ title: 'Spring Postcard', description: 'Announce the spring open house.' }),
+      }),
+    );
+
+    // Lands on the (still-empty, since the fixture's own detailsHeader is
+    // null) ProjectDetail experience -- no separate NewProject route or
+    // component, per this ticket's Description.
     expect(screen.getByTestId('project-details-header')).toHaveTextContent(/no project details yet/i);
     expect(screen.getByText('No front iterations yet.')).toBeInTheDocument();
     expect(screen.getByTestId('chat-empty-state')).toBeInTheDocument();

@@ -336,6 +336,23 @@ describe('create_project', () => {
     expect(unchanged!.title).toBe(`${marker}-stale-project`);
     expect(unchanged!.version).toBe(project.version);
   });
+
+  it('accepts a detailsHeader carrying a "New project" modal description (OOP follow-up, 2026-07-16 -- routes/projects.ts POST /projects)', async () => {
+    const project = await createProject(
+      {
+        title: `${marker}-with-description`,
+        ownerUserId: ownerId,
+        detailsHeader: { description: 'A postcard announcing the spring open house.' },
+      },
+      { versioning: spyVersioning() }
+    );
+    cleanup.projectIds.push(project.id);
+
+    expect(project.detailsHeader).toEqual({ description: 'A postcard announcing the spring open house.' });
+
+    const persisted = await prisma.project.findUnique({ where: { id: project.id } });
+    expect(persisted!.detailsHeader).toEqual({ description: 'A postcard announcing the spring open house.' });
+  });
 });
 
 describe('propose_correction / resolve_correction', () => {

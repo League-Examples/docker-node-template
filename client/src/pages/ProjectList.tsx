@@ -19,9 +19,16 @@ import { postcardFaceRegions, postcardFaceQr } from '../lib/postcardFaceContent'
  * postcard's hero is never its back. Falls back to the last iteration
  * overall if nothing is accepted. See `selectHeroIteration` below.
  *
- * **New project** (SUC-004 entry point): `POST /api/projects` then
- * navigate to `/projects/:id` — this is the button-click path ticket 011
- * (`NewProject`) itself defers to this page for.
+ * **New project** (SUC-004 entry point): the "New project" button opens a
+ * modal (OOP follow-up, 2026-07-16) collecting a name and a free-text
+ * description -- follows `PostcardFaceEditor.tsx`'s click-to-edit-popup
+ * pattern (`fixed inset-0` overlay + `role="dialog"` panel). Create POSTs
+ * `{ title, description }` to `/api/projects` (the description rides along
+ * on `Project.detailsHeader`'s `description` key -- `routes/projects.ts`,
+ * surfaced back out by `ProjectDetail/ProjectDetailsHeader.tsx`) then
+ * navigates to `/projects/:id`; Cancel or Escape closes without creating.
+ * This is the button-click path ticket 011 (`NewProject`) itself defers to
+ * this page for.
  *
  * **Library-asset-to-project flow** (stakeholder round 12, SUC-011):
  * clicking a Library asset calls `POST /api/projects` with
@@ -265,6 +272,12 @@ export default function ProjectList() {
 
   const [creating, setCreating] = useState(false);
 
+  // "New project" modal (OOP follow-up, 2026-07-16) -- see module header.
+  const [newProjectOpen, setNewProjectOpen] = useState(false);
+  const [newProjectName, setNewProjectName] = useState('');
+  const [newProjectDescription, setNewProjectDescription] = useState('');
+  const [newProjectError, setNewProjectError] = useState('');
+
   // Bulk select/archive/delete (OOP follow-up, 2026-07-15) -- see module
   // header. Selection is view-scoped: switching views clears it, since a
   // project selected in one view's list has no meaning once that list is
@@ -380,20 +393,35 @@ export default function ProjectList() {
     );
   }
 
-  async function handleNewProject() {
+  function openNewProjectModal() {
+    setNewProjectName('');
+    setNewProjectDescription('');
+    setNewProjectError('');
+    setNewProjectOpen(true);
+  }
+
+  function closeNewProjectModal() {
+    if (creating) return; // don't let Escape/backdrop-click abandon an in-flight create
+    setNewProjectOpen(false);
+  }
+
+  async function handleCreateProject() {
+    const title = newProjectName.trim();
+    if (!title) return;
     setCreating(true);
-    setProjectsError('');
+    setNewProjectError('');
     try {
       const res = await fetch('/api/projects', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ title: 'Untitled project' }),
+        body: JSON.stringify({ title, description: newProjectDescription }),
       });
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       const created = await res.json();
+      setNewProjectOpen(false);
       navigate(`/projects/${created.id}`);
     } catch (err) {
-      setProjectsError(err instanceof Error ? err.message : 'Failed to create project');
+      setNewProjectError(err instanceof Error ? err.message : 'Failed to create project');
     } finally {
       setCreating(false);
     }
@@ -432,11 +460,10 @@ export default function ProjectList() {
           </div>
           <button
             type="button"
-            disabled={creating}
-            onClick={() => void handleNewProject()}
-            className="rounded bg-indigo-600 px-4 py-2 text-sm font-semibold text-white disabled:opacity-60"
+            onClick={openNewProjectModal}
+            className="rounded bg-indigo-600 px-4 py-2 text-sm font-semibold text-white"
           >
-            {creating ? 'Creating…' : 'New project'}
+            New project
           </button>
         </div>
 
@@ -644,6 +671,75 @@ export default function ProjectList() {
           </ul>
         )}
       </div>
+
+      {newProjectOpen && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/40"
+          onClick={closeNewProjectModal}
+        >
+          <div
+            role="dialog"
+            aria-modal="true"
+            aria-label="New project"
+            className="w-full max-w-md rounded-lg bg-white p-6 shadow-xl"
+            onClick={(event) => event.stopPropagation()}
+            onKeyDown={(event) => {
+              if (event.key === 'Escape') closeNewProjectModal();
+            }}
+          >
+            <h2 className="text-lg font-semibold text-slate-800">New project</h2>
+            <p className="mb-4 mt-1 text-sm text-slate-500">
+              Name your project and describe what you&apos;re making — Claude uses this as the starting brief.
+            </p>
+            <label className="mb-3 block">
+              <span className="mb-1 block text-sm font-medium text-slate-600">Project name</span>
+              <input
+                autoFocus
+                type="text"
+                aria-label="Project name"
+                value={newProjectName}
+                onChange={(event) => setNewProjectName(event.target.value)}
+                onKeyDown={(event) => {
+                  if (event.key === 'Enter') {
+                    event.preventDefault();
+                    if (newProjectName.trim() && !creating) void handleCreateProject();
+                  }
+                }}
+                className="w-full rounded border border-slate-300 px-3 py-2 text-sm text-slate-800"
+              />
+            </label>
+            <label className="mb-4 block">
+              <span className="mb-1 block text-sm font-medium text-slate-600">Description</span>
+              <textarea
+                aria-label="Description"
+                value={newProjectDescription}
+                onChange={(event) => setNewProjectDescription(event.target.value)}
+                rows={4}
+                className="w-full resize-y rounded border border-slate-300 px-3 py-2 text-sm text-slate-800"
+              />
+            </label>
+            {newProjectError && <p className="mb-3 text-sm text-red-600">{newProjectError}</p>}
+            <div className="flex justify-end gap-2">
+              <button
+                type="button"
+                disabled={creating}
+                onClick={closeNewProjectModal}
+                className="rounded border border-slate-300 px-3 py-1.5 text-sm text-slate-600 hover:bg-slate-50 disabled:opacity-60"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                disabled={creating || !newProjectName.trim()}
+                onClick={() => void handleCreateProject()}
+                className="rounded bg-indigo-600 px-4 py-1.5 text-sm font-semibold text-white disabled:opacity-60"
+              >
+                {creating ? 'Creating…' : 'Create'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

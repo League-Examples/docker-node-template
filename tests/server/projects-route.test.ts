@@ -446,6 +446,61 @@ describe('POST /api/projects -- create via create_project (no sourceAssetId)', (
   });
 });
 
+describe('POST /api/projects -- description (OOP follow-up, 2026-07-16: "New project" modal)', () => {
+  it('stores a description in detailsHeader.description, and GET returns it', async () => {
+    const agent = await loginAsUserA();
+    const res = await agent
+      .post('/api/projects')
+      .send({ title: `${marker}-with-description`, description: 'A postcard announcing the spring open house.' });
+
+    expect(res.status).toBe(201);
+    cleanup.projectIds.push(res.body.id);
+    expect(res.body.detailsHeader).toEqual({ description: 'A postcard announcing the spring open house.' });
+
+    expect(mockCreateProject).toHaveBeenCalledTimes(1);
+    expect(mockCreateProject.mock.calls[0][0]).toMatchObject({
+      detailsHeader: { description: 'A postcard announcing the spring open house.' },
+    });
+
+    const getRes = await agent.get(`/api/projects/${res.body.id}`);
+    expect(getRes.status).toBe(200);
+    expect(getRes.body.detailsHeader).toEqual({ description: 'A postcard announcing the spring open house.' });
+  });
+
+  it('merges description onto a caller-supplied detailsHeader rather than clobbering it', async () => {
+    const agent = await loginAsUserA();
+    const res = await agent.post('/api/projects').send({
+      title: `${marker}-merged-description`,
+      description: 'A postcard announcing the spring open house.',
+      detailsHeader: { style: 'Pop Art' },
+    });
+
+    expect(res.status).toBe(201);
+    cleanup.projectIds.push(res.body.id);
+    expect(res.body.detailsHeader).toEqual({
+      style: 'Pop Art',
+      description: 'A postcard announcing the spring open house.',
+    });
+  });
+
+  it('an absent description is fine -- no detailsHeader is set', async () => {
+    const agent = await loginAsUserA();
+    const res = await agent.post('/api/projects').send({ title: `${marker}-no-description` });
+
+    expect(res.status).toBe(201);
+    cleanup.projectIds.push(res.body.id);
+    expect(res.body.detailsHeader).toBeNull();
+  });
+
+  it('rejects a non-string description with 400, without calling create_project', async () => {
+    const agent = await loginAsUserA();
+    const res = await agent.post('/api/projects').send({ title: `${marker}-bad-description`, description: 42 });
+
+    expect(res.status).toBe(400);
+    expect(mockCreateProject).not.toHaveBeenCalled();
+  });
+});
+
 describe('POST /api/projects -- with sourceAssetId (SUC-011 library-asset-to-project flow)', () => {
   it('creates the project and a Reference row pointing at the source asset in one request', async () => {
     const agent = await loginAsUserA();

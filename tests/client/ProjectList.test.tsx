@@ -480,20 +480,90 @@ describe('ProjectList hero-card rendered-text overlay (OOP change, 2026-07-15)',
   });
 });
 
-describe('ProjectList new-project flow', () => {
-  it('"New project" button POSTs /api/projects and navigates to /projects/:id', async () => {
-    const fetchMock = stubFetch({
-      projects: () => [],
-      createProject: () => ({ id: 42, title: 'Untitled project' }),
-    });
+describe('ProjectList new-project flow (OOP follow-up, 2026-07-16: name + description modal)', () => {
+  it('"New project" opens a modal instead of creating immediately', async () => {
+    stubFetch({ projects: () => [] });
     renderPage();
 
     fireEvent.click(screen.getByRole('button', { name: 'New project' }));
 
+    expect(screen.getByRole('dialog', { name: 'New project' })).toBeInTheDocument();
+  });
+
+  it('Create is disabled until a name is entered', async () => {
+    stubFetch({ projects: () => [] });
+    renderPage();
+
+    fireEvent.click(screen.getByRole('button', { name: 'New project' }));
+
+    expect(screen.getByRole('button', { name: 'Create' })).toBeDisabled();
+    fireEvent.change(screen.getByLabelText('Project name'), { target: { value: 'Spring Postcard' } });
+    expect(screen.getByRole('button', { name: 'Create' })).not.toBeDisabled();
+  });
+
+  it('Create POSTs { title, description } and navigates to /projects/:id', async () => {
+    const fetchMock = stubFetch({
+      projects: () => [],
+      createProject: () => ({ id: 42, title: 'Spring Postcard' }),
+    });
+    renderPage();
+
+    fireEvent.click(screen.getByRole('button', { name: 'New project' }));
+    fireEvent.change(screen.getByLabelText('Project name'), { target: { value: 'Spring Postcard' } });
+    fireEvent.change(screen.getByLabelText('Description'), {
+      target: { value: 'A postcard announcing the spring open house.' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'Create' }));
+
     await screen.findByText('Project Detail 42');
-    expect(fetchMock).toHaveBeenCalledWith(
-      '/api/projects',
-      expect.objectContaining({ method: 'POST' }),
+
+    const postCall = fetchMock.mock.calls.find(
+      ([url, init]: [string, RequestInit | undefined]) => url === '/api/projects' && init?.method === 'POST',
+    );
+    expect(postCall).toBeDefined();
+    const body = JSON.parse(String(postCall![1]!.body));
+    expect(body).toEqual({ title: 'Spring Postcard', description: 'A postcard announcing the spring open house.' });
+  });
+
+  it('Enter in the name field submits, same as clicking Create', async () => {
+    const fetchMock = stubFetch({
+      projects: () => [],
+      createProject: () => ({ id: 43, title: 'Enter Submit' }),
+    });
+    renderPage();
+
+    fireEvent.click(screen.getByRole('button', { name: 'New project' }));
+    fireEvent.change(screen.getByLabelText('Project name'), { target: { value: 'Enter Submit' } });
+    fireEvent.keyDown(screen.getByLabelText('Project name'), { key: 'Enter' });
+
+    await screen.findByText('Project Detail 43');
+    expect(fetchMock).toHaveBeenCalledWith('/api/projects', expect.objectContaining({ method: 'POST' }));
+  });
+
+  it('Cancel closes the modal without POSTing', async () => {
+    const fetchMock = stubFetch({ projects: () => [] });
+    renderPage();
+
+    fireEvent.click(screen.getByRole('button', { name: 'New project' }));
+    fireEvent.change(screen.getByLabelText('Project name'), { target: { value: 'Abandoned' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Cancel' }));
+
+    expect(screen.queryByRole('dialog', { name: 'New project' })).not.toBeInTheDocument();
+    expect(fetchMock.mock.calls.some(([url, init]: [string, RequestInit | undefined]) => url === '/api/projects' && init?.method === 'POST')).toBe(
+      false,
+    );
+  });
+
+  it('Escape closes the modal without POSTing', async () => {
+    const fetchMock = stubFetch({ projects: () => [] });
+    renderPage();
+
+    fireEvent.click(screen.getByRole('button', { name: 'New project' }));
+    fireEvent.keyDown(screen.getByRole('dialog', { name: 'New project' }), { key: 'Escape' });
+
+    expect(screen.queryByRole('dialog', { name: 'New project' })).not.toBeInTheDocument();
+    expect(fetchMock.mock.calls.some(([url, init]: [string, RequestInit | undefined]) => url === '/api/projects' && init?.method === 'POST')).toBe(
+      false,
     );
   });
 });

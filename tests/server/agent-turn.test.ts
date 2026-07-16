@@ -344,6 +344,51 @@ describe('runTurn -- project + active-stream context injection', () => {
 });
 
 // ---------------------------------------------------------------------------
+// "New project" modal description (OOP follow-up, 2026-07-16): the
+// description collected by ProjectList.tsx's create-project modal is
+// persisted onto Project.detailsHeader's `description` key, same as any
+// other detailsHeader field -- formatDetailsHeader is key-agnostic, so it
+// should surface here with no dedicated code path.
+// ---------------------------------------------------------------------------
+
+describe('runTurn -- "New project" modal description surfaces in the creative brief (OOP follow-up, 2026-07-16)', () => {
+  let descriptionProjectId: number;
+
+  beforeAll(async () => {
+    const project = await prisma.project.create({
+      data: {
+        title: `${marker}-description-project`,
+        ownerUserId: ownerId,
+        status: 'active',
+        detailsHeader: { description: 'A postcard announcing the spring open house.' },
+      },
+    });
+    descriptionProjectId = project.id;
+  });
+
+  afterAll(async () => {
+    await prisma.chatMessage.deleteMany({ where: { projectId: descriptionProjectId } });
+    await prisma.project.deleteMany({ where: { id: descriptionProjectId } });
+  });
+
+  it('includes the description in the PROJECT CONTEXT creative brief', async () => {
+    let capturedSystemPrompt = '';
+    const adapter = createMockAdapter([{ kind: 'message', content: 'Sure thing.' }], {
+      onSendTurn: (input) => {
+        capturedSystemPrompt = input.systemPrompt;
+      },
+    });
+    await runTurn(
+      { projectId: descriptionProjectId, message: 'What are we making?' },
+      { provider: adapter, versioning: makeVersioningSpy() }
+    );
+
+    expect(capturedSystemPrompt).toContain('Creative brief:');
+    expect(capturedSystemPrompt).toContain('description: A postcard announcing the spring open house.');
+  });
+});
+
+// ---------------------------------------------------------------------------
 // Statelessness (D8): a "process restart" between two turns is invisible.
 // ---------------------------------------------------------------------------
 

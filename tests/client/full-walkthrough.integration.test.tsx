@@ -347,8 +347,12 @@ describe('Full walkthrough (sprint 005 capstone, sprint.md Success Criteria)', (
       expect(await screen.findByText('logo robot')).toBeInTheDocument();
       fireEvent.click(screen.getByRole('button', { name: 'My projects' }));
 
-      // ---- New project. ----
+      // ---- New project (OOP follow-up, 2026-07-16: name + description
+      // modal, rather than an immediate create). ----
       fireEvent.click(screen.getByRole('button', { name: 'New project' }));
+      expect(screen.getByRole('dialog', { name: 'New project' })).toBeInTheDocument();
+      fireEvent.change(screen.getByLabelText('Project name'), { target: { value: 'Untitled project' } });
+      fireEvent.click(screen.getByRole('button', { name: 'Create' }));
       await screen.findByTestId('chat-empty-state');
       expect(screen.getByTestId('project-details-header')).toHaveTextContent(/no project details yet/i);
 
