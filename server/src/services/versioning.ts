@@ -27,6 +27,16 @@ import { getWorkspaceRoot } from './workspaceDirectorySync';
  *    remote is required to exist. When set, a push is attempted after a
  *    successful commit; a push failure is surfaced as a non-fatal result,
  *    never thrown (architecture-001 UC-012 E1).
+ *
+ * `AUTO_COMMIT` (read fresh at commit time via `isAutoCommitEnabled()`,
+ * same "plain `process.env` read" pattern as `PORT`/`WORKSPACE_DIR`) gates
+ * only the `git commit` (and any subsequent push) inside `commitTurn`.
+ * When explicitly disabled (`'false'`, `'0'`, `'off'`, `'no'`,
+ * case-insensitive), `commitTurn` still runs the knowledge snapshot
+ * export and stages recorded changes, but skips `git commit`/`git push`
+ * and returns `{ committed: false, pushed: false }` -- the same
+ * "nothing to commit" shape callers already handle. Unset or any other
+ * value (`'true'`, `'1'`, etc.) preserves the pre-existing behavior.
  */
 
 const __filename = fileURLToPath(import.meta.url);
@@ -52,6 +62,20 @@ export function getWorkspaceGitRoot(): string {
  * this sprint's default -- see R1). */
 export function getWorkspaceGitRemote(): string | undefined {
   return process.env.WORKSPACE_GIT_REMOTE || undefined;
+}
+
+/** Falsy values (case-insensitive) that turn automatic git commits off. */
+const AUTO_COMMIT_OFF_VALUES = new Set(['false', '0', 'off', 'no']);
+
+/** Whether `commitTurn` should perform the automatic `git commit` (and any
+ * subsequent push). Read fresh on every call (not cached) so a restart --
+ * or, in tests, a per-test env override -- picks up the current value.
+ * Unset defaults to `true` (backward compatible: nothing changes for
+ * anyone who hasn't set `AUTO_COMMIT`). */
+export function isAutoCommitEnabled(): boolean {
+  const raw = process.env.AUTO_COMMIT;
+  if (raw === undefined) return true;
+  return !AUTO_COMMIT_OFF_VALUES.has(raw.trim().toLowerCase());
 }
 
 function isForbiddenPath(absolutePath: string): boolean {
@@ -167,7 +191,11 @@ export class WorkspaceVersioningService {
    * `pushed: false` plus a logged warning, never thrown.
    *
    * Returns `{ committed: false, pushed: false }` when there is nothing
-   * to commit (no recorded changes and the snapshot produced no diff).
+   * to commit (no recorded changes and the snapshot produced no diff),
+   * OR when `AUTO_COMMIT` is disabled (`isAutoCommitEnabled()` false) --
+   * in that case the snapshot export and `recordChange`-tracked file
+   * writes still happen as normal; only the `git commit` (and any
+   * subsequent push) is skipped.
    */
   async commitTurn(summary: string, options: { skipSnapshot?: boolean } = {}): Promise<CommitResult> {
     if (!options.skipSnapshot) {
@@ -179,6 +207,13 @@ export class WorkspaceVersioningService {
     this.pending.clear();
 
     if (paths.length === 0) {
+      return { committed: false, pushed: false };
+    }
+
+    if (!isAutoCommitEnabled()) {
+      // AUTO_COMMIT is off: workspace writes and the snapshot export above
+      // already happened, but the automatic git commit (and any push) is
+      // skipped entirely -- not even `git add` runs.
       return { committed: false, pushed: false };
     }
 

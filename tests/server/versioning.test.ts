@@ -13,11 +13,13 @@
 import fs from 'fs/promises';
 import os from 'os';
 import path from 'path';
+import { vi } from 'vitest';
 import { simpleGit } from 'simple-git';
 import {
   WorkspaceVersioningService,
   getWorkspaceGitRoot,
   getWorkspaceGitRemote,
+  isAutoCommitEnabled,
 } from '../../server/src/services/versioning';
 
 async function mkScratchRepo(prefix: string): Promise<string> {
@@ -79,6 +81,114 @@ describe('getWorkspaceGitRoot / getWorkspaceGitRemote (config reads, no git comm
   it('respects an explicit WORKSPACE_GIT_REMOTE override', () => {
     process.env.WORKSPACE_GIT_REMOTE = '/tmp/some-bare-repo.git';
     expect(getWorkspaceGitRemote()).toBe('/tmp/some-bare-repo.git');
+  });
+});
+
+describe('isAutoCommitEnabled (AUTO_COMMIT config read)', () => {
+  const previous = process.env.AUTO_COMMIT;
+
+  afterEach(() => {
+    if (previous === undefined) delete process.env.AUTO_COMMIT;
+    else process.env.AUTO_COMMIT = previous;
+  });
+
+  it('defaults to enabled when AUTO_COMMIT is unset (backward compatible)', () => {
+    delete process.env.AUTO_COMMIT;
+    expect(isAutoCommitEnabled()).toBe(true);
+  });
+
+  it.each(['false', 'False', 'FALSE', '0', 'off', 'Off', 'no', 'NO'])(
+    'treats AUTO_COMMIT=%s as disabled',
+    (value) => {
+      process.env.AUTO_COMMIT = value;
+      expect(isAutoCommitEnabled()).toBe(false);
+    }
+  );
+
+  it.each(['true', '1', 'yes', 'on'])('treats AUTO_COMMIT=%s as enabled', (value) => {
+    process.env.AUTO_COMMIT = value;
+    expect(isAutoCommitEnabled()).toBe(true);
+  });
+});
+
+describe('WorkspaceVersioningService.commitTurn — AUTO_COMMIT gate', () => {
+  const previous = process.env.AUTO_COMMIT;
+
+  afterEach(() => {
+    if (previous === undefined) delete process.env.AUTO_COMMIT;
+    else process.env.AUTO_COMMIT = previous;
+  });
+
+  it('AUTO_COMMIT=false: skips the git commit but still writes the workspace file and snapshot', async () => {
+    process.env.AUTO_COMMIT = 'false';
+    const gitRoot = await newScratchRepo('flyerbot-versioning-autocommit-off-');
+    const exportsDir = path.join(gitRoot, 'workspace', 'exports');
+    const svc = new WorkspaceVersioningService({ gitRoot, exportsDir });
+
+    const file = await writeFile(gitRoot, 'workspace/assets/no-commit.txt', 'should be written, not committed\n');
+    svc.recordChange(file);
+
+    const commitSpy = vi.spyOn((svc as any).git, 'commit');
+    const addSpy = vi.spyOn((svc as any).git, 'add');
+
+    const result = await svc.commitTurn('turn: auto-commit off');
+
+    expect(result.committed).toBe(false);
+    expect(result.pushed).toBe(false);
+    expect(result.commitHash).toBeUndefined();
+    expect(commitSpy).not.toHaveBeenCalled();
+    expect(addSpy).not.toHaveBeenCalled();
+
+    // The file write and the knowledge snapshot export still happened on
+    // disk -- only the git commit was skipped.
+    const written = await fs.readFile(file, 'utf8');
+    expect(written).toBe('should be written, not committed\n');
+    const snapshot = await fs.readFile(path.join(exportsDir, 'knowledge-snapshot.json'), 'utf8');
+    expect(JSON.parse(snapshot)).toHaveProperty('exportedAt');
+
+    // Nothing was ever staged or committed in the scratch repo.
+    const git = simpleGit(gitRoot);
+    const log = await git.log().catch(() => null);
+    if (log) expect(log.all).toHaveLength(0);
+
+    commitSpy.mockRestore();
+    addSpy.mockRestore();
+  });
+
+  it('AUTO_COMMIT unset: preserves existing behavior and does commit', async () => {
+    delete process.env.AUTO_COMMIT;
+    const gitRoot = await newScratchRepo('flyerbot-versioning-autocommit-unset-');
+    const svc = new WorkspaceVersioningService({ gitRoot, exportsDir: path.join(gitRoot, 'workspace', 'exports') });
+
+    const file = await writeFile(gitRoot, 'workspace/assets/still-commits.txt', 'default behavior\n');
+    svc.recordChange(file);
+
+    const result = await svc.commitTurn('turn: auto-commit unset', { skipSnapshot: true });
+
+    expect(result.committed).toBe(true);
+    expect(result.commitHash).toBeTruthy();
+
+    const git = simpleGit(gitRoot);
+    const log = await git.log();
+    expect(log.all).toHaveLength(1);
+  });
+
+  it('AUTO_COMMIT=true: preserves existing behavior and does commit', async () => {
+    process.env.AUTO_COMMIT = 'true';
+    const gitRoot = await newScratchRepo('flyerbot-versioning-autocommit-true-');
+    const svc = new WorkspaceVersioningService({ gitRoot, exportsDir: path.join(gitRoot, 'workspace', 'exports') });
+
+    const file = await writeFile(gitRoot, 'workspace/assets/explicit-true.txt', 'explicit true\n');
+    svc.recordChange(file);
+
+    const result = await svc.commitTurn('turn: auto-commit true', { skipSnapshot: true });
+
+    expect(result.committed).toBe(true);
+    expect(result.commitHash).toBeTruthy();
+
+    const git = simpleGit(gitRoot);
+    const log = await git.log();
+    expect(log.all).toHaveLength(1);
   });
 });
 
