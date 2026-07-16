@@ -1,7 +1,8 @@
 import { useEffect, useState } from 'react';
+import { Link } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { useProviderStatus } from '../hooks/useProviderStatus';
-import { roleBadgeStyle, roleShortLabel } from '../lib/roles';
+import { hasAdminAccess, roleBadgeStyle, roleShortLabel } from '../lib/roles';
 import { McpSetupContent } from './McpSetup';
 
 const PROVIDER_LABELS: Record<string, string> = {
@@ -49,6 +50,7 @@ export default function Account() {
 
   const displayName = user.displayName ?? 'User';
   const badge = roleBadgeStyle(user.role);
+  const isAdmin = hasAdminAccess(user.role);
 
   const linked = new Set(user.linkedProviders ?? []);
   const configurableButUnlinked = (
@@ -80,6 +82,12 @@ export default function Account() {
   return (
     <div style={styles.container}>
       <h1 style={styles.title}>Account</h1>
+
+      {isAdmin && (
+        <Link to="/admin/users" style={styles.adminLink}>
+          Admin console
+        </Link>
+      )}
 
       <div style={styles.card}>
         <div style={styles.avatarRow}>
@@ -341,6 +349,14 @@ const styles: Record<string, React.CSSProperties> = {
     fontSize: '0.9rem',
     cursor: 'pointer',
     textDecoration: 'underline',
+  },
+  adminLink: {
+    display: 'inline-block',
+    marginBottom: '1.5rem',
+    fontSize: '0.9rem',
+    fontWeight: 600,
+    color: '#4f46e5',
+    textDecoration: 'none',
   },
   modalBackdrop: {
     position: 'fixed' as const,

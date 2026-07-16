@@ -16,6 +16,7 @@ import {
   PostcardValidationError,
   type PostcardContent,
 } from '../../server/src/services/postcardRender';
+import { renderQrGraphicHtml, CAPTION_VIEWBOX_WIDTH } from '../../server/src/services/qrCode';
 
 function minimalRegion(overrides: Partial<Record<string, unknown>> = {}) {
   return {
@@ -74,6 +75,44 @@ describe('parsePostcardContent', () => {
   it('rejects non-object input', () => {
     expect(() => parsePostcardContent('not an object')).toThrow(PostcardValidationError);
     expect(() => parsePostcardContent(null)).toThrow(PostcardValidationError);
+  });
+
+  it('front_qr/back_qr default to undefined -- absent means no QR on that face', () => {
+    const content = parsePostcardContent({ front_image: 'x' });
+    expect(content.front_qr).toBeUndefined();
+    expect(content.back_qr).toBeUndefined();
+  });
+
+  it('accepts a structured front_qr/back_qr object', () => {
+    const content = parsePostcardContent({
+      front_image: 'front.png',
+      back_image: 'back.png',
+      front_qr: { url: 'https://example.org/front', position: { top: '1.15in', right: '0.5in', width: '1.5in', height: '1.5in' } },
+      back_qr: { url: 'https://example.org/back', position: { top: '2in', left: '0.5in', width: '1.5in' } },
+    });
+    expect(content.front_qr).toEqual({
+      url: 'https://example.org/front',
+      position: { top: '1.15in', right: '0.5in', width: '1.5in', height: '1.5in' },
+    });
+    expect(content.back_qr?.url).toBe('https://example.org/back');
+  });
+
+  it('rejects a QR position with neither left nor right, same as a region position', () => {
+    expect(() =>
+      parsePostcardContent({
+        front_image: 'x',
+        front_qr: { url: 'https://example.org', position: { top: '1in', width: '1.5in' } },
+      })
+    ).toThrow(PostcardValidationError);
+  });
+
+  it('rejects a QR object missing a required field', () => {
+    expect(() =>
+      parsePostcardContent({
+        front_image: 'x',
+        front_qr: { position: { top: '1in', left: '1in', width: '1.5in' } },
+      })
+    ).toThrow(PostcardValidationError);
   });
 });
 
@@ -231,5 +270,130 @@ describe('renderPostcardHtml', () => {
     const html = renderPostcardHtml(content);
     expect(html).not.toContain('<script>alert(1)</script>');
     expect(html).toContain('&lt;script&gt;');
+  });
+
+  describe('front_qr/back_qr overlay (OOP: optional, structured, positioned QR)', () => {
+    it('renders nothing for a face with no QR data -- AC1, including pre-existing content with no front_qr/back_qr at all', () => {
+      const content = parsePostcardContent({ front_image: 'front.png', back_image: 'back.png' });
+      const html = renderPostcardHtml(content);
+      expect(html).not.toContain('data-qr-url');
+      expect(html).not.toContain('QR code');
+    });
+
+    it('renders a face\'s QR overlay at its own position when present', () => {
+      const content = parsePostcardContent({
+        front_image: 'front.png',
+        front_qr: {
+          url: 'https://example.org/signup',
+          position: { top: '2.00in', left: '0.75in', width: '1.20in', height: '1.20in' },
+        },
+      });
+      const html = renderPostcardHtml(content);
+      expect(html).toContain('data-qr-url="https://example.org/signup"');
+      expect(html).toContain('top:2.00in');
+      expect(html).toContain('left:0.75in');
+      expect(html).toContain('width:1.20in');
+      expect(html).toContain('height:1.20in');
+    });
+
+    it('renders front_qr and back_qr independently -- one face can have a QR while the other does not', () => {
+      const content = parsePostcardContent({
+        front_image: 'front.png',
+        back_image: 'back.png',
+        back_qr: { url: 'https://example.org/back-only', position: { top: '1in', right: '0.5in', width: '1.5in' } },
+      });
+      const html = renderPostcardHtml(content);
+      const frontSection = html.split('data-side="front"')[1].split('data-side="back"')[0];
+      const backSection = html.split('data-side="back"')[1];
+      expect(frontSection).not.toContain('data-qr-url');
+      expect(backSection).toContain('data-qr-url="https://example.org/back-only"');
+    });
+
+    it('escapes the QR url as an HTML attribute/text value', () => {
+      const content = parsePostcardContent({
+        front_image: 'front.png',
+        front_qr: {
+          url: 'https://example.org/?a=1&b="x"',
+          position: { top: '1in', left: '1in', width: '1.5in' },
+        },
+      });
+      const html = renderPostcardHtml(content);
+      expect(html).not.toContain('href="https://example.org/?a=1&b="x""');
+      expect(html).toContain('&amp;b=&quot;x&quot;');
+    });
+
+    describe('real QR graphic + width-matched URL caption (OOP, 2026-07-15)', () => {
+      it('embeds a real <svg><path> tracing the URL\'s own encoded module grid, not a placeholder', () => {
+        const content = parsePostcardContent({
+          front_image: 'front.png',
+          front_qr: {
+            url: 'https://example.org/signup',
+            position: { top: '1.15in', right: '0.5in', width: '1.5in', height: '1.5in' },
+          },
+        });
+        const html = renderPostcardHtml(content);
+        expect(html).not.toContain('QR code<br');
+        expect(html).toContain('<svg');
+        // Same expected markup `renderQrGraphicHtml` itself produces --
+        // asserted against the real function, not a hand-copied fixture,
+        // so this fails if the encoding ever silently changes.
+        expect(html).toContain(renderQrGraphicHtml('https://example.org/signup'));
+      });
+
+      it('renders nothing graphic-wise (still a bare positioned div) when the QR has a blank URL', () => {
+        const content = parsePostcardContent({
+          front_image: 'front.png',
+          front_qr: { url: '', position: { top: '1in', left: '1in', width: '1.5in' } },
+        });
+        const html = renderPostcardHtml(content);
+        expect(html).toContain('data-qr-url=""');
+        expect(html).not.toContain('<svg');
+      });
+
+      it('renders a different module-grid path for a different URL -- a real encoding, not a static image', () => {
+        const shortContent = parsePostcardContent({
+          front_image: 'front.png',
+          front_qr: { url: 'https://x.co/a', position: { top: '1in', left: '1in', width: '1.5in' } },
+        });
+        const longContent = parsePostcardContent({
+          front_image: 'front.png',
+          front_qr: {
+            url: 'https://example.org/a-very-long-path-segment/with/many/nested/parts?and=query&params=too',
+            position: { top: '1in', left: '1in', width: '1.5in' },
+          },
+        });
+        const shortHtml = renderPostcardHtml(shortContent);
+        const longHtml = renderPostcardHtml(longContent);
+        const shortPath = shortHtml.match(/<path d="([^"]*)"/)?.[1];
+        const longPath = longHtml.match(/<path d="([^"]*)"/)?.[1];
+        expect(shortPath).toBeTruthy();
+        expect(longPath).toBeTruthy();
+        expect(shortPath).not.toBe(longPath);
+      });
+
+      it.each([
+        ['a short URL', 'https://x.co/a'],
+        ['a long URL', 'https://example.org/a-very-long-path-segment/with/many/nested/parts?and=query&params=too'],
+      ])('width-matches the URL caption to the QR graphic for %s via textLength/lengthAdjust', (_label, url) => {
+        const content = parsePostcardContent({
+          front_image: 'front.png',
+          front_qr: { url, position: { top: '1in', left: '1in', width: '1.5in' } },
+        });
+        const html = renderPostcardHtml(content);
+        // Both the QR graphic's wrapper and the caption's wrapper are
+        // `width:100%` of the SAME flex-column parent -- this is what
+        // makes the caption's rendered width equal the QR's rendered
+        // width for ANY url length, without either side computing a pixel
+        // value. The caption <text> itself is stretched/compressed via
+        // `textLength` to its own SVG's full viewBox width.
+        expect(html).toContain(`textLength="${CAPTION_VIEWBOX_WIDTH}"`);
+        expect(html).toContain('lengthAdjust="spacingAndGlyphs"');
+        // The caption shows the scheme-stripped URL (the QR still encodes
+        // the full one), HTML-escaped (attribute-adjacent text node), so a
+        // URL with `&` shows up entity-escaped here too.
+        const escapedUrl = url.replace(/^https?:\/\//i, '').replace(/&/g, '&amp;');
+        expect(html).toContain(`>${escapedUrl}</text>`);
+      });
+    });
   });
 });

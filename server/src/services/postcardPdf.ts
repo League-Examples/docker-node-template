@@ -1,6 +1,35 @@
+import { existsSync, readFileSync } from 'node:fs';
 import sharp from 'sharp';
 import { PDFDocument, degrees } from 'pdf-lib';
 import { resolveWorkspacePath } from './workspaceDirectorySync';
+
+/**
+ * Resolve the Chromium/Chrome executable puppeteer-core should launch.
+ * `PUPPETEER_EXECUTABLE_PATH` wins when set (the deployment/Docker override).
+ * Otherwise probe the common locations across environments -- the Alpine
+ * runtime's `apk` chromium first (production), then a macOS dev machine's
+ * Google Chrome / Chromium -- so local dev works without any env config.
+ * Falls back to the Alpine path so `launch` throws a clear "not found" error
+ * rather than an empty string, if nothing is present.
+ */
+function resolveBrowserExecutablePath(): string {
+  const configured = process.env.PUPPETEER_EXECUTABLE_PATH;
+  if (configured) return configured;
+  const candidates = [
+    '/usr/bin/chromium-browser',
+    '/usr/bin/chromium',
+    '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome',
+    '/Applications/Chromium.app/Contents/MacOS/Chromium',
+  ];
+  for (const candidate of candidates) {
+    try {
+      if (existsSync(candidate)) return candidate;
+    } catch {
+      /* ignore and keep probing */
+    }
+  }
+  return candidates[0];
+}
 
 /**
  * Postcard Render & PDF Service, second half (architecture-update.md Step
@@ -119,12 +148,44 @@ const RELATIVE_SRC_RE = /src="([^"]+)"/g;
  * upstream of this module; only `extra_html`-supplied sources (e.g. a QR
  * overlay) reach this fallback, and a broken one should degrade to a
  * missing image in the raster, not abort the whole PDF. */
+function imageMimeForPath(filePath: string): string {
+  const ext = filePath.slice(filePath.lastIndexOf('.') + 1).toLowerCase();
+  switch (ext) {
+    case 'png':
+      return 'image/png';
+    case 'jpg':
+    case 'jpeg':
+      return 'image/jpeg';
+    case 'webp':
+      return 'image/webp';
+    case 'gif':
+      return 'image/gif';
+    case 'svg':
+      return 'image/svg+xml';
+    case 'heic':
+      return 'image/heic';
+    default:
+      return 'application/octet-stream';
+  }
+}
+
+/**
+ * Inline each workspace-relative `<img src>` as a base64 `data:` URI before
+ * the HTML is fed to Chromium via `page.setContent`. A `file://` src (the
+ * previous approach) is BLOCKED by Chromium as a subresource load from the
+ * `about:blank`-origin document `setContent` creates -- so the artwork
+ * silently failed to load and every PDF face rendered blank white. A `data:`
+ * URI carries the bytes in the markup itself and loads regardless of origin.
+ * Already-absolute (`http`/`data`/`file`) srcs and unreadable files are left
+ * untouched -- a missing file degrades to a blank image, not an aborted PDF.
+ */
 export function resolveImageSourcesForRaster(html: string): string {
   return html.replace(RELATIVE_SRC_RE, (match, src: string) => {
     if (/^(https?:|data:|file:)/i.test(src)) return match;
     try {
       const absolute = resolveWorkspacePath(src);
-      return `src="file://${absolute}"`;
+      const bytes = readFileSync(absolute);
+      return `src="data:${imageMimeForPath(absolute)};base64,${bytes.toString('base64')}"`;
     } catch {
       return match;
     }
@@ -142,7 +203,7 @@ export const rasterizeWithChromium: FaceRasterizer = async (html) => {
   // (tests) that always inject a stub rasterizer and never touch a real
   // browser.
   const { default: puppeteer } = await import('puppeteer-core');
-  const executablePath = process.env.PUPPETEER_EXECUTABLE_PATH ?? '/usr/bin/chromium-browser';
+  const executablePath = resolveBrowserExecutablePath();
 
   const browser = await puppeteer.launch({
     executablePath,
@@ -157,9 +218,9 @@ export const rasterizeWithChromium: FaceRasterizer = async (html) => {
     });
     // `setContent`'s `waitUntil` only supports `'load'`/`'domcontentloaded'`
     // (unlike `goto`'s `'networkidle0'`) -- `'load'` is sufficient here
-    // since every image this pipeline embeds is a local `file://` URL
+    // since every image this pipeline embeds is an inline `data:` URI
     // (rewritten by `resolveImageSourcesForRaster` above), which blocks the
-    // `load` event exactly like any other same-origin resource.
+    // `load` event exactly like any other resource but needs no network.
     await page.setContent(resolveImageSourcesForRaster(html), { waitUntil: 'load' });
     const pageElement = await page.$('.page');
     if (!pageElement) {

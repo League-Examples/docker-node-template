@@ -1,8 +1,8 @@
 /**
- * Coverage for the Agent Runtime's SSE chat API (ticket 005 AC6):
- * `server/src/routes/chat.ts`'s auth gate (`requireAuth` + `requireAdmin`
- * -- documented choice, see that file's module header) and its
- * translation of `turn.ts`'s `TurnEvent`s into `data:` SSE frames.
+ * Coverage for the Agent Runtime's SSE chat API (ticket 005 AC6,
+ * relaxed to `requireAuth`-only in ticket 006 -- see
+ * `server/src/routes/chat.ts`'s module header) and its translation of
+ * `turn.ts`'s `TurnEvent`s into `data:` SSE frames.
  *
  * `runTurn` itself (context reconstruction, provider loop, tool dispatch,
  * persistence, locking) is covered end-to-end by
@@ -112,11 +112,22 @@ describe('POST /api/projects/:projectId/chat -- auth gate', () => {
     expect(mockRunTurn).not.toHaveBeenCalled();
   });
 
-  it('rejects a non-admin authenticated request with 403', async () => {
+  it('allows a non-admin authenticated request past the auth gate (ticket 006: requireAdmin dropped)', async () => {
+    mockRunTurn.mockImplementation(async (_input: any, options: any) => {
+      options.onEvent({ type: 'status', status: 'completed' });
+      return {
+        finalMessage: 'ok',
+        messages: [],
+        toolCalls: [],
+        commit: { committed: true, pushed: false },
+        consultedKnowledge: [],
+      };
+    });
+
     const agent = await loginAsUser();
-    const res = await agent.post('/api/projects/1/chat').send({ message: 'hi' });
-    expect(res.status).toBe(403);
-    expect(mockRunTurn).not.toHaveBeenCalled();
+    const res = await bufferedPost(agent, '/api/projects/1/chat').send({ message: 'hi' });
+    expect(res.status).toBe(200);
+    expect(mockRunTurn).toHaveBeenCalledTimes(1);
   });
 
   it('rejects a missing message with 400 for an admin request', async () => {
@@ -131,6 +142,59 @@ describe('POST /api/projects/:projectId/chat -- auth gate', () => {
     const res = await agent.post('/api/projects/not-a-number/chat').send({ message: 'hi' });
     expect(res.status).toBe(400);
     expect(mockRunTurn).not.toHaveBeenCalled();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Sprint 005 OOP change, 2026-07-15: `activeFace` threading -- the client
+// includes which stream tab is active, and this route forwards it straight
+// through to `runTurn` so a `generate_image` call this turn dispatches tags
+// its new Iteration into that stream (`turn.ts`'s `RunTurnInput.activeFace`).
+// ---------------------------------------------------------------------------
+
+describe('POST /api/projects/:projectId/chat -- activeFace threading', () => {
+  function stubRunTurn() {
+    mockRunTurn.mockImplementation(async (_input: any, options: any) => {
+      options.onEvent({ type: 'status', status: 'completed' });
+      return {
+        finalMessage: 'ok',
+        messages: [],
+        toolCalls: [],
+        commit: { committed: true, pushed: false },
+        consultedKnowledge: [],
+      };
+    });
+  }
+
+  it('forwards a valid activeFace ("back") to runTurn', async () => {
+    stubRunTurn();
+    const agent = await loginAsAdmin();
+    await bufferedPost(agent, '/api/projects/1/chat').send({ message: 'hi', activeFace: 'back' });
+
+    expect(mockRunTurn).toHaveBeenCalledTimes(1);
+    const [input] = mockRunTurn.mock.calls[0];
+    expect(input).toMatchObject({ activeFace: 'back' });
+  });
+
+  it('forwards a valid activeFace ("front") to runTurn', async () => {
+    stubRunTurn();
+    const agent = await loginAsAdmin();
+    await bufferedPost(agent, '/api/projects/1/chat').send({ message: 'hi', activeFace: 'front' });
+
+    const [input] = mockRunTurn.mock.calls[0];
+    expect(input).toMatchObject({ activeFace: 'front' });
+  });
+
+  it('treats a missing/invalid activeFace as unspecified (undefined), not a 400 -- runTurn applies its own default', async () => {
+    stubRunTurn();
+    const agent = await loginAsAdmin();
+
+    await bufferedPost(agent, '/api/projects/1/chat').send({ message: 'hi' });
+    expect(mockRunTurn.mock.calls[0][0].activeFace).toBeUndefined();
+
+    mockRunTurn.mockClear();
+    await bufferedPost(agent, '/api/projects/1/chat').send({ message: 'hi', activeFace: 'sideways' });
+    expect(mockRunTurn.mock.calls[0][0].activeFace).toBeUndefined();
   });
 });
 

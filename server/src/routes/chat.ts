@@ -1,6 +1,5 @@
 import { Router, type Response } from 'express';
 import { requireAuth } from '../middleware/requireAuth';
-import { requireAdmin } from '../middleware/requireAdmin';
 import { runTurn, type TurnEvent } from '../agent/turn';
 import { createRealImageVisionClient } from '../agent/realImageVisionClient';
 
@@ -10,15 +9,12 @@ import { createRealImageVisionClient } from '../agent/realImageVisionClient';
  * and streams the turn controller's step-by-step `TurnEvent`s
  * (`turn.ts`) as Server-Sent Events.
  *
- * **Auth gate chosen: `requireAuth` + `requireAdmin`.** No production
- * chat UI consumes this route yet -- per sprint.md's explicit Out of
- * Scope, Sprint 005 wires `MockupChatPanel.tsx` to it. `requireAdmin` was
- * chosen over a dedicated test-harness-only flag because it reuses
- * existing, already-tested middleware (`middleware/requireAdmin.ts`)
- * rather than adding a new env-gated code path solely for this temporary
- * scope boundary; Sprint 005 is expected to revisit this gate once the
- * real client UI wires in (a normal, authenticated project-owner user is
- * not necessarily an admin).
+ * **Auth gate: `requireAuth` only** (ticket 006 -- `requireAdmin` dropped).
+ * Sprint 005 now wires `MockupChatPanel.tsx` to this route (SUC-005), the
+ * "real client UI" this file's original gate anticipated: a normal,
+ * authenticated project-owner user is not necessarily an admin, so
+ * `requireAdmin` would have blocked exactly the caller this route exists
+ * for.
  */
 export const chatRouter = Router();
 
@@ -34,7 +30,7 @@ function writeEvent(res: Response, event: TurnEvent) {
   res.write(`data: ${JSON.stringify(event)}\n\n`);
 }
 
-chatRouter.post('/projects/:projectId/chat', requireAuth, requireAdmin, async (req, res) => {
+chatRouter.post('/projects/:projectId/chat', requireAuth, async (req, res) => {
   const projectId = Number.parseInt(String(req.params.projectId), 10);
   if (Number.isNaN(projectId)) {
     res.status(400).json({ error: 'Invalid project id' });
@@ -47,6 +43,17 @@ chatRouter.post('/projects/:projectId/chat', requireAuth, requireAdmin, async (r
     return;
   }
 
+  // Sprint 005 OOP change, 2026-07-15: which stream tab was active in the
+  // client when this message was sent -- threaded through to `runTurn` so
+  // any `generate_image` call this turn dispatches tags its new Iteration
+  // into that stream (see `turn.ts`'s `RunTurnInput.activeFace`). Any value
+  // other than the two valid faces (missing, wrong type, typo) is treated
+  // as "unspecified" rather than a 400 -- `runTurn` already defaults to
+  // `'front'` in that case, and this field describes UI convenience, not a
+  // validated business input worth rejecting a whole chat turn over.
+  const activeFaceRaw = req.body?.activeFace;
+  const activeFace = activeFaceRaw === 'front' || activeFaceRaw === 'back' ? activeFaceRaw : undefined;
+
   res.setHeader('Content-Type', 'text/event-stream');
   res.setHeader('Cache-Control', 'no-cache');
   res.setHeader('Connection', 'keep-alive');
@@ -54,7 +61,7 @@ chatRouter.post('/projects/:projectId/chat', requireAuth, requireAdmin, async (r
 
   try {
     await runTurn(
-      { projectId, message },
+      { projectId, message, activeFace },
       { onEvent: (event) => writeEvent(res, event), imageVisionClient }
     );
   } catch (err: any) {

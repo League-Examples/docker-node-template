@@ -159,6 +159,14 @@ export function createRealImageVisionClient(options: RealImageVisionClientOption
       // Always inserts (create_iteration, unchanged) -- an existing
       // iteration's file is never overwritten (sprint.md Success
       // Criteria; this ticket's AC4).
+      //
+      // `role` (Sprint 005 OOP change, 2026-07-15): tags the new Iteration
+      // into whichever stream tab was active client-side when this turn's
+      // chat message was sent (`input.activeFace`, threaded from
+      // `turn.ts`'s `dispatchToolCall`). Defaults to `'front'` when absent
+      // (an older client that doesn't send it, or "a new project starts on
+      // Front") -- never left `null`, so a freshly generated image always
+      // lands in a visible stream rather than nowhere.
       await createIteration(
         {
           projectId: input.projectId,
@@ -166,6 +174,7 @@ export function createRealImageVisionClient(options: RealImageVisionClientOption
           promptUsed: input.prompt,
           modelParams: recordedModelParams,
           seq,
+          role: input.activeFace ?? 'front',
         },
         { versioning, lockHolder: options.lockHolder, prismaClient }
       );

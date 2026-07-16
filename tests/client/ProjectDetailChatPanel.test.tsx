@@ -1,0 +1,285 @@
+import { describe, it, expect, vi, afterEach } from 'vitest';
+import { render, screen, fireEvent, waitFor, within } from '@testing-library/react';
+import ChatPanel from '../../client/src/pages/ProjectDetail/ChatPanel';
+import type { ChatMessageDTO } from '../../client/src/pages/ProjectDetail/types';
+
+/**
+ * Coverage for `client/src/pages/ProjectDetail/ChatPanel.tsx` (ticket
+ * 005-009): SSE-streamed chat consumed via `fetch()` + a `ReadableStream`
+ * reader (never `EventSource` -- the endpoint is `POST`, and `EventSource`
+ * is GET-only), chat-history rehydration from `GET /api/projects/:id`'s
+ * already-fetched `chatMessages` (no second fetch on mount), streamed
+ * `TurnEvent` rendering (status text, tool-call status text, the final
+ * message bubble), and visible error surfacing.
+ */
+
+/** A fake `response.body`: yields each string in `chunks` as one
+ * `reader.read()` call, then signals `done` -- same fixture shape as
+ * `SseStream.test.tsx`. */
+function fakeStreamBody(chunks: string[]) {
+  const encoder = new TextEncoder();
+  let index = 0;
+  return {
+    getReader() {
+      return {
+        read: async () => {
+          if (index >= chunks.length) return { done: true, value: undefined };
+          const value = encoder.encode(chunks[index]);
+          index += 1;
+          return { done: false, value };
+        },
+      };
+    },
+  };
+}
+
+function sseFrames(events: unknown[]): string {
+  return events.map((event) => `data: ${JSON.stringify(event)}\n\n`).join('');
+}
+
+afterEach(() => {
+  vi.unstubAllGlobals();
+});
+
+describe('ChatPanel -- history rehydration (SUC-005)', () => {
+  it('renders chatMessages from GET /api/projects/:id immediately, with no fetch of its own on mount', () => {
+    const fetchMock = vi.fn();
+    vi.stubGlobal('fetch', fetchMock);
+
+    const history: ChatMessageDTO[] = [
+      { id: 1, projectId: 7, role: 'assistant', content: 'Welcome back!', createdAt: '2026-07-14T00:00:00Z' },
+      { id: 2, projectId: 7, role: 'user', content: 'Make it warmer.', createdAt: '2026-07-14T00:01:00Z' },
+    ];
+    render(<ChatPanel projectId={7} initialMessages={history} />);
+
+    expect(screen.getByText('Welcome back!')).toBeInTheDocument();
+    expect(screen.getByText('Make it warmer.')).toBeInTheDocument();
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it('a project with prior conversation is never rendered blank', () => {
+    vi.stubGlobal('fetch', vi.fn());
+    const history: ChatMessageDTO[] = [
+      { id: 1, projectId: 7, role: 'assistant', content: 'Hi there', createdAt: '2026-07-14T00:00:00Z' },
+    ];
+    render(<ChatPanel projectId={7} initialMessages={history} />);
+    expect(within(screen.getByTestId('chat-messages')).getByText('Hi there')).toBeInTheDocument();
+  });
+
+  it('skips empty-content bookkeeping rows (tool-call rounds persist role: assistant, content: "")', () => {
+    vi.stubGlobal('fetch', vi.fn());
+    const history: ChatMessageDTO[] = [
+      { id: 1, projectId: 7, role: 'user', content: 'Generate an image', createdAt: '2026-07-14T00:00:00Z' },
+      { id: 2, projectId: 7, role: 'assistant', content: '', toolCalls: [{ name: 'generate_image' }], createdAt: '2026-07-14T00:00:01Z' },
+      { id: 3, projectId: 7, role: 'assistant', content: 'Done!', createdAt: '2026-07-14T00:00:02Z' },
+    ];
+    render(<ChatPanel projectId={7} initialMessages={history} />);
+    const bubbles = within(screen.getByTestId('chat-messages')).getAllByText(/./);
+    expect(bubbles.map((el) => el.textContent)).toEqual(['Generate an image', 'Done!']);
+  });
+});
+
+describe('ChatPanel -- send + streamed TurnEvent rendering', () => {
+  it('POSTs the message to /api/projects/:id/chat and renders the assistant reply from the message event', async () => {
+    const frames = sseFrames([
+      { type: 'status', status: 'started' },
+      { type: 'message', content: 'Iteration 4 coming up.' },
+      { type: 'status', status: 'completed' },
+    ]);
+    const fetchMock = vi.fn().mockResolvedValue({ ok: true, body: fakeStreamBody([frames]) });
+    vi.stubGlobal('fetch', fetchMock);
+
+    render(<ChatPanel projectId={7} initialMessages={[]} />);
+
+    fireEvent.change(screen.getByLabelText('Message Claude…'), { target: { value: 'Make it warmer' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Send' }));
+
+    // User bubble renders immediately (optimistic).
+    expect(screen.getByText('Make it warmer')).toBeInTheDocument();
+
+    await waitFor(() => {
+      expect(fetchMock).toHaveBeenCalledWith(
+        '/api/projects/7/chat',
+        expect.objectContaining({
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ message: 'Make it warmer', activeFace: 'front' }),
+        }),
+      );
+    });
+
+    await screen.findByText('Iteration 4 coming up.');
+  });
+
+  it('includes the activeFace prop in the POST body (Sprint 005 OOP change, 2026-07-15)', async () => {
+    const frames = sseFrames([{ type: 'message', content: 'ok' }]);
+    const fetchMock = vi.fn().mockResolvedValue({ ok: true, body: fakeStreamBody([frames]) });
+    vi.stubGlobal('fetch', fetchMock);
+
+    render(<ChatPanel projectId={7} initialMessages={[]} activeFace="back" />);
+    fireEvent.change(screen.getByLabelText('Message Claude…'), { target: { value: 'Add a QR code' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Send' }));
+
+    await waitFor(() => {
+      expect(fetchMock).toHaveBeenCalledWith(
+        '/api/projects/7/chat',
+        expect.objectContaining({
+          body: JSON.stringify({ message: 'Add a QR code', activeFace: 'back' }),
+        }),
+      );
+    });
+    await screen.findByText('ok');
+  });
+
+  it('shows lightweight status text for tool_call_started/finished (search_catalog)', async () => {
+    let resolveSecondRead: (value: { done: boolean; value?: Uint8Array }) => void;
+    const encoder = new TextEncoder();
+    const secondRead = new Promise<{ done: boolean; value?: Uint8Array }>((resolve) => {
+      resolveSecondRead = resolve;
+    });
+    let callCount = 0;
+    const body = {
+      getReader() {
+        return {
+          read: async () => {
+            callCount += 1;
+            if (callCount === 1) {
+              return {
+                done: false,
+                value: encoder.encode(
+                  sseFrames([{ type: 'tool_call_started', callId: '1', name: 'search_catalog', args: {} }]),
+                ),
+              };
+            }
+            return secondRead;
+          },
+        };
+      },
+    };
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue({ ok: true, body }));
+
+    render(<ChatPanel projectId={7} initialMessages={[]} />);
+    fireEvent.change(screen.getByLabelText('Message Claude…'), { target: { value: 'Find robot photos' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Send' }));
+
+    await screen.findByText('searching the library…');
+
+    resolveSecondRead!({ done: true, value: undefined });
+
+    // Let the stream's `finally` (sending -> false, statusText -> '') flush
+    // before the test ends, so no state update lands outside act().
+    await waitFor(() => expect(screen.queryByTestId('chat-status')).not.toBeInTheDocument());
+  });
+
+  it('clears the status text once the final message arrives', async () => {
+    const frames = sseFrames([
+      { type: 'tool_call_started', callId: '1', name: 'generate_image', args: {} },
+      { type: 'tool_call_finished', callId: '1', name: 'generate_image', args: {}, result: {}, isError: false },
+      { type: 'message', content: 'Here is the new iteration.' },
+    ]);
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue({ ok: true, body: fakeStreamBody([frames]) }));
+
+    render(<ChatPanel projectId={7} initialMessages={[]} />);
+    fireEvent.change(screen.getByLabelText('Message Claude…'), { target: { value: 'Draw a robot' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Send' }));
+
+    await screen.findByText('Here is the new iteration.');
+    expect(screen.queryByTestId('chat-status')).not.toBeInTheDocument();
+  });
+});
+
+describe('ChatPanel -- error surfacing (sprint success criteria: never silent)', () => {
+  it('renders an error TurnEvent visibly rather than swallowing it', async () => {
+    const frames = sseFrames([{ type: 'error', message: 'Turn for project 7 timed out waiting for a lock' }]);
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue({ ok: true, body: fakeStreamBody([frames]) }));
+
+    render(<ChatPanel projectId={7} initialMessages={[]} />);
+    fireEvent.change(screen.getByLabelText('Message Claude…'), { target: { value: 'Go' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Send' }));
+
+    const alert = await screen.findByRole('alert');
+    expect(alert).toHaveTextContent(/timed out waiting for a lock/i);
+  });
+
+  it('renders a network-level failure (rejected fetch) visibly too', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockRejectedValue(new Error('Failed to fetch')));
+
+    render(<ChatPanel projectId={7} initialMessages={[]} />);
+    fireEvent.change(screen.getByLabelText('Message Claude…'), { target: { value: 'Go' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Send' }));
+
+    const alert = await screen.findByRole('alert');
+    expect(alert).toHaveTextContent(/failed to fetch/i);
+  });
+});
+
+describe('ChatPanel -- never uses EventSource', () => {
+  it('does not construct an EventSource when sending a message (POST endpoint, GET-only API)', async () => {
+    const EventSourceSpy = vi.fn();
+    vi.stubGlobal('EventSource', EventSourceSpy);
+    const frames = sseFrames([{ type: 'message', content: 'ok' }]);
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue({ ok: true, body: fakeStreamBody([frames]) }));
+
+    render(<ChatPanel projectId={7} initialMessages={[]} />);
+    fireEvent.change(screen.getByLabelText('Message Claude…'), { target: { value: 'Go' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Send' }));
+
+    await screen.findByText('ok');
+    expect(EventSourceSpy).not.toHaveBeenCalled();
+  });
+});
+
+describe('ChatPanel -- forwards tool_call_finished events (ticket 010 seam for LibraryDrawer)', () => {
+  it('calls onToolCallFinished(name, result, isError) for every finished tool call, alongside its own status handling', async () => {
+    const matches = [{ ownerType: 'asset', ownerId: 100, matchedVia: ['vector'], path: 'assets/logo-robot.png' }];
+    const frames = sseFrames([
+      { type: 'tool_call_finished', callId: '1', name: 'search_catalog', args: { query: 'robots' }, result: matches, isError: false },
+      { type: 'message', content: 'Found some robots.' },
+    ]);
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue({ ok: true, body: fakeStreamBody([frames]) }));
+
+    const onToolCallFinished = vi.fn();
+    render(<ChatPanel projectId={7} initialMessages={[]} onToolCallFinished={onToolCallFinished} />);
+    fireEvent.change(screen.getByLabelText('Message Claude…'), { target: { value: 'show me the robots' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Send' }));
+
+    await screen.findByText('Found some robots.');
+    expect(onToolCallFinished).toHaveBeenCalledWith('search_catalog', matches, false);
+  });
+
+  it('is a no-op when the prop is omitted (every existing caller is unaffected)', async () => {
+    const frames = sseFrames([
+      { type: 'tool_call_finished', callId: '1', name: 'search_catalog', args: {}, result: [], isError: false },
+      { type: 'message', content: 'ok' },
+    ]);
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue({ ok: true, body: fakeStreamBody([frames]) }));
+
+    render(<ChatPanel projectId={7} initialMessages={[]} />);
+    fireEvent.change(screen.getByLabelText('Message Claude…'), { target: { value: 'go' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Send' }));
+
+    await screen.findByText('ok');
+  });
+});
+
+describe('ChatPanel -- non-admin authenticated user can start and continue a turn', () => {
+  it('sends a first message, then a follow-up, both via the same POST endpoint (role-agnostic client)', async () => {
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce({ ok: true, body: fakeStreamBody([sseFrames([{ type: 'message', content: 'first reply' }])]) })
+      .mockResolvedValueOnce({ ok: true, body: fakeStreamBody([sseFrames([{ type: 'message', content: 'second reply' }])]) });
+    vi.stubGlobal('fetch', fetchMock);
+
+    render(<ChatPanel projectId={7} initialMessages={[]} />);
+
+    fireEvent.change(screen.getByLabelText('Message Claude…'), { target: { value: 'Start the project' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Send' }));
+    await screen.findByText('first reply');
+
+    fireEvent.change(screen.getByLabelText('Message Claude…'), { target: { value: 'Now make it bigger' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Send' }));
+    await screen.findByText('second reply');
+
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+  });
+});

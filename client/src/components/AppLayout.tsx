@@ -14,7 +14,7 @@ interface NavItem {
 }
 
 const MAIN_NAV: NavItem[] = [
-  { to: '/', label: 'Home', end: true },
+  { to: '/', label: 'Projects', end: true },
 ];
 
 const ADMIN_NAV: NavItem[] = [
@@ -51,11 +51,15 @@ export default function AppLayout() {
   const location = useLocation();
 
   const isAdminSection = location.pathname.startsWith('/admin/');
+  // The two-pane app (project detail, postcard editor) is h-screen-based
+  // with its own internal scroll regions and an absolute-positioned asset
+  // drawer, so it needs a zero-padding, non-scrolling <main> ancestor —
+  // unlike every other route, which keeps the padded/scrolling default.
+  // See architecture-update.md Design Rationale R2.
+  const isProjectsSection = location.pathname.startsWith('/projects/');
 
-  const [menuOpen, setMenuOpen] = useState(false);
   const [dropdownOpen, setDropdownOpen] = useState(false);
   const [appName, setAppName] = useState(import.meta.env.VITE_APP_NAME ?? 'Flyerbot');
-  const menuRef = useRef<HTMLDivElement>(null);
   const dropdownRef = useRef<HTMLDivElement>(null);
 
   // Fetch app name from health endpoint
@@ -69,9 +73,6 @@ export default function AppLayout() {
   // Close menus on outside click
   useEffect(() => {
     function handleClick(e: MouseEvent) {
-      if (menuRef.current && !menuRef.current.contains(e.target as Node)) {
-        setMenuOpen(false);
-      }
       if (dropdownRef.current && !dropdownRef.current.contains(e.target as Node)) {
         setDropdownOpen(false);
       }
@@ -98,10 +99,6 @@ export default function AppLayout() {
   const isAdmin = hasAdminAccess(role);
   const avatarInitial = displayName.charAt(0).toUpperCase();
 
-  function closeMenu() {
-    setMenuOpen(false);
-  }
-
   async function handleLogout() {
     setDropdownOpen(false);
     await logout();
@@ -116,61 +113,22 @@ export default function AppLayout() {
 
   const primaryNav = isAdminSection ? ADMIN_NAV : MAIN_NAV;
 
-  const navLinkClass = ({ isActive }: { isActive: boolean }) =>
-    `block px-4 py-1.5 text-sm ${
-      isActive ? 'bg-slate-100 font-semibold text-slate-900' : 'text-slate-600 hover:bg-slate-50'
+  const navTabClass = ({ isActive }: { isActive: boolean }) =>
+    `whitespace-nowrap border-b-2 px-3 py-2 text-sm ${
+      isActive
+        ? 'border-indigo-600 font-semibold text-slate-900'
+        : 'border-transparent text-slate-600 hover:border-slate-300 hover:text-slate-900'
     }`;
 
-  return (
-    <div className="flex min-h-screen flex-col bg-slate-50 text-slate-800">
-      {/* Top bar: hamburger menu (replaces the old sidebar) + account menu. */}
-      <header className="flex flex-shrink-0 items-center gap-3 border-b border-slate-200 bg-white px-4 py-2">
-        <div className="relative" ref={menuRef}>
-          <button
-            type="button"
-            aria-label="Menu"
-            aria-expanded={menuOpen}
-            onClick={() => setMenuOpen((v) => !v)}
-            className="rounded border border-slate-300 px-3 py-1.5 text-sm text-slate-600 hover:bg-slate-50"
-          >
-            &#9776;
-          </button>
-          {menuOpen && (
-            <nav
-              aria-label="App menu"
-              className="absolute left-0 top-full z-40 mt-1 w-52 rounded border border-slate-200 bg-white py-1 shadow-lg"
-            >
-              {isAdminSection && (
-                <NavLink to="/" onClick={closeMenu} className={navLinkClass}>
-                  &larr; Back to App
-                </NavLink>
-              )}
-              {primaryNav.map((item) => (
-                <NavLink
-                  key={item.to}
-                  to={item.to}
-                  end={item.end}
-                  onClick={closeMenu}
-                  className={navLinkClass}
-                >
-                  {item.label}
-                </NavLink>
-              ))}
-              <div className="my-1 border-t border-slate-100" />
-              {BOTTOM_NAV.map((item) => (
-                <NavLink key={item.to} to={item.to} onClick={closeMenu} className={navLinkClass}>
-                  {item.label}
-                </NavLink>
-              ))}
-              {isAdmin && !isAdminSection && (
-                <NavLink to="/admin/users" onClick={closeMenu} className={navLinkClass}>
-                  Admin
-                </NavLink>
-              )}
-            </nav>
-          )}
-        </div>
+  const mainClassName = isProjectsSection
+    ? 'relative min-w-0 flex-1 overflow-hidden'
+    : 'min-w-0 flex-1 overflow-auto p-6';
 
+  return (
+    <div className="flex h-screen flex-col overflow-hidden bg-slate-50 text-slate-800">
+      {/* Top bar: app name + account menu. Primary nav is the horizontal
+          tab bar below (replaces the old hamburger dropdown). */}
+      <header className="flex flex-shrink-0 items-center gap-3 border-b border-slate-200 bg-white px-4 py-2">
         <span className="font-semibold text-slate-700">{isAdminSection ? 'Admin' : appName}</span>
 
         <div className="flex-1" />
@@ -214,6 +172,18 @@ export default function AppLayout() {
               >
                 Account
               </button>
+              {isAdmin && (
+                <button
+                  type="button"
+                  className="block w-full border-t border-slate-100 px-3.5 py-2 text-left text-sm text-slate-700 hover:bg-slate-50"
+                  onClick={() => {
+                    setDropdownOpen(false);
+                    navigate('/admin/users');
+                  }}
+                >
+                  Admin console
+                </button>
+              )}
               {user.impersonating ? (
                 <button
                   type="button"
@@ -236,6 +206,34 @@ export default function AppLayout() {
         </div>
       </header>
 
+      {/* Horizontal tab nav, directly below the header (replaces the old
+          hamburger menu). Admin section swaps in the admin tabs. */}
+      <nav
+        aria-label="Primary"
+        className="flex flex-shrink-0 items-center gap-1 overflow-x-auto border-b border-slate-200 bg-white px-4"
+      >
+        {isAdminSection && (
+          <NavLink to="/" className={navTabClass}>
+            &larr; Back to App
+          </NavLink>
+        )}
+        {primaryNav.map((item) => (
+          <NavLink key={item.to} to={item.to} end={item.end} className={navTabClass}>
+            {item.label}
+          </NavLink>
+        ))}
+        {BOTTOM_NAV.map((item) => (
+          <NavLink key={item.to} to={item.to} className={navTabClass}>
+            {item.label}
+          </NavLink>
+        ))}
+        {isAdmin && !isAdminSection && (
+          <NavLink to="/admin/users" className={navTabClass}>
+            Admin
+          </NavLink>
+        )}
+      </nav>
+
       {user.impersonating && user.realAdmin && (
         <div className="flex flex-shrink-0 items-center gap-2 bg-amber-500 px-4 py-2 text-sm font-semibold text-stone-900">
           <span>
@@ -244,7 +242,7 @@ export default function AppLayout() {
         </div>
       )}
 
-      <main className="min-w-0 flex-1 overflow-auto p-6">
+      <main className={mainClassName}>
         <Outlet />
       </main>
     </div>

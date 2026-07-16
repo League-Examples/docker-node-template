@@ -26,11 +26,24 @@ import {
   createProject,
   createIteration,
   createAgentPage,
+  addReference,
+  removeReference,
+  setIterationState,
+  removeIteration,
+  removeProject,
+  searchCatalog,
   registerCatalogTools,
   VersionConflictError,
 } from '../../server/src/agent-mcp/catalogTools';
 import { createWorkspaceMcpServer } from '../../server/src/agent-mcp/server';
 import { acquireLock, releaseLock, LockConflictError } from '../../server/src/agent-mcp/locks';
+import {
+  indexAssetDescription,
+  indexKnowledgeEntry,
+  removeFromKeywordIndex,
+  __resetCapabilityCacheForTests,
+} from '../../server/src/services/search';
+import { embedText, EMBEDDING_MODEL } from '../../server/src/services/description';
 import type { VersioningRecorder } from '../../server/src/agent-mcp/fsTools';
 
 const marker = `t003cat${Date.now()}`;
@@ -48,6 +61,7 @@ let assetsDirPath: string;
 const cleanup = {
   embeddingIds: [] as number[],
   knowledgeCorrectionIds: [] as number[],
+  referenceIds: [] as number[],
   assetIds: [] as number[],
   iterationIds: [] as number[],
   knowledgeEntryIds: [] as number[],
@@ -101,6 +115,8 @@ beforeAll(async () => {
 afterAll(async () => {
   await prisma.embedding.deleteMany({ where: { id: { in: cleanup.embeddingIds } } });
   await prisma.knowledgeCorrection.deleteMany({ where: { id: { in: cleanup.knowledgeCorrectionIds } } });
+  await prisma.reference.deleteMany({ where: { id: { in: cleanup.referenceIds } } });
+  await prisma.assetDescription.deleteMany({ where: { assetId: { in: cleanup.assetIds } } });
   await prisma.asset.deleteMany({ where: { id: { in: cleanup.assetIds } } });
   await prisma.iteration.deleteMany({ where: { id: { in: cleanup.iterationIds } } });
   await prisma.knowledgeEntry.deleteMany({ where: { id: { in: cleanup.knowledgeEntryIds } } });
@@ -145,7 +161,7 @@ async function makeProject(title: string) {
 }
 
 describe('registerCatalogTools / createWorkspaceMcpServer -- tool surface', () => {
-  it('registers exactly the seven catalog tools alongside the four fs tools -- no other tools', async () => {
+  it('registers exactly the thirteen catalog tools (seven from ticket 003 + four from ticket 005-002 + remove_iteration/remove_project OOP follow-ups) alongside the four fs tools -- no other tools', async () => {
     const server = createWorkspaceMcpServer();
     const names = Object.keys((server as any)._registeredTools ?? {}).sort();
     expect(names).toEqual(
@@ -161,6 +177,12 @@ describe('registerCatalogTools / createWorkspaceMcpServer -- tool surface', () =
         'read_file',
         'resolve_correction',
         'stat',
+        'add_reference',
+        'remove_reference',
+        'set_iteration_state',
+        'remove_iteration',
+        'remove_project',
+        'search_catalog',
       ].sort()
     );
   });
@@ -179,6 +201,12 @@ describe('registerCatalogTools / createWorkspaceMcpServer -- tool surface', () =
         'create_project',
         'propose_correction',
         'resolve_correction',
+        'add_reference',
+        'remove_reference',
+        'set_iteration_state',
+        'remove_iteration',
+        'remove_project',
+        'search_catalog',
       ].sort()
     );
   });
@@ -500,15 +528,15 @@ describe('create_agent_page', () => {
       { projectId: project.id, filename: 'postcard.html', content: '<html>hello</html>', contentType: 'text/html' },
       { versioning }
     );
-    cleanup.iterationIds.push(result.iteration.id);
+    cleanup.iterationIds.push(result.iteration!.id);
 
     expect(result.path).toBe(`projects/${project.id}/outputs/postcard.html`);
     const written = await fs.readFile(resolveWorkspacePath(result.path), 'utf8');
     expect(written).toBe('<html>hello</html>');
 
-    expect(result.iteration.imagePath).toBe(result.path);
-    expect(result.iteration.promptUsed).toBe('agent-page:postcard.html');
-    expect(result.iteration.modelParams).toMatchObject({ kind: 'agent-page', filename: 'postcard.html' });
+    expect(result.iteration!.imagePath).toBe(result.path);
+    expect(result.iteration!.promptUsed).toBe('agent-page:postcard.html');
+    expect(result.iteration!.modelParams).toMatchObject({ kind: 'agent-page', filename: 'postcard.html' });
     expect(versioning.calls).toHaveLength(1);
   });
 
@@ -531,11 +559,565 @@ describe('create_agent_page', () => {
       { projectId: project.id, filename: 'page.html', content: 'x' },
       { versioning: spyVersioning() }
     );
-    cleanup.iterationIds.push(result.iteration.id);
+    cleanup.iterationIds.push(result.iteration!.id);
 
     const count = await prisma.lock.count({
       where: { resourceType: 'directory', resourceKey: `projects/${project.id}/outputs/page.html` },
     });
     expect(count).toBe(0); // released after completion
+  });
+
+  it('recordIteration: false writes the file and still locks/versions, but records no Iteration row (OOP follow-up, 2026-07-15)', async () => {
+    const project = await makeProject(`${marker}-agent-page-no-iteration-project`);
+    const versioning = spyVersioning();
+
+    const result = await createAgentPage(
+      {
+        projectId: project.id,
+        filename: 'postcard-content.json',
+        content: '{"front_image":"x"}',
+        contentType: 'application/json',
+        recordIteration: false,
+      },
+      { versioning }
+    );
+
+    expect(result.iteration).toBeNull();
+    expect(result.path).toBe(`projects/${project.id}/outputs/postcard-content.json`);
+    const written = await fs.readFile(resolveWorkspacePath(result.path), 'utf8');
+    expect(written).toBe('{"front_image":"x"}');
+    expect(versioning.calls).toHaveLength(1);
+
+    const count = await prisma.iteration.count({ where: { projectId: project.id } });
+    expect(count).toBe(0);
+  });
+
+  it('recordIteration defaults to true when omitted, preserving the MCP tool contract for agents', async () => {
+    const project = await makeProject(`${marker}-agent-page-default-record-project`);
+    const result = await createAgentPage(
+      { projectId: project.id, filename: 'page.html', content: 'x' },
+      { versioning: spyVersioning() }
+    );
+    cleanup.iterationIds.push(result.iteration!.id);
+
+    expect(result.iteration).not.toBeNull();
+    expect(result.iteration!.promptUsed).toBe('agent-page:page.html');
+  });
+});
+
+describe('remove_iteration', () => {
+  it('deletes the Iteration row and its backing file', async () => {
+    const project = await makeProject(`${marker}-remove-iteration-project`);
+    const relPath = `${marker}/agent-mcp-remove-iteration.png`;
+    await fs.mkdir(path.dirname(resolveWorkspacePath(relPath)), { recursive: true });
+    await fs.writeFile(resolveWorkspacePath(relPath), 'fake-image-bytes');
+
+    const iteration = await createIteration(
+      { projectId: project.id, imagePath: relPath, promptUsed: 'p' },
+      { versioning: spyVersioning() }
+    );
+
+    const result = await removeIteration({ iterationId: iteration.id }, { versioning: spyVersioning() });
+    expect(result).toEqual({ id: iteration.id, deleted: true });
+
+    const gone = await prisma.iteration.findUnique({ where: { id: iteration.id } });
+    expect(gone).toBeNull();
+
+    await expect(fs.access(resolveWorkspacePath(relPath))).rejects.toThrow();
+  });
+
+  it('does not throw when the backing file is already missing', async () => {
+    const project = await makeProject(`${marker}-remove-iteration-missing-file-project`);
+    const iteration = await createIteration(
+      { projectId: project.id, imagePath: `${marker}/does-not-exist.png`, promptUsed: 'p' },
+      { versioning: spyVersioning() }
+    );
+
+    await expect(removeIteration({ iterationId: iteration.id }, { versioning: spyVersioning() })).resolves.toEqual({
+      id: iteration.id,
+      deleted: true,
+    });
+  });
+
+  it('rejects an id with no matching Iteration', async () => {
+    await expect(
+      removeIteration({ iterationId: -1 }, { versioning: spyVersioning() })
+    ).rejects.toThrow(/no Iteration with id/);
+  });
+
+  it('acquires and releases a Lock row around the delete', async () => {
+    const project = await makeProject(`${marker}-remove-iteration-lock-project`);
+    const iteration = await createIteration(
+      { projectId: project.id, imagePath: `${marker}/lockcheck.png`, promptUsed: 'p' },
+      { versioning: spyVersioning() }
+    );
+
+    await removeIteration({ iterationId: iteration.id }, { versioning: spyVersioning() });
+
+    const count = await prisma.lock.count({
+      where: { resourceType: 'directory', resourceKey: `projects/${project.id}` },
+    });
+    expect(count).toBe(0); // released after completion
+  });
+});
+
+describe('remove_project', () => {
+  async function makeAssetAndReference(project: { id: number }, pathSuffix: string) {
+    const collection = await prisma.collection.create({
+      data: { directoryId: assetsDirId, name: `${marker}-remove-project-collection`, kind: 'stock-art' },
+    });
+    cleanup.collectionIds.push(collection.id);
+    const asset = await prisma.asset.create({
+      data: { collectionId: collection.id, path: `${marker}/assets/${pathSuffix}`, hash: `hash-${pathSuffix}`, mtime: new Date() },
+    });
+    cleanup.assetIds.push(asset.id);
+    const reference = await prisma.reference.create({ data: { projectId: project.id, assetId: asset.id, role: 'style' } });
+    return reference;
+  }
+
+  it('deletes the Project row and its dependent Iteration/Reference/ChatMessage rows', async () => {
+    const project = await makeProject(`${marker}-remove-project`);
+    const iteration = await createIteration(
+      { projectId: project.id, imagePath: `${marker}/remove-project-iter.png`, promptUsed: 'p' },
+      { versioning: spyVersioning() }
+    );
+    const reference = await makeAssetAndReference(project, 'remove-project-ref.png');
+    const chatMessage = await prisma.chatMessage.create({
+      data: { projectId: project.id, role: 'user', content: 'hello' },
+    });
+
+    const versioning = spyVersioning();
+    const result = await removeProject({ projectId: project.id }, { versioning });
+    expect(result).toEqual({ id: project.id, deleted: true });
+    expect(versioning.calls).toHaveLength(1);
+
+    expect(await prisma.project.findUnique({ where: { id: project.id } })).toBeNull();
+    expect(await prisma.iteration.findUnique({ where: { id: iteration.id } })).toBeNull();
+    expect(await prisma.reference.findUnique({ where: { id: reference.id } })).toBeNull();
+    expect(await prisma.chatMessage.findUnique({ where: { id: chatMessage.id } })).toBeNull();
+  });
+
+  it('best-effort removes the project workspace directory', async () => {
+    const project = await makeProject(`${marker}-remove-project-dir`);
+    const dirPath = resolveWorkspacePath(`projects/${project.id}`);
+    await fs.mkdir(dirPath, { recursive: true });
+    await fs.writeFile(path.join(dirPath, 'marker.txt'), 'x');
+
+    await removeProject({ projectId: project.id }, { versioning: spyVersioning() });
+
+    await expect(fs.access(dirPath)).rejects.toThrow();
+  });
+
+  it('rejects an id with no matching Project', async () => {
+    await expect(removeProject({ projectId: -1 }, { versioning: spyVersioning() })).rejects.toThrow(
+      /no Project with id/
+    );
+  });
+
+  it('acquires and releases a Lock row around the delete', async () => {
+    const project = await makeProject(`${marker}-remove-project-lock`);
+
+    await removeProject({ projectId: project.id }, { versioning: spyVersioning() });
+
+    const count = await prisma.lock.count({
+      where: { resourceType: 'directory', resourceKey: `projects/${project.id}` },
+    });
+    expect(count).toBe(0); // released after completion
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Ticket 005-002: add_reference / remove_reference / set_iteration_state /
+// search_catalog.
+// ---------------------------------------------------------------------------
+
+describe('add_reference / remove_reference', () => {
+  async function makeAsset(pathSuffix: string) {
+    const asset = await addAssetToCollection(
+      {
+        directoryId: assetsDirId,
+        collectionName: `${marker}-ref-collection`,
+        path: `${marker}/assets/${pathSuffix}`,
+        hash: `hash-${pathSuffix}`,
+      },
+      { versioning: spyVersioning() }
+    );
+    cleanup.assetIds.push(asset.id);
+    cleanup.collectionIds.push(asset.collectionId);
+    return asset;
+  }
+
+  it('creates a Reference row scoped to a project with a documented role value', async () => {
+    const project = await makeProject(`${marker}-ref-project`);
+    const asset = await makeAsset('ref-one.png');
+    const versioning = spyVersioning();
+
+    const reference = await addReference({ projectId: project.id, assetId: asset.id, role: 'style' }, { versioning });
+    cleanup.referenceIds.push(reference.id);
+
+    expect(reference.projectId).toBe(project.id);
+    expect(reference.assetId).toBe(asset.id);
+    expect(reference.role).toBe('style');
+    expect(versioning.calls).toHaveLength(1);
+
+    const persisted = await prisma.reference.findUnique({ where: { id: reference.id } });
+    expect(persisted).not.toBeNull();
+    expect(persisted!.role).toBe('style');
+  });
+
+  it('accepts each documented role value (style | composition | template)', async () => {
+    const project = await makeProject(`${marker}-ref-roles-project`);
+
+    for (const role of ['style', 'composition', 'template'] as const) {
+      const asset = await makeAsset(`ref-role-${role}.png`);
+      const reference = await addReference({ projectId: project.id, assetId: asset.id, role }, { versioning: spyVersioning() });
+      cleanup.referenceIds.push(reference.id);
+      expect(reference.role).toBe(role);
+    }
+  });
+
+  it('acquires and releases a Lock row around the create, keyed by projects/<id>', async () => {
+    const project = await makeProject(`${marker}-ref-lock-project`);
+    const asset = await makeAsset('ref-lock.png');
+
+    const reference = await addReference(
+      { projectId: project.id, assetId: asset.id, role: 'composition' },
+      { versioning: spyVersioning() }
+    );
+    cleanup.referenceIds.push(reference.id);
+
+    const count = await prisma.lock.count({ where: { resourceType: 'directory', resourceKey: `projects/${project.id}` } });
+    expect(count).toBe(0); // released after completion
+  });
+
+  it('rejects an unknown projectId', async () => {
+    const asset = await makeAsset('ref-badproject.png');
+    await expect(
+      addReference({ projectId: -1, assetId: asset.id, role: 'template' }, { versioning: spyVersioning() })
+    ).rejects.toThrow(/no Project/);
+  });
+
+  it('rejects an unknown assetId', async () => {
+    const project = await makeProject(`${marker}-ref-badasset-project`);
+    await expect(
+      addReference({ projectId: project.id, assetId: -1, role: 'template' }, { versioning: spyVersioning() })
+    ).rejects.toThrow(/no Asset/);
+  });
+
+  it('remove_reference deletes exactly the targeted row', async () => {
+    const project = await makeProject(`${marker}-ref-remove-project`);
+    const assetOne = await makeAsset('ref-remove-one.png');
+    const assetTwo = await makeAsset('ref-remove-two.png');
+
+    const refOne = await addReference({ projectId: project.id, assetId: assetOne.id, role: 'style' }, { versioning: spyVersioning() });
+    const refTwo = await addReference({ projectId: project.id, assetId: assetTwo.id, role: 'template' }, { versioning: spyVersioning() });
+    cleanup.referenceIds.push(refTwo.id);
+
+    const versioning = spyVersioning();
+    const result = await removeReference({ referenceId: refOne.id }, { versioning });
+
+    expect(result).toEqual({ id: refOne.id, deleted: true });
+    expect(versioning.calls).toHaveLength(1);
+
+    const gone = await prisma.reference.findUnique({ where: { id: refOne.id } });
+    expect(gone).toBeNull();
+    const stillThere = await prisma.reference.findUnique({ where: { id: refTwo.id } });
+    expect(stillThere).not.toBeNull();
+  });
+
+  it('rejects removing an unknown referenceId', async () => {
+    await expect(removeReference({ referenceId: -1 }, { versioning: spyVersioning() })).rejects.toThrow(/no Reference/);
+  });
+});
+
+describe('set_iteration_state', () => {
+  it('accepted: true clears accepted on other iterations in the same project only -- a different project is unaffected', async () => {
+    const projectA = await makeProject(`${marker}-state-project-a`);
+    const projectB = await makeProject(`${marker}-state-project-b`);
+
+    const iterA1 = await createIteration({ projectId: projectA.id, imagePath: 'a1.png', promptUsed: 'p' }, { versioning: spyVersioning() });
+    const iterA2 = await createIteration({ projectId: projectA.id, imagePath: 'a2.png', promptUsed: 'p' }, { versioning: spyVersioning() });
+    const iterB1 = await createIteration({ projectId: projectB.id, imagePath: 'b1.png', promptUsed: 'p' }, { versioning: spyVersioning() });
+    cleanup.iterationIds.push(iterA1.id, iterA2.id, iterB1.id);
+
+    await setIterationState({ iterationId: iterA1.id, accepted: true }, { versioning: spyVersioning() });
+    await setIterationState({ iterationId: iterB1.id, accepted: true }, { versioning: spyVersioning() });
+
+    const updated = await setIterationState({ iterationId: iterA2.id, accepted: true }, { versioning: spyVersioning() });
+    expect(updated.accepted).toBe(true);
+
+    const refreshedA1 = await prisma.iteration.findUnique({ where: { id: iterA1.id } });
+    const refreshedB1 = await prisma.iteration.findUnique({ where: { id: iterB1.id } });
+    expect(refreshedA1!.accepted).toBe(false); // cleared -- same project as the new accepted iteration
+    expect(refreshedB1!.accepted).toBe(true); // untouched -- different project
+  });
+
+  it("role: 'front' is stream membership, not exclusive (Sprint 005 OOP change, 2026-07-15) -- does not clear any other iteration's role, including a prior 'front' holder", async () => {
+    const project = await makeProject(`${marker}-state-role-project`);
+    const iter1 = await createIteration({ projectId: project.id, imagePath: 'r1.png', promptUsed: 'p' }, { versioning: spyVersioning() });
+    const iter2 = await createIteration({ projectId: project.id, imagePath: 'r2.png', promptUsed: 'p' }, { versioning: spyVersioning() });
+    const iter3 = await createIteration({ projectId: project.id, imagePath: 'r3.png', promptUsed: 'p' }, { versioning: spyVersioning() });
+    cleanup.iterationIds.push(iter1.id, iter2.id, iter3.id);
+
+    await setIterationState({ iterationId: iter1.id, role: 'front' }, { versioning: spyVersioning() });
+    await setIterationState({ iterationId: iter3.id, role: 'back' }, { versioning: spyVersioning() });
+
+    const updated = await setIterationState({ iterationId: iter2.id, role: 'front' }, { versioning: spyVersioning() });
+    expect(updated.role).toBe('front');
+
+    const refreshed1 = await prisma.iteration.findUnique({ where: { id: iter1.id } });
+    const refreshed3 = await prisma.iteration.findUnique({ where: { id: iter3.id } });
+    // Both iter1 and iter2 now share role: 'front' (the whole front
+    // stream) -- setting one never disturbs the other, or 'back'.
+    expect(refreshed1!.role).toBe('front');
+    expect(refreshed3!.role).toBe('back');
+  });
+
+  it('acquires and releases a Lock row around the transaction', async () => {
+    const project = await makeProject(`${marker}-state-lock-project`);
+    const iter = await createIteration({ projectId: project.id, imagePath: 'lock.png', promptUsed: 'p' }, { versioning: spyVersioning() });
+    cleanup.iterationIds.push(iter.id);
+
+    await setIterationState({ iterationId: iter.id, accepted: true }, { versioning: spyVersioning() });
+
+    const count = await prisma.lock.count({ where: { resourceType: 'directory', resourceKey: `projects/${project.id}` } });
+    expect(count).toBe(0); // released after completion
+  });
+
+  it('rejects a call with neither accepted nor role', async () => {
+    const project = await makeProject(`${marker}-state-empty-project`);
+    const iter = await createIteration({ projectId: project.id, imagePath: 'empty.png', promptUsed: 'p' }, { versioning: spyVersioning() });
+    cleanup.iterationIds.push(iter.id);
+
+    await expect(setIterationState({ iterationId: iter.id }, { versioning: spyVersioning() })).rejects.toThrow(/at least one/);
+  });
+
+  it('rejects an unknown iterationId', async () => {
+    await expect(setIterationState({ iterationId: -1, accepted: true }, { versioning: spyVersioning() })).rejects.toThrow(
+      /no Iteration/
+    );
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Sprint 005 OOP change, 2026-07-15: `role` is now STREAM MEMBERSHIP (many
+// Iterations may share 'front'/'back'), and `accepted` exclusivity is
+// per-(projectId, role) instead of project-wide -- accepting a front-stream
+// Iteration must never clear an already-accepted back-stream Iteration, and
+// setting `role` must never touch any other Iteration's role.
+// ---------------------------------------------------------------------------
+
+describe('set_iteration_state -- Sprint 005 stream-membership model', () => {
+  it('role is not exclusive -- many Iterations can share role: "front" at once', async () => {
+    const project = await makeProject(`${marker}-stream-role-project`);
+    const iter1 = await createIteration({ projectId: project.id, imagePath: 's1.png', promptUsed: 'p' }, { versioning: spyVersioning() });
+    const iter2 = await createIteration({ projectId: project.id, imagePath: 's2.png', promptUsed: 'p' }, { versioning: spyVersioning() });
+    cleanup.iterationIds.push(iter1.id, iter2.id);
+
+    await setIterationState({ iterationId: iter1.id, role: 'front' }, { versioning: spyVersioning() });
+    const updated = await setIterationState({ iterationId: iter2.id, role: 'front' }, { versioning: spyVersioning() });
+    expect(updated.role).toBe('front');
+
+    // Both remain 'front' -- setting role never clears any other Iteration.
+    const refreshed1 = await prisma.iteration.findUnique({ where: { id: iter1.id } });
+    expect(refreshed1!.role).toBe('front');
+  });
+
+  it('accepting a front-stream Iteration clears accepted only from OTHER front-stream Iterations, never the back stream', async () => {
+    const project = await makeProject(`${marker}-stream-accept-project`);
+    const front1 = await createIteration({ projectId: project.id, imagePath: 'sf1.png', promptUsed: 'p' }, { versioning: spyVersioning() });
+    const front2 = await createIteration({ projectId: project.id, imagePath: 'sf2.png', promptUsed: 'p' }, { versioning: spyVersioning() });
+    const back1 = await createIteration({ projectId: project.id, imagePath: 'sb1.png', promptUsed: 'p' }, { versioning: spyVersioning() });
+    cleanup.iterationIds.push(front1.id, front2.id, back1.id);
+
+    await setIterationState({ iterationId: front1.id, role: 'front' }, { versioning: spyVersioning() });
+    await setIterationState({ iterationId: front2.id, role: 'front' }, { versioning: spyVersioning() });
+    await setIterationState({ iterationId: back1.id, role: 'back' }, { versioning: spyVersioning() });
+
+    await setIterationState({ iterationId: front1.id, accepted: true }, { versioning: spyVersioning() });
+    await setIterationState({ iterationId: back1.id, accepted: true }, { versioning: spyVersioning() });
+
+    // Accepting front2 clears front1's accepted (same stream) but must
+    // leave back1's accepted untouched (different stream, same project).
+    const updated = await setIterationState({ iterationId: front2.id, accepted: true }, { versioning: spyVersioning() });
+    expect(updated.accepted).toBe(true);
+
+    const refreshedFront1 = await prisma.iteration.findUnique({ where: { id: front1.id } });
+    const refreshedBack1 = await prisma.iteration.findUnique({ where: { id: back1.id } });
+    expect(refreshedFront1!.accepted).toBe(false); // same stream -- cleared
+    expect(refreshedBack1!.accepted).toBe(true); // different stream -- untouched
+  });
+
+  it('accepting while simultaneously (re)tagging role scopes the clear to the NEW role, not the old one', async () => {
+    const project = await makeProject(`${marker}-stream-retag-project`);
+    const existingFront = await createIteration({ projectId: project.id, imagePath: 'rf1.png', promptUsed: 'p' }, { versioning: spyVersioning() });
+    const moving = await createIteration({ projectId: project.id, imagePath: 'rf2.png', promptUsed: 'p' }, { versioning: spyVersioning() });
+    cleanup.iterationIds.push(existingFront.id, moving.id);
+
+    await setIterationState({ iterationId: existingFront.id, role: 'front', accepted: true }, { versioning: spyVersioning() });
+    // `moving` starts with no role/accepted, then is tagged into 'front'
+    // AND accepted in the same call -- it should clear existingFront's
+    // accepted (the role it's joining), not whatever role it held before.
+    const updated = await setIterationState(
+      { iterationId: moving.id, role: 'front', accepted: true },
+      { versioning: spyVersioning() }
+    );
+    expect(updated.role).toBe('front');
+    expect(updated.accepted).toBe(true);
+
+    const refreshed = await prisma.iteration.findUnique({ where: { id: existingFront.id } });
+    expect(refreshed!.accepted).toBe(false);
+  });
+});
+
+describe('create_iteration -- role stream-membership tagging (Sprint 005 OOP change, 2026-07-15)', () => {
+  it('creates an Iteration tagged with the supplied role', async () => {
+    const project = await makeProject(`${marker}-create-role-project`);
+    const iter = await createIteration(
+      { projectId: project.id, imagePath: 'tagged.png', promptUsed: 'p', role: 'back' },
+      { versioning: spyVersioning() }
+    );
+    cleanup.iterationIds.push(iter.id);
+    expect(iter.role).toBe('back');
+
+    const persisted = await prisma.iteration.findUnique({ where: { id: iter.id } });
+    expect(persisted!.role).toBe('back');
+  });
+
+  it('defaults role to null when omitted (pre-existing callers are unaffected)', async () => {
+    const project = await makeProject(`${marker}-create-norole-project`);
+    const iter = await createIteration({ projectId: project.id, imagePath: 'untagged.png', promptUsed: 'p' }, { versioning: spyVersioning() });
+    cleanup.iterationIds.push(iter.id);
+    expect(iter.role).toBeNull();
+  });
+});
+
+describe('search_catalog', () => {
+  // This file's real, 64-dimension embedText vectors share the process-wide
+  // `VecEmbeddings` mirror table (search.ts's ensureVecTable, fixed
+  // dimension per process) with search.test.ts's hand-seeded 4-dimension
+  // fixtures. Forcing the brute-force fallback here sidesteps that
+  // dimension collision entirely -- same pattern
+  // description-retry-and-search.test.ts already uses for this exact
+  // reason (see that file's header comment).
+  const originalForceVectorFallbackEnv = process.env.FORCE_VECTOR_FALLBACK;
+  const searchAssetIds: number[] = [];
+  const searchEmbeddingIds: number[] = [];
+  const searchEntryIds: number[] = [];
+
+  beforeAll(() => {
+    process.env.FORCE_VECTOR_FALLBACK = '1';
+    __resetCapabilityCacheForTests();
+  });
+
+  afterAll(() => {
+    if (originalForceVectorFallbackEnv === undefined) {
+      delete process.env.FORCE_VECTOR_FALLBACK;
+    } else {
+      process.env.FORCE_VECTOR_FALLBACK = originalForceVectorFallbackEnv;
+    }
+    __resetCapabilityCacheForTests();
+  });
+
+  afterEach(async () => {
+    for (const id of searchAssetIds.splice(0)) {
+      removeFromKeywordIndex('asset', id);
+    }
+    for (const id of searchEntryIds.splice(0)) {
+      removeFromKeywordIndex('knowledge_entry', id);
+    }
+    const embeddingIdsToClear = searchEmbeddingIds.splice(0);
+    if (embeddingIdsToClear.length) {
+      await prisma.embedding.deleteMany({ where: { id: { in: embeddingIdsToClear } } });
+    }
+  });
+
+  async function seedAssetWithDescriptionAndEmbedding(pathSuffix: string, descriptionText: string) {
+    const asset = await addAssetToCollection(
+      {
+        directoryId: assetsDirId,
+        collectionName: `${marker}-search-collection`,
+        path: `${marker}/assets/${pathSuffix}`,
+        hash: `hash-${pathSuffix}`,
+      },
+      { versioning: spyVersioning() }
+    );
+    cleanup.assetIds.push(asset.id);
+    cleanup.collectionIds.push(asset.collectionId);
+    searchAssetIds.push(asset.id);
+
+    await prisma.assetDescription.create({
+      data: { assetId: asset.id, isPhotograph: false, isLogo: false, description: descriptionText, tags: [] },
+    });
+    indexAssetDescription({ assetId: asset.id, description: descriptionText, tags: [] });
+
+    const vector = embedText(descriptionText);
+    const embedding = await prisma.embedding.create({
+      data: {
+        ownerType: 'asset',
+        ownerId: asset.id,
+        vector: Buffer.from(vector.buffer, vector.byteOffset, vector.byteLength),
+        model: EMBEDDING_MODEL,
+      },
+    });
+    searchEmbeddingIds.push(embedding.id);
+
+    return asset;
+  }
+
+  it('returns a match found via both the vector (embedText/nearestNeighbors) and keyword (keywordSearch) paths, with denormalized fields', async () => {
+    const distinctiveWord = `robotmascot${marker.replace(/[^a-zA-Z0-9]/g, '')}`;
+    const asset = await seedAssetWithDescriptionAndEmbedding(
+      'search-robot.png',
+      `a friendly ${distinctiveWord} for the postcard design`
+    );
+
+    const results = await searchCatalog({ query: distinctiveWord, k: 5 }, {});
+
+    const match = results.find((r) => r.ownerType === 'asset' && r.ownerId === asset.id);
+    expect(match).toBeDefined();
+    expect(match!.matchedVia).toEqual(expect.arrayContaining(['vector', 'keyword']));
+    expect(match!.score).toBeGreaterThan(0);
+    expect(match!.path).toBe(asset.path);
+    expect(match!.label).toContain(distinctiveWord);
+  });
+
+  it('merges an Asset vector match and a KnowledgeEntry keyword-only match into one deduped result set', async () => {
+    const distinctiveWord = `zzyzxsearch${marker.replace(/[^a-zA-Z0-9]/g, '')}`;
+    const asset = await seedAssetWithDescriptionAndEmbedding('search-mixed.png', `${distinctiveWord} branded artwork`);
+
+    const entry = await prisma.knowledgeEntry.create({
+      data: {
+        directoryId: knowledgeDirId,
+        kind: 'style',
+        name: `${marker}-search-entry`,
+        bodyText: `notes about ${distinctiveWord} usage`,
+      },
+    });
+    cleanup.knowledgeEntryIds.push(entry.id);
+    searchEntryIds.push(entry.id);
+    indexKnowledgeEntry({ id: entry.id, name: entry.name, bodyText: entry.bodyText });
+
+    const results = await searchCatalog({ query: distinctiveWord, k: 5 }, {});
+
+    const assetMatch = results.find((r) => r.ownerType === 'asset' && r.ownerId === asset.id);
+    const entryMatch = results.find((r) => r.ownerType === 'knowledge_entry' && r.ownerId === entry.id);
+    expect(assetMatch).toBeDefined();
+    expect(entryMatch).toBeDefined();
+    expect(entryMatch!.matchedVia).toEqual(['keyword']);
+    expect(entryMatch!.label).toBe(entry.name);
+
+    // No duplicate (ownerType, ownerId) pairs in the merged result set.
+    const keys = results.map((r) => `${r.ownerType}:${r.ownerId}`);
+    expect(new Set(keys).size).toBe(keys.length);
+  });
+
+  it('makes zero real network calls -- purely local embedText/nearestNeighbors/keywordSearch', async () => {
+    // No fetch/network stub is configured anywhere in this test file; a real
+    // network call here would either throw (no network reachable in the
+    // sandbox) or hang past the test's default timeout. Completing quickly
+    // with a well-formed (possibly empty) array proves no such call happened.
+    const results = await searchCatalog({ query: `nomatch${marker.replace(/[^a-zA-Z0-9]/g, '')}`, k: 5 }, {});
+    expect(Array.isArray(results)).toBe(true);
   });
 });

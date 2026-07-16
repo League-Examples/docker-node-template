@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { render, screen, fireEvent, waitFor } from '@testing-library/react';
-import { MemoryRouter } from 'react-router-dom';
+import { render, screen, fireEvent, waitFor, within } from '@testing-library/react';
+import { MemoryRouter, useLocation } from 'react-router-dom';
 import AppLayout from '../../client/src/components/AppLayout';
 
 // ---- Mock useAuth ----
@@ -29,9 +29,15 @@ vi.mock('../../client/src/context/AuthContext', () => ({
 
 // ---- Helpers ----
 
-function renderLayout() {
+function LocationDisplay() {
+  const location = useLocation();
+  return <div data-testid="location-display">{location.pathname}</div>;
+}
+
+function renderLayout(initialPath = '/') {
   return render(
-    <MemoryRouter>
+    <MemoryRouter initialEntries={[initialPath]}>
+      <LocationDisplay />
       <AppLayout />
     </MemoryRouter>,
   );
@@ -75,20 +81,17 @@ describe('AppLayout', () => {
     });
   });
 
-  it('does not render nav entries until the hamburger menu is opened', () => {
+  it('renders the primary nav as an always-visible horizontal tab bar (no hamburger)', () => {
     renderLayout();
-    expect(screen.queryByText('Home')).not.toBeInTheDocument();
-    expect(screen.queryByRole('navigation', { name: 'App menu' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Menu' })).not.toBeInTheDocument();
+    const nav = screen.getByRole('navigation', { name: 'Primary' });
+    expect(nav).toBeInTheDocument();
+    // "Home" was renamed to "Projects" for the tab bar.
+    expect(screen.getByText('Projects')).toBeInTheDocument();
+    expect(screen.getByText('About')).toBeInTheDocument();
   });
 
-  it('shows the Home navigation link in the hamburger menu when opened', () => {
-    renderLayout();
-    fireEvent.click(screen.getByRole('button', { name: 'Menu' }));
-    expect(screen.getByRole('navigation', { name: 'App menu' })).toBeInTheDocument();
-    expect(screen.getByText('Home')).toBeInTheDocument();
-  });
-
-  it('shows Admin link in the hamburger menu when user has admin role', () => {
+  it('shows the Admin tab when user has admin role', () => {
     mockUseAuth.mockReturnValue({
       user: makeAdminUser(),
       loading: false,
@@ -96,22 +99,12 @@ describe('AppLayout', () => {
     });
 
     renderLayout();
-    fireEvent.click(screen.getByRole('button', { name: 'Menu' }));
     expect(screen.getByText('Admin')).toBeInTheDocument();
   });
 
-  it('hides Admin link when user has non-admin role', () => {
+  it('hides the Admin tab when user has non-admin role', () => {
     renderLayout();
-    fireEvent.click(screen.getByRole('button', { name: 'Menu' }));
     expect(screen.queryByText('Admin')).not.toBeInTheDocument();
-  });
-
-  it('closes the hamburger menu when a nav entry is clicked', () => {
-    renderLayout();
-    fireEvent.click(screen.getByRole('button', { name: 'Menu' }));
-    expect(screen.getByText('Home')).toBeInTheDocument();
-    fireEvent.click(screen.getByText('Home'));
-    expect(screen.queryByText('Home')).not.toBeInTheDocument();
   });
 
   it('displays the rebranded app name in the top bar', () => {
@@ -225,5 +218,88 @@ describe('AppLayout', () => {
     });
 
     vi.unstubAllGlobals();
+  });
+
+  // ---- Admin-console link in the account dropdown (SUC-012) ----
+
+  it('shows an Admin console link in the account dropdown when user has admin role', () => {
+    mockUseAuth.mockReturnValue({
+      user: makeAdminUser(),
+      loading: false,
+      logout: mockLogout,
+    });
+
+    renderLayout();
+    fireEvent.click(screen.getByTestId('user-menu-trigger'));
+
+    const link = screen.getByRole('button', { name: /admin console/i });
+    expect(link).toBeInTheDocument();
+  });
+
+  it('navigates to /admin/users when the account dropdown Admin console link is clicked', () => {
+    mockUseAuth.mockReturnValue({
+      user: makeAdminUser(),
+      loading: false,
+      logout: mockLogout,
+    });
+
+    renderLayout();
+    fireEvent.click(screen.getByTestId('user-menu-trigger'));
+    fireEvent.click(screen.getByRole('button', { name: /admin console/i }));
+
+    expect(screen.getByTestId('location-display')).toHaveTextContent('/admin/users');
+  });
+
+  it('hides the Admin console link in the account dropdown when user has non-admin role', () => {
+    renderLayout();
+    fireEvent.click(screen.getByTestId('user-menu-trigger'));
+    expect(screen.queryByRole('button', { name: /admin console/i })).not.toBeInTheDocument();
+  });
+
+  it('the primary-nav Admin tab works alongside the account-dropdown Admin link (no regression)', () => {
+    mockUseAuth.mockReturnValue({
+      user: makeAdminUser(),
+      loading: false,
+      logout: mockLogout,
+    });
+
+    renderLayout();
+    // Admin tab is present in the always-visible primary nav...
+    const nav = screen.getByRole('navigation', { name: 'Primary' });
+    expect(within(nav).getByText('Admin')).toBeInTheDocument();
+    // ...and the account dropdown still carries its own "Admin console" link.
+    fireEvent.click(screen.getByTestId('user-menu-trigger'));
+    expect(screen.getByText('Admin console')).toBeInTheDocument();
+  });
+
+  // ---- Full-bleed <main> mode for /projects/* (R2) ----
+
+  it('renders <main> full-bleed (no padding, no overflow-auto) on /projects/:id routes', () => {
+    renderLayout('/projects/42');
+    const mainEl = document.querySelector('main');
+    expect(mainEl).toBeInTheDocument();
+    expect(mainEl?.className).not.toMatch(/\bp-6\b/);
+    expect(mainEl?.className).not.toMatch(/\boverflow-auto\b/);
+  });
+
+  it('renders <main> full-bleed on /projects/:id/postcard routes', () => {
+    renderLayout('/projects/42/postcard');
+    const mainEl = document.querySelector('main');
+    expect(mainEl?.className).not.toMatch(/\bp-6\b/);
+    expect(mainEl?.className).not.toMatch(/\boverflow-auto\b/);
+  });
+
+  it('keeps the padded, scrolling <main> on non-/projects/* routes (regression)', () => {
+    renderLayout('/about');
+    const mainEl = document.querySelector('main');
+    expect(mainEl?.className).toMatch(/\bp-6\b/);
+    expect(mainEl?.className).toMatch(/\boverflow-auto\b/);
+  });
+
+  it('keeps the padded, scrolling <main> on the home route "/"', () => {
+    renderLayout('/');
+    const mainEl = document.querySelector('main');
+    expect(mainEl?.className).toMatch(/\bp-6\b/);
+    expect(mainEl?.className).toMatch(/\boverflow-auto\b/);
   });
 });

@@ -31,7 +31,7 @@ import {
   type WorkspaceToolHandler,
 } from '../../server/src/agent/turn';
 import { createMockAdapter, type MockProviderScript } from '../../server/src/agent/providers/mock';
-import { createKnowledgeEntry } from '../../server/src/agent-mcp/catalogTools';
+import { createKnowledgeEntry, addAssetToCollection, addReference, createIteration } from '../../server/src/agent-mcp/catalogTools';
 import { acquireLock, releaseLock } from '../../server/src/agent-mcp/locks';
 import { resolveWorkspacePath } from '../../server/src/services/workspaceDirectorySync';
 import { createRealImageVisionClient } from '../../server/src/agent/realImageVisionClient';
@@ -42,11 +42,16 @@ const marker = `t005turn${Date.now()}`;
 
 let ownerId: number;
 let knowledgeDirId: number;
+let assetsDirId: number;
 let projectAId: number;
 let projectBId: number;
 
 const cleanup = {
   knowledgeEntryIds: [] as number[],
+  referenceIds: [] as number[],
+  assetIds: [] as number[],
+  collectionIds: [] as number[],
+  iterationIds: [] as number[],
   projectIds: [] as number[],
   workspaceDirectoryIds: [] as number[],
 };
@@ -81,6 +86,12 @@ beforeAll(async () => {
   knowledgeDirId = dir.id;
   cleanup.workspaceDirectoryIds.push(dir.id);
 
+  const assetsDir = await prisma.workspaceDirectory.create({
+    data: { path: `${marker}/assets`, kind: 'collection' },
+  });
+  assetsDirId = assetsDir.id;
+  cleanup.workspaceDirectoryIds.push(assetsDir.id);
+
   const projectA = await prisma.project.create({ data: { title: `${marker}-project-a`, ownerUserId: ownerId } });
   projectAId = projectA.id;
   cleanup.projectIds.push(projectAId);
@@ -92,6 +103,10 @@ beforeAll(async () => {
 
 afterAll(async () => {
   await prisma.chatMessage.deleteMany({ where: { projectId: { in: cleanup.projectIds } } });
+  await prisma.reference.deleteMany({ where: { id: { in: cleanup.referenceIds } } });
+  await prisma.iteration.deleteMany({ where: { id: { in: cleanup.iterationIds } } });
+  await prisma.asset.deleteMany({ where: { id: { in: cleanup.assetIds } } });
+  await prisma.collection.deleteMany({ where: { id: { in: cleanup.collectionIds } } });
   await prisma.knowledgeEntry.deleteMany({ where: { id: { in: cleanup.knowledgeEntryIds } } });
   await prisma.project.deleteMany({ where: { id: { in: cleanup.projectIds } } });
   await prisma.workspaceDirectory.deleteMany({ where: { id: { in: cleanup.workspaceDirectoryIds } } });
@@ -193,6 +208,138 @@ describe('runTurn -- knowledge retrieval is traceable', () => {
       true
     );
     expect(capturedSystemPrompt).toContain(`knowledge_entry#${seeded.id}`);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Project + active-stream context injection (Sprint 005 OOP change,
+// 2026-07-15): the chat box previously "had no sense of what project it's
+// in" -- every turn now folds a PROJECT CONTEXT block (title/status/
+// detailsHeader, an iterations/references summary, and a plain statement of
+// the active FRONT/BACK stream) into the system prompt sent to the model.
+// ---------------------------------------------------------------------------
+
+describe('runTurn -- project + active-stream context injection', () => {
+  let contextProjectId: number;
+  let contextAssetId: number;
+  let contextCollectionId: number;
+  let contextReferenceId: number;
+  const contextIterationIds: number[] = [];
+
+  beforeAll(async () => {
+    const project = await prisma.project.create({
+      data: {
+        title: `${marker}-context-project`,
+        ownerUserId,
+        status: 'active',
+        detailsHeader: { style: 'vintage travel poster', outputType: 'postcard', goal: 'promote the fall festival' },
+      },
+    });
+    contextProjectId = project.id;
+
+    const asset = await addAssetToCollection(
+      {
+        directoryId: assetsDirId,
+        collectionName: `${marker}-context-ref-collection`,
+        path: `${marker}/assets/context-ref.png`,
+        hash: 'context-ref-hash',
+      },
+      { versioning: makeVersioningSpy() }
+    );
+    contextAssetId = asset.id;
+    contextCollectionId = asset.collectionId;
+
+    await prisma.assetDescription.create({
+      data: {
+        assetId: asset.id,
+        isPhotograph: false,
+        isLogo: false,
+        description: 'a hand-drawn autumn leaf motif',
+      },
+    });
+
+    const reference = await addReference(
+      { projectId: contextProjectId, assetId: asset.id, role: 'style' },
+      { versioning: makeVersioningSpy() }
+    );
+    contextReferenceId = reference.id;
+
+    const frontAccepted = await createIteration(
+      { projectId: contextProjectId, imagePath: 'front-1.png', promptUsed: 'front concept', role: 'front' },
+      { versioning: makeVersioningSpy() }
+    );
+    contextIterationIds.push(frontAccepted.id);
+    await prisma.iteration.update({ where: { id: frontAccepted.id }, data: { accepted: true } });
+
+    const backDraft = await createIteration(
+      { projectId: contextProjectId, imagePath: 'back-1.png', promptUsed: 'back concept', role: 'back' },
+      { versioning: makeVersioningSpy() }
+    );
+    contextIterationIds.push(backDraft.id);
+  });
+
+  afterAll(async () => {
+    await prisma.chatMessage.deleteMany({ where: { projectId: contextProjectId } });
+    await prisma.reference.deleteMany({ where: { id: contextReferenceId } });
+    await prisma.iteration.deleteMany({ where: { id: { in: contextIterationIds } } });
+    await prisma.assetDescription.deleteMany({ where: { assetId: contextAssetId } });
+    await prisma.asset.deleteMany({ where: { id: contextAssetId } });
+    await prisma.collection.deleteMany({ where: { id: contextCollectionId } });
+    await prisma.project.deleteMany({ where: { id: contextProjectId } });
+  });
+
+  async function captureSystemPrompt(activeFace?: 'front' | 'back'): Promise<string> {
+    let capturedSystemPrompt = '';
+    const adapter = createMockAdapter([{ kind: 'message', content: 'Sure thing.' }], {
+      onSendTurn: (input) => {
+        capturedSystemPrompt = input.systemPrompt;
+      },
+    });
+    await runTurn(
+      { projectId: contextProjectId, message: 'What have we got so far?', activeFace },
+      { provider: adapter, versioning: makeVersioningSpy() }
+    );
+    return capturedSystemPrompt;
+  }
+
+  it('includes the project title, status, and creative-brief detailsHeader fields', async () => {
+    const systemPrompt = await captureSystemPrompt('front');
+
+    expect(systemPrompt).toContain('PROJECT CONTEXT:');
+    expect(systemPrompt).toContain(`${marker}-context-project`);
+    expect(systemPrompt).toContain('status: active');
+    expect(systemPrompt).toContain('vintage travel poster');
+    expect(systemPrompt).toContain('postcard');
+    expect(systemPrompt).toContain('promote the fall festival');
+  });
+
+  it('includes an iterations summary (per-stream counts and the accepted front iteration) and the attached reference', async () => {
+    const systemPrompt = await captureSystemPrompt('front');
+
+    expect(systemPrompt).toContain('front: 1');
+    expect(systemPrompt).toContain('back: 1');
+    expect(systemPrompt).toContain('accepted: #1');
+    expect(systemPrompt).toContain('style: a hand-drawn autumn leaf motif');
+  });
+
+  it('states the active stream as FRONT when activeFace is "front"', async () => {
+    const systemPrompt = await captureSystemPrompt('front');
+
+    expect(systemPrompt).toContain('working on the FRONT of this postcard');
+    expect(systemPrompt).not.toContain('working on the BACK of this postcard');
+  });
+
+  it('states the active stream as BACK when activeFace is "back"', async () => {
+    const systemPrompt = await captureSystemPrompt('back');
+
+    expect(systemPrompt).toContain('working on the BACK of this postcard');
+    expect(systemPrompt).not.toContain('working on the FRONT of this postcard');
+  });
+
+  it('defaults the active stream to FRONT when activeFace is omitted ("a new project starts on Front")', async () => {
+    const systemPrompt = await captureSystemPrompt(undefined);
+
+    expect(systemPrompt).toContain('working on the FRONT of this postcard');
   });
 });
 
@@ -433,6 +580,52 @@ describe('runTurn -- image-generation calls route through the stub ImageVisionCl
     expect(result.toolCalls[0]).toMatchObject({ name: IMAGE_GENERATION_TOOL_NAME });
     expect((result.toolCalls[0].result as any).imagePath).toContain('outputs/test.png');
   });
+
+  // Sprint 005 OOP change, 2026-07-15: "new iterations join the
+  // currently-active tab's stream" -- `RunTurnInput.activeFace` is threaded
+  // straight through to every `generate_image` dispatch, never surfaced to
+  // the provider/model itself (it's not part of `args`).
+  it("threads RunTurnInput.activeFace through to the ImageVisionClient's generateImage call", async () => {
+    const calls: unknown[] = [];
+    const stubClient: ImageVisionClient = {
+      async generateImage(input) {
+        calls.push(input);
+        return { imagePath: `projects/${input.projectId}/outputs/test.png` };
+      },
+    };
+    const script: MockProviderScript = [
+      { kind: 'tool_calls', calls: [{ id: 'img-1', name: IMAGE_GENERATION_TOOL_NAME, args: { prompt: 'a red postcard' } }] },
+      { kind: 'message', content: 'Generated the image.' },
+    ];
+
+    await runTurn(
+      { projectId: projectAId, message: 'Generate an image please.', activeFace: 'back' },
+      { provider: createMockAdapter(script), imageVisionClient: stubClient, versioning: makeVersioningSpy() }
+    );
+
+    expect(calls[0]).toMatchObject({ activeFace: 'back' });
+  });
+
+  it('defaults activeFace to "front" when RunTurnInput omits it (older client, or "a new project starts on Front")', async () => {
+    const calls: unknown[] = [];
+    const stubClient: ImageVisionClient = {
+      async generateImage(input) {
+        calls.push(input);
+        return { imagePath: `projects/${input.projectId}/outputs/test.png` };
+      },
+    };
+    const script: MockProviderScript = [
+      { kind: 'tool_calls', calls: [{ id: 'img-1', name: IMAGE_GENERATION_TOOL_NAME, args: { prompt: 'a red postcard' } }] },
+      { kind: 'message', content: 'Generated the image.' },
+    ];
+
+    await runTurn(
+      { projectId: projectAId, message: 'Generate an image please.' },
+      { provider: createMockAdapter(script), imageVisionClient: stubClient, versioning: makeVersioningSpy() }
+    );
+
+    expect(calls[0]).toMatchObject({ activeFace: 'front' });
+  });
 });
 
 // ---------------------------------------------------------------------------
@@ -500,9 +693,31 @@ describe('runTurn -- generate_image routes through the real ImageVisionClient en
     const iterations = await prisma.iteration.findMany({ where: { projectId: projectAId } });
     expect(iterations).toHaveLength(1);
     expect(iterations[0]).toMatchObject({ seq: 1, imagePath: toolResult.imagePath, promptUsed: 'a postcard mascot' });
+    // Defaults to the 'front' stream when RunTurnInput.activeFace is
+    // omitted (Sprint 005 OOP change, 2026-07-15).
+    expect(iterations[0].role).toBe('front');
 
     const written = await fs.readFile(resolveWorkspacePath(toolResult.imagePath));
     expect(written.equals(Buffer.from('real-client-fixture-bytes'))).toBe(true);
+  });
+
+  it("tags the new Iteration into RunTurnInput.activeFace's stream (Sprint 005 OOP change, 2026-07-15)", async () => {
+    const generateImage = () => Promise.resolve(fixtureImage('back-stream-fixture-bytes'));
+    const realClient = createRealImageVisionClient({ generateImage, versioning: makeVersioningSpy() });
+
+    const script: MockProviderScript = [
+      { kind: 'tool_calls', calls: [{ id: 'img-2', name: IMAGE_GENERATION_TOOL_NAME, args: { prompt: 'a postcard back' } }] },
+      { kind: 'message', content: 'Generated the back.' },
+    ];
+
+    await runTurn(
+      { projectId: projectAId, message: 'Please generate the back.', activeFace: 'back' },
+      { provider: createMockAdapter(script), imageVisionClient: realClient, versioning: makeVersioningSpy() }
+    );
+
+    const iterations = await prisma.iteration.findMany({ where: { projectId: projectAId } });
+    expect(iterations).toHaveLength(1);
+    expect(iterations[0].role).toBe('back');
   });
 
   it('a simulated imaging failure surfaces as a tool-call error result and adds no new Iteration row (AC5, UC-006 E1)', async () => {
@@ -538,5 +753,112 @@ describe('runTurn -- generate_image routes through the real ImageVisionClient en
 
     const iterations = await prisma.iteration.findMany({ where: { projectId: projectAId } });
     expect(iterations).toHaveLength(0);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Ticket 005-002: add_reference/remove_reference/set_iteration_state/
+// search_catalog reachable through the same scripted-turn dispatch table
+// (Sprint 003's SUC-003 pattern) that already proves out create_knowledge_entry
+// above -- one scripted runTurn call per tool, per the ticket's Testing Plan.
+// ---------------------------------------------------------------------------
+
+describe('runTurn -- ticket 005-002 tools dispatch through the mock adapter', () => {
+  it('dispatches an add_reference tool call, creating a Reference row', async () => {
+    const asset = await addAssetToCollection(
+      { directoryId: assetsDirId, collectionName: `${marker}-turn-ref-collection`, path: `${marker}/assets/turn-ref.png`, hash: 'turn-ref-hash' },
+      { versioning: makeVersioningSpy() }
+    );
+    cleanup.assetIds.push(asset.id);
+    cleanup.collectionIds.push(asset.collectionId);
+
+    const toolCallArgs = { projectId: projectAId, assetId: asset.id, role: 'style' };
+    const script: MockProviderScript = [
+      { kind: 'tool_calls', calls: [{ id: 'ref-1', name: 'add_reference', args: toolCallArgs }] },
+      { kind: 'message', content: 'Added the reference.' },
+    ];
+
+    const result = await runTurn(
+      { projectId: projectAId, message: 'Add this asset as a style reference.' },
+      { provider: createMockAdapter(script), versioning: makeVersioningSpy() }
+    );
+
+    expect(result.toolCalls[0]).toMatchObject({ name: 'add_reference', args: toolCallArgs });
+    const referenceId = (result.toolCalls[0].result as any).id;
+    cleanup.referenceIds.push(referenceId);
+
+    const dbReference = await prisma.reference.findUnique({ where: { id: referenceId } });
+    expect(dbReference).toMatchObject({ projectId: projectAId, assetId: asset.id, role: 'style' });
+  });
+
+  it('dispatches a remove_reference tool call, deleting the targeted Reference row', async () => {
+    const asset = await addAssetToCollection(
+      { directoryId: assetsDirId, collectionName: `${marker}-turn-remove-ref-collection`, path: `${marker}/assets/turn-remove-ref.png`, hash: 'turn-remove-ref-hash' },
+      { versioning: makeVersioningSpy() }
+    );
+    cleanup.assetIds.push(asset.id);
+    cleanup.collectionIds.push(asset.collectionId);
+
+    const reference = await addReference(
+      { projectId: projectAId, assetId: asset.id, role: 'composition' },
+      { versioning: makeVersioningSpy() }
+    );
+
+    const script: MockProviderScript = [
+      { kind: 'tool_calls', calls: [{ id: 'ref-2', name: 'remove_reference', args: { referenceId: reference.id } }] },
+      { kind: 'message', content: 'Removed the reference.' },
+    ];
+
+    const result = await runTurn(
+      { projectId: projectAId, message: 'Remove that reference.' },
+      { provider: createMockAdapter(script), versioning: makeVersioningSpy() }
+    );
+
+    expect(result.toolCalls[0]).toMatchObject({ name: 'remove_reference', args: { referenceId: reference.id } });
+    expect((result.toolCalls[0].result as any).deleted).toBe(true);
+
+    const dbReference = await prisma.reference.findUnique({ where: { id: reference.id } });
+    expect(dbReference).toBeNull();
+  });
+
+  it('dispatches a set_iteration_state tool call, updating Iteration.accepted', async () => {
+    const iteration = await createIteration(
+      { projectId: projectAId, imagePath: 'turn-state.png', promptUsed: 'p' },
+      { versioning: makeVersioningSpy() }
+    );
+    cleanup.iterationIds.push(iteration.id);
+
+    const toolCallArgs = { iterationId: iteration.id, accepted: true };
+    const script: MockProviderScript = [
+      { kind: 'tool_calls', calls: [{ id: 'state-1', name: 'set_iteration_state', args: toolCallArgs }] },
+      { kind: 'message', content: 'Marked as accepted.' },
+    ];
+
+    const result = await runTurn(
+      { projectId: projectAId, message: 'Accept this iteration.' },
+      { provider: createMockAdapter(script), versioning: makeVersioningSpy() }
+    );
+
+    expect(result.toolCalls[0]).toMatchObject({ name: 'set_iteration_state', args: toolCallArgs });
+    expect((result.toolCalls[0].result as any).accepted).toBe(true);
+
+    const dbIteration = await prisma.iteration.findUnique({ where: { id: iteration.id } });
+    expect(dbIteration!.accepted).toBe(true);
+  });
+
+  it('dispatches a search_catalog tool call, returning a well-formed (possibly empty) match array with zero network calls', async () => {
+    const toolCallArgs = { query: `turnsearch${marker.replace(/[^a-zA-Z0-9]/g, '')}`, k: 5 };
+    const script: MockProviderScript = [
+      { kind: 'tool_calls', calls: [{ id: 'search-1', name: 'search_catalog', args: toolCallArgs }] },
+      { kind: 'message', content: 'Here is what I found.' },
+    ];
+
+    const result = await runTurn(
+      { projectId: projectAId, message: 'Search the catalog for that term.' },
+      { provider: createMockAdapter(script), versioning: makeVersioningSpy() }
+    );
+
+    expect(result.toolCalls[0]).toMatchObject({ name: 'search_catalog', args: toolCallArgs });
+    expect(Array.isArray(result.toolCalls[0].result)).toBe(true);
   });
 });

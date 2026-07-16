@@ -86,18 +86,26 @@ export async function findOrCreateOAuthUser(
 
   // --- Step 3: create new user ---
   // First user in the system gets ADMIN; everyone after is a regular USER.
-  const isFirstUser = (await prisma.user.count()) === 0;
-  const newUser = await prisma.user.create({
-    data: {
-      email: email ?? `${provider}:${providerId}@oauth.local`,
-      displayName: displayName ?? null,
-      role: isFirstUser ? 'ADMIN' : 'USER',
-      provider,
-      providerId,
-      providers: {
-        create: { provider, providerId },
+  //
+  // The count() + create() sequence is wrapped in a single $transaction so
+  // the check-then-act is atomic: SQLite (via better-sqlite3) serializes
+  // write transactions at the database-file level, so a second concurrent
+  // transaction blocks until the first commits, and its own count() then
+  // correctly observes the committed row rather than racing on a stale 0.
+  const newUser = await prisma.$transaction(async (tx: any) => {
+    const isFirstUser = (await tx.user.count()) === 0;
+    return tx.user.create({
+      data: {
+        email: email ?? `${provider}:${providerId}@oauth.local`,
+        displayName: displayName ?? null,
+        role: isFirstUser ? 'ADMIN' : 'USER',
+        provider,
+        providerId,
+        providers: {
+          create: { provider, providerId },
+        },
       },
-    },
+    });
   });
   return newUser;
 }
