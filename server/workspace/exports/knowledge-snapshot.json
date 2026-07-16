@@ -1,5 +1,5 @@
 {
-  "exportedAt": "2026-07-16T04:26:17.625Z",
+  "exportedAt": "2026-07-16T05:25:38.258Z",
   "knowledgeEntries": [
     {
       "id": 1,
@@ -502,5 +502,48 @@
       "updatedAt": "2026-07-14T23:41:25.491Z"
     }
   ],
-  "collections": []
+  "collections": [
+    {
+      "id": 1,
+      "directoryId": 1,
+      "name": "Logos",
+      "kind": "logos"
+    },
+    {
+      "id": 2,
+      "directoryId": 58,
+      "name": "Components",
+      "kind": "components"
+    },
+    {
+      "id": 3,
+      "directoryId": 59,
+      "name": "Examples",
+      "kind": "examples"
+    },
+    {
+      "id": 4,
+      "directoryId": 60,
+      "name": "Gallery",
+      "kind": "gallery"
+    },
+    {
+      "id": 5,
+      "directoryId": 61,
+      "name": "Photos",
+      "kind": "photos"
+    },
+    {
+      "id": 6,
+      "directoryId": 3,
+      "name": "Prior Art",
+      "kind": "prior-art"
+    },
+    {
+      "id": 7,
+      "directoryId": 2,
+      "name": "Stock Art",
+      "kind": "stock-art"
+    }
+  ]
 }
