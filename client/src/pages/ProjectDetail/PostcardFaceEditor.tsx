@@ -247,7 +247,7 @@ export default function PostcardFaceEditor({
   }
 
   return (
-    <div className="flex flex-col items-center gap-2">
+    <div className="flex w-full flex-col items-center gap-2">
       {/* Add-QR tool sits ABOVE the postcard (outside it) so it never
           shrinks the image -- the accepted postcard stays the same size as
           the read-only iteration rows (max-w-[800px]). */}
