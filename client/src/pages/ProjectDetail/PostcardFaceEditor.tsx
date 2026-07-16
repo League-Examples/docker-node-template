@@ -251,7 +251,7 @@ export default function PostcardFaceEditor({
       {/* Add-QR tool sits ABOVE the postcard (outside it) so it never
           shrinks the image -- the accepted postcard stays the same size as
           the read-only iteration rows (max-w-[800px]). */}
-      <div className="flex w-full max-w-[800px] items-center gap-2" aria-label="Tools" role="toolbar">
+      <div className="flex w-full max-w-[800px] items-center justify-end gap-2" aria-label="Tools" role="toolbar">
         <button
           type="button"
           onClick={onAddQr}
