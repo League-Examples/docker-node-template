@@ -1,4 +1,4 @@
-import { useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { postSseStream } from '../../lib/sse';
 import type { ChatMessageDTO } from './types';
 import type { PostcardSide } from '../../lib/postcardFaceEditing';
@@ -52,6 +52,17 @@ import type { PostcardSide } from '../../lib/postcardFaceEditing';
  * fixed-height div pinned to the bottom of the page (see that file's
  * module header), rather than this component claiming remaining flex
  * space in a column layout the way it used to.
+ *
+ * **Auto-expanding composer (client-only OOP change, 2026-07-16)**: the
+ * message box is a `<textarea>`, not an `<input>`, so it can grow to fit
+ * multi-line drafts. `resizeComposer` (effect below, keyed on `input`)
+ * resets the height to `'auto'` then re-measures `scrollHeight`, capping
+ * it at `MAX_COMPOSER_LINES` worth of `line-height` -- past that cap the
+ * box stops growing and scrolls internally instead. Because the effect is
+ * keyed on `input`, clearing it after a send (`setInput('')`) also snaps
+ * the box back to its one-line height. `Enter` submits (`preventDefault`
+ * + `sendMessage()`); `Shift+Enter` is left alone so the textarea's own
+ * native newline-insertion behavior applies.
  */
 
 export type ChatBubbleFrom = 'user' | 'assistant';
@@ -112,6 +123,11 @@ const EMPTY_STATE_PROMPT =
   "Let's start your new project. What style are you going for, what kind of output do you need — a Facebook " +
   'image, a logo, or a postcard — and what are you trying to achieve?';
 
+/** Composer auto-resize cap (client-only OOP change, 2026-07-16): the
+ * textarea grows to fit its content up to this many lines, then stops
+ * growing and scrolls internally -- see this file's module header. */
+const MAX_COMPOSER_LINES = 10;
+
 /** Only `role: 'user'|'assistant'` rows with non-empty `content` render as
  * bubbles -- `runTurn` also persists `role: 'assistant'` bookkeeping rows
  * with `content: ''` for each tool-call round (`turn.ts`), which are not
@@ -133,6 +149,26 @@ export default function ChatPanel({ projectId, initialMessages, onToolCallFinish
   const [statusText, setStatusText] = useState('');
   const [error, setError] = useState('');
   const nextLocalId = useRef(0);
+  const textareaRef = useRef<HTMLTextAreaElement>(null);
+
+  // Auto-resize the composer: reset to 'auto' then re-measure scrollHeight,
+  // capping at MAX_COMPOSER_LINES worth of line-height. Keyed on `input`
+  // so clearing it after a send also snaps the box back to one line.
+  useEffect(() => {
+    const el = textareaRef.current;
+    if (!el) return;
+    el.style.height = 'auto';
+    const computed = window.getComputedStyle(el);
+    const lineHeight = parseFloat(computed.lineHeight) || 20;
+    const verticalExtra =
+      (parseFloat(computed.paddingTop) || 0) +
+      (parseFloat(computed.paddingBottom) || 0) +
+      (parseFloat(computed.borderTopWidth) || 0) +
+      (parseFloat(computed.borderBottomWidth) || 0);
+    const maxHeight = lineHeight * MAX_COMPOSER_LINES + verticalExtra;
+    el.style.height = `${Math.min(el.scrollHeight, maxHeight)}px`;
+    el.style.overflowY = el.scrollHeight > maxHeight ? 'auto' : 'hidden';
+  }, [input]);
 
   function appendBubble(from: ChatBubbleFrom, text: string) {
     nextLocalId.current += 1;
@@ -171,8 +207,7 @@ export default function ChatPanel({ projectId, initialMessages, onToolCallFinish
     }
   }
 
-  async function handleSend(event: React.FormEvent) {
-    event.preventDefault();
+  async function sendMessage() {
     const text = input.trim();
     if (!text || sending) return;
 
@@ -189,6 +224,20 @@ export default function ChatPanel({ projectId, initialMessages, onToolCallFinish
     } finally {
       setSending(false);
       setStatusText('');
+    }
+  }
+
+  async function handleSend(event: React.FormEvent) {
+    event.preventDefault();
+    await sendMessage();
+  }
+
+  // Enter submits; Shift+Enter is left alone so the textarea's native
+  // newline-insertion behavior applies (see this file's module header).
+  function handleComposerKeyDown(event: React.KeyboardEvent<HTMLTextAreaElement>) {
+    if (event.key === 'Enter' && !event.shiftKey) {
+      event.preventDefault();
+      void sendMessage();
     }
   }
 
@@ -229,14 +278,16 @@ export default function ChatPanel({ projectId, initialMessages, onToolCallFinish
       )}
 
       <form className="flex gap-2 border-t border-slate-200 p-3" onSubmit={(event) => void handleSend(event)}>
-        <input
-          type="text"
+        <textarea
+          ref={textareaRef}
           aria-label="Message Claude…"
           placeholder="Message Claude…"
           value={input}
           disabled={sending}
+          rows={1}
           onChange={(event) => setInput(event.target.value)}
-          className="flex-1 rounded border border-slate-300 px-3 py-2 text-sm text-slate-800 disabled:bg-slate-50 disabled:text-slate-400"
+          onKeyDown={handleComposerKeyDown}
+          className="flex-1 resize-none rounded border border-slate-300 px-3 py-2 text-sm text-slate-800 disabled:bg-slate-50 disabled:text-slate-400"
         />
         <button
           type="submit"

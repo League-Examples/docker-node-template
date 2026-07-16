@@ -262,6 +262,75 @@ describe('ChatPanel -- forwards tool_call_finished events (ticket 010 seam for L
   });
 });
 
+describe('ChatPanel -- auto-expanding composer (client-only OOP change, 2026-07-16)', () => {
+  it('renders the composer as a textarea with the "Message Claude…" label', () => {
+    vi.stubGlobal('fetch', vi.fn());
+    render(<ChatPanel projectId={7} initialMessages={[]} />);
+
+    const composer = screen.getByLabelText('Message Claude…');
+    expect(composer.tagName).toBe('TEXTAREA');
+  });
+
+  it('Enter submits the message', async () => {
+    const frames = sseFrames([{ type: 'message', content: 'ok' }]);
+    const fetchMock = vi.fn().mockResolvedValue({ ok: true, body: fakeStreamBody([frames]) });
+    vi.stubGlobal('fetch', fetchMock);
+
+    render(<ChatPanel projectId={7} initialMessages={[]} />);
+    const composer = screen.getByLabelText('Message Claude…');
+    fireEvent.change(composer, { target: { value: 'Make it warmer' } });
+
+    const notPrevented = fireEvent.keyDown(composer, { key: 'Enter' });
+
+    // fireEvent returns false when the event's default was prevented --
+    // Enter-without-Shift must preventDefault() rather than just inserting
+    // a newline, so the form doesn't also get a native submit.
+    expect(notPrevented).toBe(false);
+    expect(screen.getByText('Make it warmer')).toBeInTheDocument();
+    await waitFor(() => {
+      expect(fetchMock).toHaveBeenCalledWith(
+        '/api/projects/7/chat',
+        expect.objectContaining({
+          body: JSON.stringify({ message: 'Make it warmer', activeFace: 'front' }),
+        }),
+      );
+    });
+    await screen.findByText('ok');
+  });
+
+  it('Shift+Enter does not submit (leaves the native newline-insertion behavior alone)', () => {
+    const fetchMock = vi.fn();
+    vi.stubGlobal('fetch', fetchMock);
+
+    render(<ChatPanel projectId={7} initialMessages={[]} />);
+    const composer = screen.getByLabelText('Message Claude…') as HTMLTextAreaElement;
+    fireEvent.change(composer, { target: { value: 'line one' } });
+
+    const notPrevented = fireEvent.keyDown(composer, { key: 'Enter', shiftKey: true });
+
+    // Not prevented -- the browser is left free to insert the newline.
+    expect(notPrevented).toBe(true);
+    expect(fetchMock).not.toHaveBeenCalled();
+    // Nothing was sent: the draft is still sitting in the composer, not
+    // cleared and not rendered as a bubble in the message list.
+    expect(composer.value).toBe('line one');
+    expect(within(screen.getByTestId('chat-messages')).queryByText('line one')).not.toBeInTheDocument();
+  });
+
+  it('resets to its one-line height after sending', async () => {
+    const frames = sseFrames([{ type: 'message', content: 'ok' }]);
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue({ ok: true, body: fakeStreamBody([frames]) }));
+
+    render(<ChatPanel projectId={7} initialMessages={[]} />);
+    const composer = screen.getByLabelText('Message Claude…') as HTMLTextAreaElement;
+    fireEvent.change(composer, { target: { value: 'Line one\nLine two\nLine three' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Send' }));
+
+    await screen.findByText('ok');
+    expect(composer.value).toBe('');
+  });
+});
+
 describe('ChatPanel -- non-admin authenticated user can start and continue a turn', () => {
   it('sends a first message, then a follow-up, both via the same POST endpoint (role-agnostic client)', async () => {
     const fetchMock = vi
