@@ -10,7 +10,7 @@ import {
   MIN_BOX_WIDTH_IN,
   MIN_BOX_HEIGHT_IN,
   boxEdgesPx,
-  createRegionFromRect,
+  createDefaultTextRegion,
   inToPx,
   summarizePositionAndFont,
   type PostcardRegion,
@@ -19,15 +19,17 @@ import {
 
 /**
  * Interactive text-box/QR editor for ONE postcard face's accepted iteration
- * (Sprint 005 OOP change, 2026-07-15). Extracted, side-fixed, from
- * `pages/PostcardEdit.tsx` -- that whole standalone page/route is deleted by
- * this same change ("remove the separate PostcardEdit page... reuse the
- * existing editing machinery... extract shared components as needed"). This
- * component IS that extraction: the click-to-edit popup, drag-to-draw,
- * corner move/resize handles, QR add/url/delete/move/resize, and the
- * alignment-guide crosshairs all moved here verbatim (same mechanics, same
- * `data-testid`s), just parameterized by a single fixed `side` prop instead
- * of `PostcardEdit.tsx`'s own front/back `<select>` + dual-side state.
+ * (Sprint 005 OOP change, 2026-07-15; drag-to-draw replaced by a "+ Text"
+ * button in a later same-sprint OOP pass, 2026-07-15). Extracted, side-fixed,
+ * from `pages/PostcardEdit.tsx` -- that whole standalone page/route is
+ * deleted by this same change ("remove the separate PostcardEdit page...
+ * reuse the existing editing machinery... extract shared components as
+ * needed"). This component IS that extraction: the click-to-edit popup,
+ * "+ Text"/"+ QR code" add buttons, corner move/resize handles, QR
+ * add/url/delete/move/resize, and the alignment-guide crosshairs all moved
+ * here verbatim (same mechanics, same `data-testid`s), just parameterized by
+ * a single fixed `side` prop instead of `PostcardEdit.tsx`'s own front/back
+ * `<select>` + dual-side state.
  *
  * **Where the OLD page's other half went**: `PostcardEdit.tsx` also owned
  * the load-on-mount GET, the debounced-autosave PUT (with its
@@ -44,11 +46,11 @@ import {
  * props and reports every add/edit/move/resize/delete back up via
  * callbacks -- it holds no persistence logic of its own, only the
  * in-progress UI interaction state (which box is being dragged, which
- * popup is open, the live rubber-band draw rect).
+ * popup is open).
  *
  * Deliberately still keyed by `region.name`/`side` exactly like the
  * original -- `usePostcardEditorState`'s `existingRegionNames` set (unioned
- * across BOTH faces) is threaded through so a freshly-drawn box's generated
+ * across BOTH faces) is threaded through so a "+ Text"-added box's generated
  * name still can't collide with one on the other face, matching
  * `PostcardEdit.tsx`'s original `makeRegionName` call site.
  */
@@ -92,12 +94,7 @@ export default function PostcardFaceEditor({
   // QR popup state: is it open, and its in-flight URL draft.
   const [editingQr, setEditingQr] = useState(false);
   const [draftQrUrl, setDraftQrUrl] = useState('');
-  // Draw-a-box state: anchor corner, live rubber-band rect, then naming.
   const previewRef = useRef<HTMLDivElement>(null);
-  const [drawAnchor, setDrawAnchor] = useState<{ x: number; y: number } | null>(null);
-  const [drawRect, setDrawRect] = useState<{ x: number; y: number; w: number; h: number } | null>(null);
-  const [namingRect, setNamingRect] = useState<{ x: number; y: number; w: number; h: number } | null>(null);
-  const [draftName, setDraftName] = useState('');
   // Move/resize-a-box state: one shared drag mechanism for both a text
   // region and the QR overlay, and both the move/resize actions.
   const [moving, setMoving] = useState<{
@@ -180,12 +177,6 @@ export default function PostcardFaceEditor({
     });
   }
 
-  function handlePreviewMouseDown(event: React.MouseEvent) {
-    if (event.target !== event.currentTarget) return; // ignore drags on regions
-    setDrawAnchor(previewPoint(event));
-    setDrawRect(null);
-  }
-
   function handlePreviewMouseMove(event: React.MouseEvent) {
     if (moving) {
       const p = previewPoint(event);
@@ -214,44 +205,35 @@ export default function PostcardFaceEditor({
           onQrPositionChange({ ...qr.position, width: newWidth, height: newHeight });
         }
       }
-      return;
     }
-    if (!drawAnchor) return;
-    const p = previewPoint(event);
-    setDrawRect({
-      x: Math.min(drawAnchor.x, p.x),
-      y: Math.min(drawAnchor.y, p.y),
-      w: Math.abs(p.x - drawAnchor.x),
-      h: Math.abs(p.y - drawAnchor.y),
-    });
   }
 
   function handlePreviewMouseUp() {
     if (moving) {
       setMoving(null);
-      return;
     }
-    if (drawAnchor && drawRect && (drawRect.w > 10 || drawRect.h > 10)) {
-      setNamingRect(drawRect);
-      setDraftName('');
-    }
-    setDrawAnchor(null);
-    setDrawRect(null);
   }
 
-  function handleCreateRegion(rect: { x: number; y: number; w: number; h: number }, label: string) {
-    const ppi = pxPerInch();
-    const region = createRegionFromRect(side, rect, label, ppi, existingRegionNames);
+  function handleAddText() {
+    const region = createDefaultTextRegion(side, existingRegionNames);
     onAddRegion(region, '');
-    setNamingRect(null);
   }
 
   return (
     <div className="flex w-full flex-col items-center gap-2">
-      {/* Add-QR tool sits ABOVE the postcard (outside it) so it never
-          shrinks the image -- the accepted postcard stays the same size as
-          the read-only iteration rows (max-w-[800px]). */}
+      {/* Add-Text/Add-QR tools sit ABOVE the postcard (outside it) so they
+          never shrink the image -- the accepted postcard stays the same
+          size as the read-only iteration rows (max-w-[800px]). */}
       <div className="flex w-full max-w-[800px] items-center justify-end gap-2" aria-label="Tools" role="toolbar">
+        <button
+          type="button"
+          onClick={handleAddText}
+          aria-label="Add text box"
+          title="Add a text box to this face"
+          className="flex h-8 items-center justify-center rounded border border-slate-300 bg-white px-3 text-xs font-bold uppercase leading-none text-slate-600 hover:bg-slate-50"
+        >
+          + Text
+        </button>
         <button
           type="button"
           onClick={onAddQr}
@@ -267,10 +249,9 @@ export default function PostcardFaceEditor({
       <div
         ref={previewRef}
         data-testid="postcard-preview"
-        onMouseDown={handlePreviewMouseDown}
         onMouseMove={handlePreviewMouseMove}
         onMouseUp={handlePreviewMouseUp}
-        className="relative mx-auto w-full max-w-[800px] cursor-crosshair border-2 border-slate-300 bg-white shadow-sm"
+        className="relative mx-auto w-full max-w-[800px] border-2 border-slate-300 bg-white shadow-sm"
         style={{ aspectRatio: '6 / 4' }}
       >
         <img
@@ -334,14 +315,6 @@ export default function PostcardFaceEditor({
             </Fragment>
           );
         })}
-
-        {drawRect && (
-          <div
-            data-testid="draw-rubber-band"
-            className="pointer-events-none absolute border-2 border-dashed border-emerald-500 bg-emerald-50/40"
-            style={{ top: drawRect.y, left: drawRect.x, width: drawRect.w, height: drawRect.h }}
-          />
-        )}
 
         {qr && (
           <>
@@ -453,37 +426,6 @@ export default function PostcardFaceEditor({
               }}
               rows={Math.max(3, Math.ceil(draftText.length / 60) + 1)}
               className="w-full resize-y rounded border border-slate-300 px-3 py-2 text-base leading-relaxed text-slate-800"
-            />
-          </div>
-        </div>
-      )}
-
-      {/* Name-the-new-box popup, after drawing. */}
-      {namingRect && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/40" onClick={() => setNamingRect(null)}>
-          <div
-            role="dialog"
-            aria-label="Name new text box"
-            className="w-full max-w-md rounded-lg bg-white p-6 shadow-xl"
-            onClick={(event) => event.stopPropagation()}
-          >
-            <h3 className="text-sm font-semibold text-slate-700">New text box</h3>
-            <p className="mb-3 mt-0.5 text-xs text-slate-500">Name it — Return creates, Esc discards</p>
-            <input
-              autoFocus
-              type="text"
-              aria-label="Text box name"
-              placeholder="e.g. Headline"
-              value={draftName}
-              onChange={(event) => setDraftName(event.target.value)}
-              onKeyDown={(event) => {
-                if (event.key === 'Escape') setNamingRect(null);
-                if (event.key === 'Enter' && draftName.trim()) {
-                  event.preventDefault();
-                  handleCreateRegion(namingRect, draftName.trim());
-                }
-              }}
-              className="w-full rounded border border-slate-300 px-3 py-2 text-base text-slate-800"
             />
           </div>
         </div>

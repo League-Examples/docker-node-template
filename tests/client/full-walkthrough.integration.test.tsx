@@ -403,22 +403,18 @@ describe('Full walkthrough (sprint 005 capstone, sprint.md Success Criteria)', (
       // there is no separate "Text Entry" page/navigation anymore
       // (Sprint 005 OOP change, 2026-07-15: `pages/PostcardEdit.tsx`
       // deleted). ----
-      const preview = await screen.findByTestId('postcard-preview');
+      await screen.findByTestId('postcard-preview');
       expect(screen.getByRole('img', { name: /front preview/i })).toHaveAttribute(
         'src',
         '/api/files/projects/42/iterations/1.png',
       );
 
-      fireEvent.mouseDown(preview, { clientX: 100, clientY: 50 });
-      fireEvent.mouseMove(preview, { clientX: 300, clientY: 120 });
-      fireEvent.mouseUp(preview);
-      const nameDialog = screen.getByRole('dialog', { name: /name new text box/i });
-      await user.type(within(nameDialog).getByLabelText(/text box name/i), 'Headline{Enter}');
+      await user.click(screen.getByRole('button', { name: 'Add text box' }));
 
-      await user.click(screen.getByTestId('postcard-region-box-front_headline'));
-      const editDialog = screen.getByRole('dialog', { name: /edit headline/i });
-      await user.type(within(editDialog).getByLabelText(/headline text/i), 'ROBOTS WELCOME{Enter}');
-      expect(screen.getByTestId('postcard-region-text-front_headline')).toHaveTextContent('ROBOTS WELCOME');
+      await user.click(screen.getByTestId('postcard-region-box-front_text_1'));
+      const editDialog = screen.getByRole('dialog', { name: /edit text 1/i });
+      await user.type(within(editDialog).getByLabelText(/text 1 text/i), 'ROBOTS WELCOME{Enter}');
+      expect(screen.getByTestId('postcard-region-text-front_text_1')).toHaveTextContent('ROBOTS WELCOME');
 
       // ---- Generate a PDF (the fixed-header PDF button, moved from the
       // deleted `PostcardEdit.tsx` page to `ProjectDetail/index.tsx`). ----

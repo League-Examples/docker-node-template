@@ -23,21 +23,23 @@ export interface PostcardRegion {
   font: PostcardRegionFont;
 }
 
-export interface DrawRect {
-  x: number;
-  y: number;
-  w: number;
-  h: number;
-}
-
 export const DEFAULT_FONT: PostcardRegionFont = { family: 'Arial, sans-serif', size: '14px' };
 
-/** Minimum box size a resize handle can shrink a region or QR overlay to --
- * matches the minimum a freshly drawn box already gets in
- * `createRegionFromRect`, so a resized box can never end up smaller than one
- * you could draw from scratch. */
+/** Minimum box size a resize handle can shrink a region or QR overlay to. */
 export const MIN_BOX_WIDTH_IN = 0.3;
 export const MIN_BOX_HEIGHT_IN = 0.2;
+
+/** Default position for a newly-added text region (Sprint 005 OOP change,
+ * 2026-07-15: the "+ Text" button replaces the old rubber-band draw -- see
+ * `ProjectDetail/PostcardFaceEditor.tsx`'s module header). An explicit
+ * `width` AND `height` so the box is immediately resizable via the
+ * bottom-right handle, mirroring `QR_OVERLAY_POSITION` below. */
+export const DEFAULT_TEXT_REGION_POSITION: PostcardRegionPosition = {
+  top: '1.00in',
+  left: '0.50in',
+  width: '3.00in',
+  height: '1.00in',
+};
 
 /** The preview canvas's fixed size (`width: '6in', height: '4in'`) -- named
  * here so the alignment-guide overlay's `right`-anchored left-edge math
@@ -121,27 +123,25 @@ export function toContentRegion(region: PostcardRegion, regionText: Record<strin
   };
 }
 
-/** Creates a freshly-drawn region from a rubber-band draw rect (canvas
- * pixels) and a chosen label -- the drawn box IS the box: exact drawn size,
- * content clipped (an explicit `position.height`). */
-export function createRegionFromRect(
-  side: PostcardSide,
-  rect: DrawRect,
-  label: string,
-  ppi: number,
-  taken: Set<string>,
-): PostcardRegion {
-  const name = makeRegionName(side, label, taken);
+/** Creates a new text region at the fixed `DEFAULT_TEXT_REGION_POSITION`,
+ * auto-labeled uniquely as "Text N" -- the "+ Text" button's whole
+ * region-creation path (Sprint 005 OOP change, 2026-07-15, replacing the
+ * old drag-to-draw + name-it-yourself flow). Loops through candidate labels
+ * ("Text 1", "Text 2", ...) via `makeRegionName` until one produces the
+ * expected unsuffixed slug, so the label a stakeholder sees always matches
+ * the generated name (`front_text_2`, not `front_text_1_2`). */
+export function createDefaultTextRegion(side: PostcardSide, taken: Set<string>): PostcardRegion {
+  let n = 1;
+  let name = makeRegionName(side, `Text ${n}`, taken);
+  while (name !== `${side}_text_${n}`) {
+    n += 1;
+    name = makeRegionName(side, `Text ${n}`, taken);
+  }
   return {
     name,
-    label,
+    label: `Text ${n}`,
     style: '',
-    position: {
-      top: `${(rect.y / ppi).toFixed(2)}in`,
-      left: `${(rect.x / ppi).toFixed(2)}in`,
-      width: `${Math.max(rect.w / ppi, MIN_BOX_WIDTH_IN).toFixed(2)}in`,
-      height: `${Math.max(rect.h / ppi, MIN_BOX_HEIGHT_IN).toFixed(2)}in`,
-    },
+    position: { ...DEFAULT_TEXT_REGION_POSITION },
     font: DEFAULT_FONT,
   };
 }

@@ -2,7 +2,7 @@ import { describe, it, expect, vi } from 'vitest';
 import { render, screen, fireEvent, within } from '@testing-library/react';
 import type { ComponentProps } from 'react';
 import PostcardFaceEditor from '../../client/src/pages/ProjectDetail/PostcardFaceEditor';
-import type { PostcardRegion } from '../../client/src/lib/postcardFaceEditing';
+import { createDefaultTextRegion, type PostcardRegion } from '../../client/src/lib/postcardFaceEditing';
 import type { PostcardQr } from '../../client/src/pages/ProjectDetail/types';
 
 /**
@@ -105,8 +105,42 @@ describe('PostcardFaceEditor -- click-to-edit popup', () => {
   });
 });
 
-describe('PostcardFaceEditor -- drag-to-draw a new region', () => {
-  it('drawing a box on the background opens the naming popup, and naming it calls onAddRegion', () => {
+describe('PostcardFaceEditor -- "+ Text" adds a default-position region', () => {
+  it('clicking "+ Text" calls onAddRegion with a default-positioned, uniquely-named, empty-text region', () => {
+    const props = renderEditor();
+    fireEvent.click(screen.getByRole('button', { name: 'Add text box' }));
+
+    expect(props.onAddRegion).toHaveBeenCalledTimes(1);
+    const [addedRegion, initialText] = props.onAddRegion.mock.calls[0];
+    expect(addedRegion.name).toBe('front_text_1');
+    expect(addedRegion.label).toBe('Text 1');
+    expect(addedRegion.position).toEqual({ top: '1.00in', left: '0.50in', width: '3.00in', height: '1.00in' });
+    expect(initialText).toBe('');
+  });
+
+  it('generates a name unique across both faces via existingRegionNames', () => {
+    const props = renderEditor({ existingRegionNames: new Set(['front_text_1']) });
+    fireEvent.click(screen.getByRole('button', { name: 'Add text box' }));
+
+    expect(props.onAddRegion.mock.calls[0][0].name).toBe('front_text_2');
+    expect(props.onAddRegion.mock.calls[0][0].label).toBe('Text 2');
+  });
+
+  it('an added region is immediately movable, resizable, and openable via click-to-edit', () => {
+    // The parent owns `regions` state; render as it would just after
+    // `onAddRegion` fires for a fresh "+ Text" click (mirrors
+    // `usePostcardEditorState.addRegion`'s resulting props).
+    const addedRegion = createDefaultTextRegion('front', new Set());
+    renderEditor({ regions: [addedRegion], regionText: { [addedRegion.name]: '' } });
+
+    expect(screen.getByTestId(`region-move-${addedRegion.name}`)).toBeInTheDocument();
+    expect(screen.getByTestId(`move-handle-br-${addedRegion.name}`)).toBeInTheDocument();
+
+    fireEvent.click(screen.getByTestId(`postcard-region-box-${addedRegion.name}`));
+    expect(screen.getByRole('dialog', { name: `Edit ${addedRegion.label}` })).toBeInTheDocument();
+  });
+
+  it('no rubber-band draw or name-the-box dialog remains: dragging on the canvas background does nothing', () => {
     const props = renderEditor();
     const preview = screen.getByTestId('postcard-preview');
 
@@ -114,42 +148,9 @@ describe('PostcardFaceEditor -- drag-to-draw a new region', () => {
     fireEvent.mouseMove(preview, { clientX: 150, clientY: 100 });
     fireEvent.mouseUp(preview);
 
-    expect(screen.getByRole('dialog', { name: 'Name new text box' })).toBeInTheDocument();
-
-    const input = screen.getByLabelText('Text box name');
-    fireEvent.change(input, { target: { value: 'Subhead' } });
-    fireEvent.keyDown(input, { key: 'Enter' });
-
-    expect(props.onAddRegion).toHaveBeenCalledTimes(1);
-    const [addedRegion, initialText] = props.onAddRegion.mock.calls[0];
-    expect(addedRegion.name).toBe('front_subhead');
-    expect(addedRegion.label).toBe('Subhead');
-    expect(initialText).toBe('');
+    expect(screen.queryByTestId('draw-rubber-band')).not.toBeInTheDocument();
     expect(screen.queryByRole('dialog', { name: 'Name new text box' })).not.toBeInTheDocument();
-  });
-
-  it('a tiny drag (under the 10px threshold) does not open the naming popup', () => {
-    renderEditor();
-    const preview = screen.getByTestId('postcard-preview');
-
-    fireEvent.mouseDown(preview, { clientX: 50, clientY: 50, target: preview, currentTarget: preview });
-    fireEvent.mouseMove(preview, { clientX: 52, clientY: 51 });
-    fireEvent.mouseUp(preview);
-
-    expect(screen.queryByRole('dialog', { name: 'Name new text box' })).not.toBeInTheDocument();
-  });
-
-  it('generates a name unique across both faces via existingRegionNames', () => {
-    const props = renderEditor({ existingRegionNames: new Set(['front_subhead']) });
-    const preview = screen.getByTestId('postcard-preview');
-
-    fireEvent.mouseDown(preview, { clientX: 0, clientY: 0, target: preview, currentTarget: preview });
-    fireEvent.mouseMove(preview, { clientX: 100, clientY: 100 });
-    fireEvent.mouseUp(preview);
-    fireEvent.change(screen.getByLabelText('Text box name'), { target: { value: 'Subhead' } });
-    fireEvent.keyDown(screen.getByLabelText('Text box name'), { key: 'Enter' });
-
-    expect(props.onAddRegion.mock.calls[0][0].name).toBe('front_subhead_2');
+    expect(props.onAddRegion).not.toHaveBeenCalled();
   });
 });
 
