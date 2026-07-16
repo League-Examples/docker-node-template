@@ -240,7 +240,7 @@ describe('LibraryDrawer -- conversational/semantic filter (SUC-015)', () => {
     { ownerType: 'asset', ownerId: 100, matchedVia: ['vector', 'keyword'], score: 0.9, path: 'assets/logo-robot.png', label: 'a robot logo' },
   ];
 
-  it('a fresh search_catalog result opens the drawer and shows only the matched items', async () => {
+  it('a fresh search_catalog result populates the matched items but does NOT force the drawer open', async () => {
     stubFetch();
     const { rerender } = render(<LibraryDrawer projectId={7} onReferenceAdded={vi.fn()} searchCatalogMatches={null} />);
 
@@ -248,18 +248,21 @@ describe('LibraryDrawer -- conversational/semantic filter (SUC-015)', () => {
 
     rerender(<LibraryDrawer projectId={7} onReferenceAdded={vi.fn()} searchCatalogMatches={matches} />);
 
-    await waitFor(() => expect(screen.getByTestId('library-overlay')).toHaveAttribute('data-open', 'true'));
+    // The matched item is populated in the semantic view, but the drawer
+    // stays closed -- the agent may run search_catalog on ordinary chat
+    // turns, so the panel is only opened by the user (stakeholder).
     expect(await screen.findByText('a robot logo')).toBeInTheDocument();
+    expect(screen.getByTestId('library-overlay')).toHaveAttribute('data-open', 'false');
   });
 
-  it('an empty match set shows the broaden-your-query state, not an error (UC-014 E1)', async () => {
+  it('an empty match set populates the broaden-your-query state without opening the drawer, not an error (UC-014 E1)', async () => {
     stubFetch();
     const { rerender } = render(<LibraryDrawer projectId={7} onReferenceAdded={vi.fn()} searchCatalogMatches={null} />);
 
     rerender(<LibraryDrawer projectId={7} onReferenceAdded={vi.fn()} searchCatalogMatches={[]} />);
 
-    await waitFor(() => expect(screen.getByTestId('library-overlay')).toHaveAttribute('data-open', 'true'));
     expect(await screen.findByTestId('library-empty')).toHaveTextContent(/broadening your query/i);
+    expect(screen.getByTestId('library-overlay')).toHaveAttribute('data-open', 'false');
     expect(screen.queryByRole('alert')).not.toBeInTheDocument();
   });
 });
