@@ -230,7 +230,7 @@ describe('runTurn -- project + active-stream context injection', () => {
     const project = await prisma.project.create({
       data: {
         title: `${marker}-context-project`,
-        ownerUserId,
+        ownerUserId: ownerId,
         status: 'active',
         detailsHeader: { style: 'vintage travel poster', outputType: 'postcard', goal: 'promote the fall festival' },
       },
