@@ -197,6 +197,30 @@ describe('PostcardFaceEditor -- move/resize a region', () => {
     fireEvent.mouseUp(screen.getByTestId('postcard-preview'));
     expect(screen.queryByTestId('align-guide-top')).not.toBeInTheDocument();
   });
+
+  it('the alignment guides sit exactly on the box\'s own rendered edges (same px/in scale for both)', () => {
+    // Regression test for the coordinate-scaling bug: the box is rendered
+    // via `regionBoxStyle(position, widthPx)` and the guides are computed
+    // via `boxEdgesPx(position, pxPerInch(), ...)` -- both must resolve the
+    // SAME measured `widthPx`/px-per-inch, or the guide lines drift off the
+    // box's edges (and a drag's grab point jumps) at any canvas size other
+    // than the old fixed 576px. No `mouseMove` is fired, so the guide
+    // reflects the box's un-dragged, as-rendered position -- if the two
+    // scales agree, the guide's left/top land exactly on the box's own
+    // inline-style left/top.
+    renderEditor({ regions: [region()], regionText: { front_headline: 'x' } });
+    const grip = screen.getByTestId('region-move-front_headline');
+    const box = screen.getByTestId('postcard-region-box-front_headline');
+
+    fireEvent.mouseDown(grip, { clientX: 0, clientY: 0 });
+
+    const guideLeft = screen.getByTestId('align-guide-left');
+    const guideTop = screen.getByTestId('align-guide-top');
+    expect(Number.parseFloat(guideLeft.style.left)).toBeCloseTo(Number.parseFloat(box.style.left), 5);
+    expect(Number.parseFloat(guideTop.style.top)).toBeCloseTo(Number.parseFloat(box.style.top), 5);
+
+    fireEvent.mouseUp(screen.getByTestId('postcard-preview'));
+  });
 });
 
 describe('PostcardFaceEditor -- QR add/edit/delete', () => {

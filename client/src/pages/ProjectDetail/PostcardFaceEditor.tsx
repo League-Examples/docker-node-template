@@ -1,7 +1,8 @@
 import { Fragment, useRef, useState } from 'react';
 import { fileUrl, type PostcardQr, type PostcardRegionPosition } from './types';
 import { buildQrGraphic, normalizeQrUrl } from '../../lib/qrCode';
-import { regionBoxStyle, hasExplicitHeight } from '../../lib/postcardRegionLayout';
+import { regionBoxStyle, hasExplicitHeight, REFERENCE_WIDTH_PX } from '../../lib/postcardRegionLayout';
+import { useMeasuredWidth } from '../../lib/useMeasuredWidth';
 import PostcardRegionContent from '../../lib/PostcardRegionContent';
 import PostcardRegionBaseLayer from '../../lib/PostcardRegionBaseLayer';
 import PostcardQrBaseLayer from '../../lib/PostcardQrBaseLayer';
@@ -114,6 +115,24 @@ export default function PostcardFaceEditor({
   // rendered height while it's being moved.
   const boxElRefs = useRef<Record<string, HTMLElement | null>>({});
 
+  // Coordinate-scaling fix (OOP, 2026-07-15): the canvas became responsive
+  // (`w-full max-w-[800px]`, `aspect-ratio: 6/4`) instead of a fixed 6in
+  // (576px), but boxes were still positioned via `regionBoxStyle(position)`
+  // with NO `widthPx` -- i.e. at fixed CSS `in` units (96px/in) -- while the
+  // drag math and alignment guides computed px/in off the *measured* canvas
+  // width. At any canvas width other than 576px those two scales disagree,
+  // so a drag's grab point jumps and the guide lines don't sit on the box
+  // edges. The fix: measure the canvas ONCE (the same `useMeasuredWidth`
+  // hook `OutputPane`/`PostcardOverlay` already use) and thread that single
+  // `widthPx` through EVERY box-positioning call (base layers, chrome
+  // buttons, font-size scaling) AND the drag/guide px-per-inch math, so
+  // rendering and interaction always agree. `measuredWidthPx` is `0` before
+  // layout (and always in jsdom, which reports a zero rect) -- falling back
+  // to `REFERENCE_WIDTH_PX` (576 = 6in * 96 CSS px/in) reproduces the exact
+  // 96px/in the tests, and the old fixed-576px canvas, always used.
+  const { widthPx: measuredWidthPx } = useMeasuredWidth(previewRef, imagePath);
+  const widthPx = measuredWidthPx > 0 ? measuredWidthPx : REFERENCE_WIDTH_PX;
+
   const qrGraphic = qr && qr.url.trim() ? buildQrGraphic(normalizeQrUrl(qr.url)) : null;
 
   let dragGuide: { top: number; left: number; width: number; height: number } | null = null;
@@ -153,10 +172,12 @@ export default function PostcardFaceEditor({
     return { x: event.clientX - (rect?.left ?? 0), y: event.clientY - (rect?.top ?? 0) };
   }
 
-  // Preview is 6in wide; jsdom reports zero width, so fall back to 96dpi.
+  // Same measured `widthPx` used to render every box (below) and the
+  // gallery's read-only `PostcardOverlay` -- NOT an independent
+  // `getBoundingClientRect` read, so drag math and alignment guides can
+  // never disagree with where the boxes are actually drawn.
   function pxPerInch(): number {
-    const measured = previewRef.current?.getBoundingClientRect().width ?? 0;
-    return measured > 0 ? measured / CANVAS_WIDTH_IN : 96;
+    return widthPx / CANVAS_WIDTH_IN;
   }
 
   function handleMoveStart(event: React.MouseEvent, kind: 'region' | 'qr', action: 'move' | 'resize', name: string) {
@@ -272,6 +293,7 @@ export default function PostcardFaceEditor({
                 text={text}
                 font={region.font}
                 style={region.style}
+                widthPx={widthPx}
               />
               <button
                 type="button"
@@ -288,7 +310,7 @@ export default function PostcardFaceEditor({
                   openRegionEditor(region);
                 }}
                 className="absolute cursor-pointer border border-dashed border-indigo-400 bg-indigo-50/60 text-left text-[9px] leading-tight hover:bg-indigo-100"
-                style={regionBoxStyle(region.position)}
+                style={regionBoxStyle(region.position, widthPx)}
               >
                 {!explicitHeight && (
                   <PostcardRegionContent
@@ -297,6 +319,7 @@ export default function PostcardFaceEditor({
                     text={text}
                     font={region.font}
                     style={region.style}
+                    widthPx={widthPx}
                   />
                 )}
                 <span
@@ -324,6 +347,7 @@ export default function PostcardFaceEditor({
               position={qr.position}
               qrGraphic={qrGraphic}
               url={qr.url}
+              widthPx={widthPx}
             />
             <button
               type="button"
@@ -341,7 +365,7 @@ export default function PostcardFaceEditor({
                 setEditingQr(true);
               }}
               className="absolute cursor-pointer border border-dashed border-slate-300 bg-white/80 p-0 text-left hover:border-indigo-400"
-              style={regionBoxStyle(qr.position)}
+              style={regionBoxStyle(qr.position, widthPx)}
             >
               {!qrGraphic && (
                 <span className="flex h-full w-full flex-col items-center justify-center border-2 border-dashed border-amber-500 bg-amber-50/70 p-1 text-center text-[9px] font-semibold text-amber-700">
