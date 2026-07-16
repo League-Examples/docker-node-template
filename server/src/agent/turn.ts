@@ -51,6 +51,7 @@ import * as fsTools from '../agent-mcp/fsTools';
 import * as catalogTools from '../agent-mcp/catalogTools';
 import type { VersioningRecorder } from '../agent-mcp/fsTools';
 import type { ChatMessageModel } from '../generated/prisma/models/ChatMessage';
+import type { ProjectModel } from '../generated/prisma/models/Project';
 
 // ---------------------------------------------------------------------------
 // Lock acquisition: bounded wait/retry on top of locks.ts's reject-on-
@@ -424,6 +425,130 @@ const SYSTEM_PROMPT_BASE =
   'You are the Flyerbot design assistant. Help the project owner develop postcard/flyer concepts. ' +
   "Use only the tools provided when a change to the project's workspace or catalog is needed -- never fabricate a tool call for anything outside that list.";
 
+// ---------------------------------------------------------------------------
+// Project + active-stream context (Sprint 005 OOP change, 2026-07-15): the
+// chat box previously "had no sense of what project it's in" -- every turn
+// now loads the Project row (title/status/detailsHeader) plus a brief
+// Iteration/Reference summary from the DB (D8: fresh every call, same as
+// history/knowledge retrieval above) and folds it into the system prompt as
+// a concise PROJECT CONTEXT block, alongside a plain statement of which
+// stream (`RunTurnInput.activeFace`) the user is currently on so a
+// `generate_image` call this turn lands in the right stream. `activeFace`
+// itself stays out of `WORKSPACE_TOOL_DEFINITIONS` -- it is asserted to the
+// model as context, never offered as something to reason about or pass as
+// a tool argument.
+// ---------------------------------------------------------------------------
+
+interface ProjectContextIteration {
+  seq: number;
+  role: string | null;
+  accepted: boolean;
+}
+
+interface ProjectContextReference {
+  role: string;
+  label: string;
+}
+
+export interface ProjectContext {
+  project: Pick<ProjectModel, 'title' | 'status' | 'detailsHeader'>;
+  iterations: ProjectContextIteration[];
+  references: ProjectContextReference[];
+}
+
+/** Loads the project + a lightweight iterations/references summary for the
+ * PROJECT CONTEXT block below. Returns `null` when the project row itself
+ * can't be found (e.g. a stale/bad `projectId`) -- best-effort, like
+ * `retrieveKnowledge`: a missing project degrades the prompt rather than
+ * failing the whole turn. */
+async function loadProjectContext(projectId: number, prismaClient: any): Promise<ProjectContext | null> {
+  const project = await prismaClient.project.findUnique({
+    where: { id: projectId },
+    select: { title: true, status: true, detailsHeader: true },
+  });
+  if (!project) return null;
+
+  const iterations = await prismaClient.iteration.findMany({
+    where: { projectId },
+    select: { seq: true, role: true, accepted: true },
+    orderBy: { seq: 'asc' },
+  });
+
+  const references = await prismaClient.reference.findMany({
+    where: { projectId },
+    select: {
+      role: true,
+      asset: { select: { path: true, description: { select: { description: true } } } },
+    },
+  });
+
+  return {
+    project,
+    iterations,
+    references: references.map((r: any) => ({
+      role: r.role,
+      label: r.asset?.description?.description || r.asset?.path || 'untitled asset',
+    })),
+  };
+}
+
+/** Renders `Project.detailsHeader` (free-form JSON filled in by the model
+ * itself via `create_project`, e.g. `style`/`outputType`/`goal` -- see
+ * `client/src/pages/ProjectDetail/ProjectDetailsHeader.tsx`) as a compact
+ * "key: value" listing of whatever fields are actually set, rather than
+ * hard-coding the three current keys -- so an added field surfaces here
+ * without this file changing too. */
+function formatDetailsHeader(detailsHeader: unknown): string {
+  if (!detailsHeader || typeof detailsHeader !== 'object') return 'no creative brief set yet';
+  const entries = Object.entries(detailsHeader as Record<string, unknown>).filter(
+    ([, v]) => typeof v === 'string' && v.length > 0
+  ) as [string, string][];
+  if (entries.length === 0) return 'no creative brief set yet';
+  return entries.map(([key, value]) => `${key}: ${value}`).join('; ');
+}
+
+/** Per-stream counts plus which iteration (if any) is the accepted one in
+ * each stream -- "what exists so far" for the PROJECT CONTEXT block. */
+function summarizeIterations(iterations: ProjectContextIteration[]): string {
+  if (iterations.length === 0) return 'no iterations yet';
+  const front = iterations.filter((i) => i.role === 'front');
+  const back = iterations.filter((i) => i.role === 'back');
+  const other = iterations.filter((i) => i.role !== 'front' && i.role !== 'back');
+  const acceptedFront = front.find((i) => i.accepted);
+  const acceptedBack = back.find((i) => i.accepted);
+  const parts = [
+    `front: ${front.length} (accepted: ${acceptedFront ? `#${acceptedFront.seq}` : 'none'})`,
+    `back: ${back.length} (accepted: ${acceptedBack ? `#${acceptedBack.seq}` : 'none'})`,
+  ];
+  if (other.length > 0) parts.push(`unassigned: ${other.length}`);
+  return parts.join(', ');
+}
+
+function summarizeReferences(references: ProjectContextReference[]): string {
+  if (references.length === 0) return 'none attached';
+  return references.map((r) => `${r.role}: ${r.label}`).join('; ');
+}
+
+/** Builds the PROJECT CONTEXT block folded into the system prompt --
+ * project identity, what exists so far (iterations/references), and an
+ * unambiguous statement of the active stream. `null` (project not found)
+ * renders no block at all rather than a misleading one. */
+function buildProjectContextBlock(context: ProjectContext | null, activeFace: 'front' | 'back'): string {
+  if (!context) return '';
+  const { project, iterations, references } = context;
+  const faceLabel = activeFace.toUpperCase();
+  const lines = [
+    'PROJECT CONTEXT:',
+    `- Project: "${project.title}" (status: ${project.status})`,
+    `- Creative brief: ${formatDetailsHeader(project.detailsHeader)}`,
+    `- Iterations so far: ${summarizeIterations(iterations)}`,
+    `- References attached: ${summarizeReferences(references)}`,
+    `- Active stream: You are working on the ${faceLabel} of this postcard. Any image you generate this turn ` +
+      `becomes a new iteration in the ${faceLabel} stream.`,
+  ];
+  return lines.join('\n');
+}
+
 export interface ConsultedKnowledgeEntry {
   ownerType: string;
   ownerId: number;
@@ -462,10 +587,16 @@ export function retrieveKnowledge(message: string): ConsultedKnowledgeEntry[] {
   }
 }
 
-function buildSystemPrompt(consulted: ConsultedKnowledgeEntry[]): string {
-  if (consulted.length === 0) return SYSTEM_PROMPT_BASE;
-  const listing = consulted.map((c) => `- ${c.ownerType}#${c.ownerId}`).join('\n');
-  return `${SYSTEM_PROMPT_BASE}\n\nKnowledge-store entries consulted for this turn (traceable retrieval, per spec §8):\n${listing}`;
+function buildSystemPrompt(consulted: ConsultedKnowledgeEntry[], projectContextBlock: string): string {
+  let prompt = SYSTEM_PROMPT_BASE;
+  if (projectContextBlock) {
+    prompt += `\n\n${projectContextBlock}`;
+  }
+  if (consulted.length > 0) {
+    const listing = consulted.map((c) => `- ${c.ownerType}#${c.ownerId}`).join('\n');
+    prompt += `\n\nKnowledge-store entries consulted for this turn (traceable retrieval, per spec §8):\n${listing}`;
+  }
+  return prompt;
 }
 
 // ---------------------------------------------------------------------------
@@ -497,12 +628,14 @@ export interface RunTurnInput {
    * this message was sent (Sprint 005 OOP change, 2026-07-15: "new
    * iterations join the currently-active tab's stream"). Threaded straight
    * through to any `generate_image` tool call this turn dispatches (see
-   * `dispatchToolCall` below) -- never surfaced to the provider/model
-   * itself (it's not in `WORKSPACE_TOOL_DEFINITIONS`'s `generate_image`
-   * `inputSchema`), since it describes client UI state the model has no
-   * reason to supply or reason about. Defaults to `'front'` when omitted
-   * (an older client, or a test that doesn't care), matching "a new
-   * project starts on Front". */
+   * `dispatchToolCall` below), and stated in plain language in the PROJECT
+   * CONTEXT block folded into the system prompt (`buildProjectContextBlock`
+   * above) -- but never exposed as a *tool input* the model must reason
+   * about or supply itself (it's not in `WORKSPACE_TOOL_DEFINITIONS`'s
+   * `generate_image` `inputSchema`): it describes client UI state, asserted
+   * to the model as context rather than offered as something to choose.
+   * Defaults to `'front'` when omitted (an older client, or a test that
+   * doesn't care), matching "a new project starts on Front". */
   activeFace?: 'front' | 'back';
 }
 
@@ -600,6 +733,7 @@ export async function runTurn(input: RunTurnInput, options: TurnControllerOption
   const maxToolRounds = options.maxToolRounds ?? DEFAULT_MAX_TOOL_ROUNDS;
   const emit = options.onEvent ?? (() => {});
   const holder = `turn:${input.projectId}:${Date.now()}`;
+  const activeFace: 'front' | 'back' = input.activeFace ?? 'front';
 
   let lockAcquired = false;
 
@@ -620,7 +754,9 @@ export async function runTurn(input: RunTurnInput, options: TurnControllerOption
     if (consultedKnowledge.length > 0) {
       emit({ type: 'knowledge_consulted', entries: consultedKnowledge });
     }
-    const systemPrompt = buildSystemPrompt(consultedKnowledge);
+    const projectContext = await loadProjectContext(input.projectId, prismaClient);
+    const projectContextBlock = buildProjectContextBlock(projectContext, activeFace);
+    const systemPrompt = buildSystemPrompt(consultedKnowledge, projectContextBlock);
 
     const createdMessages: ChatMessageModel[] = [];
     const allToolCallRecords: ProviderToolCallRecord[] = [];
@@ -669,7 +805,7 @@ export async function runTurn(input: RunTurnInput, options: TurnControllerOption
             versioning,
             lockHolder: holder,
             prismaClient,
-            activeFace: input.activeFace ?? 'front',
+            activeFace,
           });
         } catch (err: any) {
           isError = true;

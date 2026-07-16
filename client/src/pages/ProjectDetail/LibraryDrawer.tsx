@@ -344,9 +344,12 @@ export default function LibraryDrawer({ projectId, onReferenceAdded, searchCatal
   // happening.
   useEffect(() => {
     if (searchCatalogMatches !== null) {
+      // Populate the semantic results but do NOT force the drawer open --
+      // the agent may run search_catalog on ordinary chat turns, and the
+      // stakeholder doesn't want sending a message to pop the library panel
+      // open. The results show up when the drawer is (or gets) opened.
       setMode('semantic');
       setFilterQuery('');
-      setOpen(true);
     }
   }, [searchCatalogMatches]);
 

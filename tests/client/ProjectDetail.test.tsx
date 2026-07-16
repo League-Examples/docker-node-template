@@ -318,8 +318,8 @@ function sseFrames(events: unknown[]): string {
   return events.map((event) => `data: ${JSON.stringify(event)}\n\n`).join('');
 }
 
-describe('ProjectDetail -- SUC-015 wiring: chat SSE search_catalog opens the library drawer', () => {
-  it('a scripted tool_call_finished(search_catalog) SSE event updates and opens the drawer, without a page reload', async () => {
+describe('ProjectDetail -- SUC-015 wiring: chat SSE search_catalog populates the library drawer without force-opening it', () => {
+  it('a scripted tool_call_finished(search_catalog) SSE event populates the drawer but does not force it open', async () => {
     const searchMatches = [
       { ownerType: 'asset', ownerId: 100, matchedVia: ['vector'], score: 0.87, path: 'assets/logo-robot.png', label: 'robot logo' },
     ];
@@ -360,16 +360,19 @@ describe('ProjectDetail -- SUC-015 wiring: chat SSE search_catalog opens the lib
 
     await screen.findByText('Here are the assets with robots in them.');
 
-    // The SSE event -- not a page reload -- drove this: the drawer opened
-    // and now shows exactly the matched item.
-    await waitFor(() => expect(screen.getByTestId('library-overlay')).toHaveAttribute('data-open', 'true'));
-    expect(screen.getByText('robot logo')).toBeInTheDocument();
+    // The search result populates the drawer's semantic view but does NOT
+    // force it open -- the agent may run search_catalog on ordinary chat
+    // turns, so popping the panel open is left to the user (stakeholder).
+    expect(screen.getByTestId('library-overlay')).toHaveAttribute('data-open', 'false');
+    // Opening the drawer surfaces the matched item.
+    fireEvent.click(screen.getByRole('button', { name: 'Open library' }));
+    await waitFor(() => expect(screen.getByText('robot logo')).toBeInTheDocument());
 
     const getProjectCalls = fetchMock.mock.calls.filter(([url, init]) => url === '/api/projects/7' && !init?.method);
     expect(getProjectCalls).toHaveLength(1);
   });
 
-  it('an empty search_catalog match set opens the drawer to a broaden-your-query state, not an error (UC-014 E1)', async () => {
+  it('an empty search_catalog match set does not force the drawer open; opening it shows a broaden-your-query state, not an error (UC-014 E1)', async () => {
     const chatFrames = sseFrames([
       { type: 'tool_call_finished', callId: '1', name: 'search_catalog', args: { query: 'unicorns' }, result: [], isError: false },
       { type: 'message', content: "I couldn't find anything matching that." },
@@ -400,8 +403,11 @@ describe('ProjectDetail -- SUC-015 wiring: chat SSE search_catalog opens the lib
     fireEvent.click(screen.getByRole('button', { name: 'Send' }));
 
     await screen.findByText("I couldn't find anything matching that.");
-    await waitFor(() => expect(screen.getByTestId('library-overlay')).toHaveAttribute('data-open', 'true'));
-    expect(screen.getByTestId('library-empty')).toHaveTextContent(/broadening your query/i);
+    // Empty results do not force the drawer open either.
+    expect(screen.getByTestId('library-overlay')).toHaveAttribute('data-open', 'false');
+    // Opening it shows the broaden-your-query empty state, not an error.
+    fireEvent.click(screen.getByRole('button', { name: 'Open library' }));
+    await waitFor(() => expect(screen.getByTestId('library-empty')).toHaveTextContent(/broadening your query/i));
     expect(screen.queryByTestId('chat-error')).not.toBeInTheDocument();
   });
 });

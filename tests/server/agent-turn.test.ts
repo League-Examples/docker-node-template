@@ -212,6 +212,138 @@ describe('runTurn -- knowledge retrieval is traceable', () => {
 });
 
 // ---------------------------------------------------------------------------
+// Project + active-stream context injection (Sprint 005 OOP change,
+// 2026-07-15): the chat box previously "had no sense of what project it's
+// in" -- every turn now folds a PROJECT CONTEXT block (title/status/
+// detailsHeader, an iterations/references summary, and a plain statement of
+// the active FRONT/BACK stream) into the system prompt sent to the model.
+// ---------------------------------------------------------------------------
+
+describe('runTurn -- project + active-stream context injection', () => {
+  let contextProjectId: number;
+  let contextAssetId: number;
+  let contextCollectionId: number;
+  let contextReferenceId: number;
+  const contextIterationIds: number[] = [];
+
+  beforeAll(async () => {
+    const project = await prisma.project.create({
+      data: {
+        title: `${marker}-context-project`,
+        ownerUserId,
+        status: 'active',
+        detailsHeader: { style: 'vintage travel poster', outputType: 'postcard', goal: 'promote the fall festival' },
+      },
+    });
+    contextProjectId = project.id;
+
+    const asset = await addAssetToCollection(
+      {
+        directoryId: assetsDirId,
+        collectionName: `${marker}-context-ref-collection`,
+        path: `${marker}/assets/context-ref.png`,
+        hash: 'context-ref-hash',
+      },
+      { versioning: makeVersioningSpy() }
+    );
+    contextAssetId = asset.id;
+    contextCollectionId = asset.collectionId;
+
+    await prisma.assetDescription.create({
+      data: {
+        assetId: asset.id,
+        isPhotograph: false,
+        isLogo: false,
+        description: 'a hand-drawn autumn leaf motif',
+      },
+    });
+
+    const reference = await addReference(
+      { projectId: contextProjectId, assetId: asset.id, role: 'style' },
+      { versioning: makeVersioningSpy() }
+    );
+    contextReferenceId = reference.id;
+
+    const frontAccepted = await createIteration(
+      { projectId: contextProjectId, imagePath: 'front-1.png', promptUsed: 'front concept', role: 'front' },
+      { versioning: makeVersioningSpy() }
+    );
+    contextIterationIds.push(frontAccepted.id);
+    await prisma.iteration.update({ where: { id: frontAccepted.id }, data: { accepted: true } });
+
+    const backDraft = await createIteration(
+      { projectId: contextProjectId, imagePath: 'back-1.png', promptUsed: 'back concept', role: 'back' },
+      { versioning: makeVersioningSpy() }
+    );
+    contextIterationIds.push(backDraft.id);
+  });
+
+  afterAll(async () => {
+    await prisma.chatMessage.deleteMany({ where: { projectId: contextProjectId } });
+    await prisma.reference.deleteMany({ where: { id: contextReferenceId } });
+    await prisma.iteration.deleteMany({ where: { id: { in: contextIterationIds } } });
+    await prisma.assetDescription.deleteMany({ where: { assetId: contextAssetId } });
+    await prisma.asset.deleteMany({ where: { id: contextAssetId } });
+    await prisma.collection.deleteMany({ where: { id: contextCollectionId } });
+    await prisma.project.deleteMany({ where: { id: contextProjectId } });
+  });
+
+  async function captureSystemPrompt(activeFace?: 'front' | 'back'): Promise<string> {
+    let capturedSystemPrompt = '';
+    const adapter = createMockAdapter([{ kind: 'message', content: 'Sure thing.' }], {
+      onSendTurn: (input) => {
+        capturedSystemPrompt = input.systemPrompt;
+      },
+    });
+    await runTurn(
+      { projectId: contextProjectId, message: 'What have we got so far?', activeFace },
+      { provider: adapter, versioning: makeVersioningSpy() }
+    );
+    return capturedSystemPrompt;
+  }
+
+  it('includes the project title, status, and creative-brief detailsHeader fields', async () => {
+    const systemPrompt = await captureSystemPrompt('front');
+
+    expect(systemPrompt).toContain('PROJECT CONTEXT:');
+    expect(systemPrompt).toContain(`${marker}-context-project`);
+    expect(systemPrompt).toContain('status: active');
+    expect(systemPrompt).toContain('vintage travel poster');
+    expect(systemPrompt).toContain('postcard');
+    expect(systemPrompt).toContain('promote the fall festival');
+  });
+
+  it('includes an iterations summary (per-stream counts and the accepted front iteration) and the attached reference', async () => {
+    const systemPrompt = await captureSystemPrompt('front');
+
+    expect(systemPrompt).toContain('front: 1');
+    expect(systemPrompt).toContain('back: 1');
+    expect(systemPrompt).toContain('accepted: #1');
+    expect(systemPrompt).toContain('style: a hand-drawn autumn leaf motif');
+  });
+
+  it('states the active stream as FRONT when activeFace is "front"', async () => {
+    const systemPrompt = await captureSystemPrompt('front');
+
+    expect(systemPrompt).toContain('working on the FRONT of this postcard');
+    expect(systemPrompt).not.toContain('working on the BACK of this postcard');
+  });
+
+  it('states the active stream as BACK when activeFace is "back"', async () => {
+    const systemPrompt = await captureSystemPrompt('back');
+
+    expect(systemPrompt).toContain('working on the BACK of this postcard');
+    expect(systemPrompt).not.toContain('working on the FRONT of this postcard');
+  });
+
+  it('defaults the active stream to FRONT when activeFace is omitted ("a new project starts on Front")', async () => {
+    const systemPrompt = await captureSystemPrompt(undefined);
+
+    expect(systemPrompt).toContain('working on the FRONT of this postcard');
+  });
+});
+
+// ---------------------------------------------------------------------------
 // Statelessness (D8): a "process restart" between two turns is invisible.
 // ---------------------------------------------------------------------------
 
