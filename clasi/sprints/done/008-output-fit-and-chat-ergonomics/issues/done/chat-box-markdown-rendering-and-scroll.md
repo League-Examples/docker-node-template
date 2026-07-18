@@ -1,5 +1,9 @@
 ---
-status: pending
+status: done
+sprint: 008
+tickets:
+- 008-002
+- 008-003
 ---
 
 # Chat box: render Markdown and auto-scroll to new responses

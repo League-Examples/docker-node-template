@@ -74,7 +74,6 @@ function renderOutputPane(
       activeTab={options.activeTab ?? 'front'}
       onIterationsChange={onIterationsChange}
       postcardEditor={options.postcardEditor ?? fakePostcardEditor()}
-      scrollPaddingBottomPx={288}
     />,
   );
 }
@@ -108,7 +107,6 @@ describe('OutputPane -- stream filtering by activeTab', () => {
         activeTab="front"
         onIterationsChange={vi.fn()}
         postcardEditor={fakePostcardEditor()}
-        scrollPaddingBottomPx={288}
       />,
     );
     expect(screen.getByTestId('iteration-row-1')).toBeInTheDocument();
@@ -121,7 +119,6 @@ describe('OutputPane -- stream filtering by activeTab', () => {
         activeTab="back"
         onIterationsChange={vi.fn()}
         postcardEditor={fakePostcardEditor()}
-        scrollPaddingBottomPx={288}
       />,
     );
     expect(screen.queryByTestId('iteration-row-1')).not.toBeInTheDocument();
@@ -137,6 +134,149 @@ describe('OutputPane -- stream filtering by activeTab', () => {
     renderOutputPane([iteration({ id: 1, role: 'front' })]);
     expect(screen.queryByLabelText('Iteration 1 side')).not.toBeInTheDocument();
     expect(screen.queryByRole('combobox')).not.toBeInTheDocument();
+  });
+});
+
+describe('OutputPane -- stage/history split (sprint 008 ticket 001)', () => {
+  it('the newest iteration (highest seq) of the active stream renders in the stage; the rest render in the history strip', () => {
+    const iterations = [
+      iteration({ id: 1, seq: 1, role: 'front' }),
+      iteration({ id: 2, seq: 2, role: 'front' }),
+      iteration({ id: 3, seq: 3, role: 'front' }),
+    ];
+    renderOutputPane(iterations, { activeTab: 'front' });
+
+    const stage = screen.getByTestId('iteration-stage');
+    const history = screen.getByTestId('iteration-history');
+    expect(within(stage).getByTestId('iteration-row-3')).toBeInTheDocument();
+    expect(within(stage).queryByTestId('iteration-row-2')).not.toBeInTheDocument();
+    expect(within(stage).queryByTestId('iteration-row-1')).not.toBeInTheDocument();
+    expect(within(history).getByTestId('iteration-row-2')).toBeInTheDocument();
+    expect(within(history).getByTestId('iteration-row-1')).toBeInTheDocument();
+    expect(within(history).queryByTestId('iteration-row-3')).not.toBeInTheDocument();
+  });
+
+  it('no history strip when the active stream has only one iteration', () => {
+    renderOutputPane([iteration({ id: 1, seq: 1, role: 'front' })], { activeTab: 'front' });
+    expect(screen.getByTestId('iteration-stage')).toBeInTheDocument();
+    expect(screen.queryByTestId('iteration-history')).not.toBeInTheDocument();
+  });
+
+  it('switching activeTab re-computes both the stage and the history region from the newly filtered stream', () => {
+    const iterations = [
+      iteration({ id: 1, seq: 1, role: 'front' }),
+      iteration({ id: 2, seq: 2, role: 'front' }),
+      iteration({ id: 3, seq: 1, role: 'back' }),
+      iteration({ id: 4, seq: 2, role: 'back' }),
+    ];
+    const { rerender } = render(
+      <OutputPane
+        projectId={7}
+        iterations={iterations}
+        activeTab="front"
+        onIterationsChange={vi.fn()}
+        postcardEditor={fakePostcardEditor()}
+      />,
+    );
+    expect(within(screen.getByTestId('iteration-stage')).getByTestId('iteration-row-2')).toBeInTheDocument();
+    expect(within(screen.getByTestId('iteration-history')).getByTestId('iteration-row-1')).toBeInTheDocument();
+
+    rerender(
+      <OutputPane
+        projectId={7}
+        iterations={iterations}
+        activeTab="back"
+        onIterationsChange={vi.fn()}
+        postcardEditor={fakePostcardEditor()}
+      />,
+    );
+    expect(within(screen.getByTestId('iteration-stage')).getByTestId('iteration-row-4')).toBeInTheDocument();
+    expect(within(screen.getByTestId('iteration-history')).getByTestId('iteration-row-3')).toBeInTheDocument();
+  });
+
+  it('the stage image carries fit-to-space CSS (object-contain, max-h-full/max-w-full), not the old fixed 800px cap', () => {
+    const iterations = [
+      iteration({ id: 1, seq: 1, role: 'front' }),
+      iteration({ id: 2, seq: 2, role: 'front' }),
+    ];
+    renderOutputPane(iterations, { activeTab: 'front' });
+
+    const stageImg = within(screen.getByTestId('iteration-stage')).getByAltText('Iteration 2');
+    expect(stageImg.className).toContain('object-contain');
+    expect(stageImg.className).toContain('max-h-full');
+    expect(stageImg.className).toContain('max-w-full');
+    expect(stageImg.className).not.toContain('max-h-[800px]');
+    expect(stageImg.className).not.toContain('max-w-[800px]');
+
+    const historyImg = within(screen.getByTestId('iteration-history')).getByAltText('Iteration 1');
+    expect(historyImg.className).toContain('max-h-[800px]');
+    expect(historyImg.className).toContain('max-w-[800px]');
+  });
+
+  it('accept/delete behavior is unchanged for a stage-item iteration', async () => {
+    const iterations = [
+      iteration({ id: 1, seq: 1, role: 'front' }),
+      iteration({ id: 2, seq: 2, role: 'front' }),
+    ];
+    const fetchMock = vi.fn().mockResolvedValue({ ok: true, json: async () => ({ ...iterations[1], accepted: true }) });
+    vi.stubGlobal('fetch', fetchMock);
+    renderOutputPane(iterations, { activeTab: 'front' });
+
+    // Iteration 2 (seq 2) is the stage item.
+    fireEvent.click(screen.getByLabelText('Iteration 2 accepted'));
+    await waitFor(() => {
+      expect(fetchMock).toHaveBeenCalledWith(
+        '/api/projects/7/iterations/2',
+        expect.objectContaining({ method: 'PATCH', body: JSON.stringify({ accepted: true }) }),
+      );
+    });
+
+    fireEvent.click(screen.getByLabelText('Delete iteration 2'));
+    expect(screen.getByTestId('delete-confirm-2')).toBeInTheDocument();
+  });
+
+  it('accept/delete behavior is unchanged for a history-item iteration', async () => {
+    const iterations = [
+      iteration({ id: 1, seq: 1, role: 'front' }),
+      iteration({ id: 2, seq: 2, role: 'front' }),
+    ];
+    const fetchMock = vi.fn().mockResolvedValue({ ok: true, json: async () => ({ ...iterations[0], accepted: true }) });
+    vi.stubGlobal('fetch', fetchMock);
+    renderOutputPane(iterations, { activeTab: 'front' });
+
+    // Iteration 1 (seq 1) is a history item.
+    fireEvent.click(screen.getByLabelText('Iteration 1 accepted'));
+    await waitFor(() => {
+      expect(fetchMock).toHaveBeenCalledWith(
+        '/api/projects/7/iterations/1',
+        expect.objectContaining({ method: 'PATCH', body: JSON.stringify({ accepted: true }) }),
+      );
+    });
+
+    fireEvent.click(screen.getByLabelText('Delete iteration 1'));
+    expect(screen.getByTestId('delete-confirm-1')).toBeInTheDocument();
+  });
+
+  it('the inline PostcardFaceEditor renders correctly when the accepted row is the stage item', () => {
+    const iterations = [
+      iteration({ id: 1, seq: 1, role: 'front' }),
+      iteration({ id: 2, seq: 2, role: 'front', accepted: true }),
+    ];
+    renderOutputPane(iterations, { activeTab: 'front' });
+
+    expect(within(screen.getByTestId('iteration-stage')).getByTestId('postcard-preview')).toBeInTheDocument();
+    expect(within(screen.getByTestId('iteration-history')).getByAltText('Iteration 1')).toBeInTheDocument();
+  });
+
+  it('the inline PostcardFaceEditor renders correctly when the accepted row is a history item', () => {
+    const iterations = [
+      iteration({ id: 1, seq: 1, role: 'front', accepted: true }),
+      iteration({ id: 2, seq: 2, role: 'front' }),
+    ];
+    renderOutputPane(iterations, { activeTab: 'front' });
+
+    expect(within(screen.getByTestId('iteration-history')).getByTestId('postcard-preview')).toBeInTheDocument();
+    expect(within(screen.getByTestId('iteration-stage')).getByAltText('Iteration 2')).toBeInTheDocument();
   });
 });
 

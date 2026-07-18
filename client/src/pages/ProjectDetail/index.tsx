@@ -29,20 +29,25 @@ import type { PostcardSide } from '../../lib/postcardFaceEditing';
  * `OutputPane.tsx`'s own module header for the stream-filtering/inline-
  * editor details.
  *
- * **Layout (Sprint 005 OOP change, 2026-07-15)**: three-region column,
- * matching the stakeholder's explicit fixed-top/scroll-middle/fixed-bottom
- * spec --
+ * **Layout (Sprint 005 OOP change, 2026-07-15; flex-sibling rework, sprint
+ * 008 ticket 001)**: three-region column, matching the stakeholder's
+ * explicit fixed-top/flexible-middle/fixed-bottom spec --
  *   1. FIXED top: `ProjectDetailsHeader` + `ReferenceStrip` (unchanged
  *      from before) + a new title/tabs/PDF row (back link, project title,
  *      `FaceTabs`, PDF button) -- none of this scrolls.
- *   2. SCROLLING middle: `OutputPane`'s iteration stream, the only thing
- *      that scrolls. Its scroll container reserves `CHAT_PANEL_HEIGHT_PX`
- *      of bottom padding so the floating chat below never overlaps the
- *      last row.
- *   3. FIXED bottom: `ChatPanel`, `absolute`-positioned to the bottom of
- *      this page's own `relative` root at a fixed height, always visible
- *      regardless of scroll position -- replacing the old layout where
- *      chat claimed remaining flex space below a scrolling gallery.
+ *   2. FLEXIBLE middle: `OutputPane` (`flex-1 min-h-0`), internally split
+ *      into a non-scrolling "stage" (the active stream's newest
+ *      iteration, CSS-fit to whatever height this region computes) and a
+ *      scrollable "history" strip for older iterations -- see
+ *      `OutputPane.tsx`'s own module header.
+ *   3. FIXED bottom: `ChatPanel`, now a real flex-column sibling of
+ *      `OutputPane` (`flex-shrink-0` at its existing fixed height), not a
+ *      `position: absolute` overlay -- this is what makes "the space
+ *      between the header and the chat box" a real CSS quantity
+ *      (`OutputPane`'s flex-computed content-box height) instead of the
+ *      old hand-maintained `CHAT_PANEL_HEIGHT_PX` padding constant
+ *      duplicated across this file and `OutputPane.tsx`
+ *      (`clasi/issues/iterations-fit-viewport.md`).
  *
  * **Postcard content is now owned HERE** (Sprint 005 OOP change,
  * 2026-07-15): `usePostcardEditorState` (one instance, covering both
@@ -74,9 +79,9 @@ import type { PostcardSide } from '../../lib/postcardFaceEditing';
  * accepted in the active stream (`OutputPane.tsx`).
  */
 
-/** Fixed height (px) of the floating chat panel pinned to the bottom of
- * this page -- also used as the scrolling stream's bottom padding so the
- * chat never overlaps the last iteration row (module header). */
+/** Fixed height (px) of the chat panel, now a real flex-column sibling of
+ * `OutputPane` (module header) rather than an absolute-overlay padding
+ * constant duplicated across two files. */
 const CHAT_PANEL_HEIGHT_PX = 288;
 
 export default function ProjectDetail() {
@@ -243,7 +248,7 @@ export default function ProjectDetail() {
   }
 
   return (
-    <div className="relative flex h-full min-h-0 flex-col bg-slate-50 text-slate-800">
+    <div className="flex h-full min-h-0 flex-col bg-slate-50 text-slate-800">
       {/* Fixed top: never scrolls. */}
       <div className="flex-shrink-0">
         <ProjectDetailsHeader detailsHeader={project.detailsHeader} />
@@ -277,19 +282,21 @@ export default function ProjectDetail() {
         </header>
       </div>
 
-      {/* Scrolling middle: the only region that scrolls. */}
+      {/* Flexible middle: OutputPane fills the remaining space (module
+          header) -- internally split into a non-scrolling stage +
+          scrollable history strip; see OutputPane.tsx. */}
       <OutputPane
         projectId={projectId}
         iterations={iterations}
         activeTab={activeTab}
         onIterationsChange={handleIterationsChange}
         postcardEditor={postcardEditor}
-        scrollPaddingBottomPx={CHAT_PANEL_HEIGHT_PX}
       />
 
-      {/* Fixed bottom: floating chat, always visible. */}
+      {/* Fixed bottom: a real flex-column sibling of OutputPane, not an
+          absolute overlay (module header) -- always visible, fixed height. */}
       <div
-        className="absolute inset-x-0 bottom-0 z-20 border-t border-slate-200 shadow-[0_-2px_8px_rgba(0,0,0,0.06)]"
+        className="flex-shrink-0 border-t border-slate-200 shadow-[0_-2px_8px_rgba(0,0,0,0.06)]"
         style={{ height: CHAT_PANEL_HEIGHT_PX }}
       >
         <ChatPanel

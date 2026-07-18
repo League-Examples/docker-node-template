@@ -191,6 +191,26 @@ describe('ProjectDetail -- Front/Back tabs (Sprint 005 OOP change, 2026-07-15)',
   });
 });
 
+describe('ProjectDetail -- chat panel is a flex sibling, not an absolute overlay (sprint 008 ticket 001)', () => {
+  it("ChatPanel's wrapping div is a flex-column sibling of OutputPane, not position: absolute", async () => {
+    stubFetch(projectFixture());
+    renderPage();
+    await screen.findByText('Spring Open House Flyer');
+
+    const chatMessages = screen.getByTestId('chat-messages');
+    const chatWrapper = chatMessages.closest('div[style]') as HTMLElement;
+    expect(chatWrapper).toBeTruthy();
+    expect(chatWrapper.className).not.toContain('absolute');
+    expect(chatWrapper.style.height).toBe('288px');
+
+    // OutputPane is a real flex-1 sibling immediately before the chat
+    // wrapper in the page's root flex column, not something the chat
+    // panel floats over.
+    const outputPane = screen.getByTestId('output-pane');
+    expect(outputPane.parentElement).toBe(chatWrapper.parentElement);
+  });
+});
+
 describe('ProjectDetail -- back arrow', () => {
   it('navigates to the project list at /', async () => {
     stubFetch(projectFixture());
