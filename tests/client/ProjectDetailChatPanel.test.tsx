@@ -474,6 +474,68 @@ describe('ChatPanel -- stage progress UI: spinner, label, elapsed-time ticker (t
   });
 });
 
+describe('ChatPanel -- Markdown assistant bubbles (ticket 008-002, SUC-017)', () => {
+  it('renders headings, lists, bold text, and a fenced code block in an assistant reply as formatted elements, not literal Markdown syntax', async () => {
+    const markdown =
+      '# Heading\n\nSome **bold** text.\n\n- list item\n\n```\ncode block\n```';
+    const frames = sseFrames([{ type: 'message', content: markdown }]);
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue({ ok: true, body: fakeStreamBody([frames]) }));
+
+    render(<ChatPanel projectId={7} initialMessages={[]} />);
+    fireEvent.change(screen.getByLabelText('Message Claude…'), { target: { value: 'Go' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Send' }));
+
+    const messages = screen.getByTestId('chat-messages');
+    await waitFor(() => expect(within(messages).getByRole('heading', { level: 1 })).toHaveTextContent('Heading'));
+    expect(within(messages).getByRole('list')).toBeInTheDocument();
+    expect(within(messages).getByText('list item').closest('li')).not.toBeNull();
+    expect(within(messages).getByText('bold').tagName).toBe('STRONG');
+    expect(within(messages).getByText('code block').closest('pre')).not.toBeNull();
+
+    // No literal Markdown syntax characters leaked into the rendered text.
+    expect(messages.textContent).not.toContain('# Heading');
+    expect(messages.textContent).not.toContain('**bold**');
+    expect(messages.textContent).not.toContain('```');
+  });
+
+  it('renders a plain-text assistant response identically to before, with no stray formatting artifacts', async () => {
+    const frames = sseFrames([{ type: 'message', content: 'Here is the new iteration.' }]);
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue({ ok: true, body: fakeStreamBody([frames]) }));
+
+    render(<ChatPanel projectId={7} initialMessages={[]} />);
+    fireEvent.change(screen.getByLabelText('Message Claude…'), { target: { value: 'Go' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Send' }));
+
+    await screen.findByText('Here is the new iteration.');
+  });
+
+  it('renders a user message containing Markdown-like syntax as literal text, not through the renderer', () => {
+    vi.stubGlobal('fetch', vi.fn());
+    const history: ChatMessageDTO[] = [
+      { id: 1, projectId: 7, role: 'user', content: '**not bold**', createdAt: '2026-07-14T00:00:00Z' },
+    ];
+    render(<ChatPanel projectId={7} initialMessages={history} />);
+
+    const bubble = screen.getByText('**not bold**');
+    expect(bubble.tagName).toBe('SPAN');
+    expect(bubble.querySelector('strong')).toBeNull();
+  });
+
+  it('renders raw HTML-like text in an assistant response as inert text, never as an executed tag (no rehype-raw, no dangerouslySetInnerHTML)', async () => {
+    const payload = '<img src=x onerror=alert(1)>';
+    const frames = sseFrames([{ type: 'message', content: payload }]);
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue({ ok: true, body: fakeStreamBody([frames]) }));
+
+    render(<ChatPanel projectId={7} initialMessages={[]} />);
+    fireEvent.change(screen.getByLabelText('Message Claude…'), { target: { value: 'Go' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Send' }));
+
+    const messages = screen.getByTestId('chat-messages');
+    await waitFor(() => expect(messages.textContent).toContain('onerror=alert(1)'));
+    expect(messages.querySelector('img')).toBeNull();
+  });
+});
+
 describe('ChatPanel -- non-admin authenticated user can start and continue a turn', () => {
   it('sends a first message, then a follow-up, both via the same POST endpoint (role-agnostic client)', async () => {
     const fetchMock = vi
