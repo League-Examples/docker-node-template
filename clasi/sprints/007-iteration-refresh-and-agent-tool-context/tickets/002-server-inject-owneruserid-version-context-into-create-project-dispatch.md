@@ -1,15 +1,12 @@
 ---
 id: '002'
 title: 'Server: inject ownerUserId/version context into create_project dispatch'
-status: open
-use-cases: [SUC-002]
+status: done
+use-cases:
+- SUC-002
 depends-on: []
 github-issue: ''
 issue: agent-asks-user-for-internal-ids.md
-# This ticket only implements the context-injection half of the linked
-# issue; ticket 003 (system prompt guardrail) is the other half. Set to
-# false so the issue is not archived until ticket 003 (which completes
-# it) is done.
 completes_issue: false
 ---
 <!-- CLASI: Before changing code or making plans, review the SE process in CLAUDE.md -->
@@ -49,31 +46,31 @@ Parent sprint architecture:
 
 ## Acceptance Criteria
 
-- [ ] `RunTurnInput` gains an optional `authenticatedUserId?: number`
+- [x] `RunTurnInput` gains an optional `authenticatedUserId?: number`
       field; omitting it (existing callers/tests) does not break any
       existing behavior.
-- [ ] `routes/chat.ts` passes `req.user.id` (already established pattern,
+- [x] `routes/chat.ts` passes `req.user.id` (already established pattern,
       see `routes/projects.ts`) as `authenticatedUserId` into `runTurn`'s
       input.
-- [ ] When the model calls `create_project` with `id` set (updating the
+- [x] When the model calls `create_project` with `id` set (updating the
       project already scoped by `RunTurnInput.projectId`) and omits
       `version`, `dispatchToolCall` fills in `version` from the
       project row `runTurn` already loads (via `loadProjectContext` or an
       equivalent read), before the call reaches
       `catalogTools.createProject`.
-  - [ ] Same for `ownerUserId` on an update — filled from the existing
+  - [x] Same for `ownerUserId` on an update — filled from the existing
       project's current owner when omitted (never changed unintentionally
       by the model; if the model explicitly supplies a different
       `ownerUserId`, that value is passed through unchanged — injection
       only fills a **gap**, it never overrides an explicit model-supplied
       value).
-- [ ] When the model calls `create_project` with no `id` (a genuinely new
+- [x] When the model calls `create_project` with no `id` (a genuinely new
       project) and omits `ownerUserId`, it is filled from
       `authenticatedUserId`.
-- [ ] `catalogTools.createProject`'s own signature, validation, and
+- [x] `catalogTools.createProject`'s own signature, validation, and
       `VersionConflictError` behavior are unchanged — verified by running
       its existing test suite unmodified.
-- [ ] A rename of the current project succeeds end-to-end when the model
+- [x] A rename of the current project succeeds end-to-end when the model
       supplies only `id` + `title` (no `version`/`ownerUserId`).
 
 ## Testing
