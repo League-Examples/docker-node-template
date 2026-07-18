@@ -157,6 +157,98 @@ describe('generateImage', () => {
     expect(error.message).toContain('OPENAI_API_KEY');
     expect(fetchImpl).not.toHaveBeenCalled();
   });
+
+  // -------------------------------------------------------------------------
+  // Timeout handling (ticket 006-001)
+  // -------------------------------------------------------------------------
+
+  it('rejects with ImagingServiceError naming provider and elapsed wait when the generations call never resolves before the injected timeout', async () => {
+    const fetchImpl = vi.fn().mockImplementation(() => new Promise<never>(() => {}));
+    const started = Date.now();
+
+    const error = await generateImage(
+      { prompt: 'x', size: '1024x1024' },
+      { openaiApiKey: 'test-openai-key', fetchImpl, timeoutMs: 20 }
+    ).catch((e) => e);
+    const elapsedWallClock = Date.now() - started;
+
+    expect(error).toBeInstanceOf(ImagingServiceError);
+    expect(error.provider).toBe('openai');
+    expect(error.message).toMatch(/timed out/i);
+    expect(error.message).toMatch(/openai/i);
+    expect(error.message).toMatch(/\d+ms/);
+    // Proves the *injected* short timeout fired, not the real 5-minute default.
+    expect(elapsedWallClock).toBeLessThan(2000);
+  });
+
+  it('rejects with ImagingServiceError when the edits call (reference-images path) never resolves before the injected timeout', async () => {
+    const tmpDir = await fs.mkdtemp(path.join(os.tmpdir(), 'imaging-timeout-test-'));
+    const refPath = path.join(tmpDir, 'reference.png');
+    await fs.writeFile(refPath, Buffer.from('fake-reference-png-bytes'));
+
+    try {
+      const fetchImpl = vi.fn().mockImplementation(() => new Promise<never>(() => {}));
+
+      const error = await generateImage(
+        { prompt: 'x', size: '1024x1024', referenceImages: [refPath] },
+        { openaiApiKey: 'test-openai-key', fetchImpl, timeoutMs: 20 }
+      ).catch((e) => e);
+
+      expect(error).toBeInstanceOf(ImagingServiceError);
+      expect(error.provider).toBe('openai');
+      expect(error.message).toMatch(/timed out/i);
+    } finally {
+      await fs.rm(tmpDir, { recursive: true, force: true });
+    }
+  });
+
+  it('rejects with ImagingServiceError when the image-download-by-URL fallback never resolves before the injected timeout', async () => {
+    const fetchImpl = vi
+      .fn()
+      .mockResolvedValueOnce(jsonResponse({ data: [{ url: 'https://example.com/generated.png' }] }))
+      .mockImplementationOnce(() => new Promise<never>(() => {}));
+
+    const error = await generateImage(
+      { prompt: 'x', size: '1024x1024' },
+      { openaiApiKey: 'test-openai-key', fetchImpl, timeoutMs: 20 }
+    ).catch((e) => e);
+
+    expect(error).toBeInstanceOf(ImagingServiceError);
+    expect(error.provider).toBe('openai');
+    expect(error.message).toMatch(/timed out/i);
+    expect(fetchImpl).toHaveBeenCalledTimes(2);
+  });
+
+  it('is unaffected by the timeout mechanism when the call resolves well before the injected timeout', async () => {
+    const fetchImpl = vi.fn().mockResolvedValue(jsonResponse({ data: [{ b64_json: SAMPLE_B64 }] }));
+
+    const result = await generateImage(
+      { prompt: 'a robot mascot', size: '1024x1024' },
+      { openaiApiKey: 'test-openai-key', fetchImpl, timeoutMs: 50 }
+    );
+
+    expect(result.bytes.equals(SAMPLE_IMAGE_BYTES)).toBe(true);
+  });
+
+  it('honors IMAGING_TIMEOUT_MS as a fallback when options.timeoutMs is not set', async () => {
+    const previous = process.env.IMAGING_TIMEOUT_MS;
+    process.env.IMAGING_TIMEOUT_MS = '20';
+    try {
+      const fetchImpl = vi.fn().mockImplementation(() => new Promise<never>(() => {}));
+      const started = Date.now();
+
+      const error = await generateImage({ prompt: 'x', size: '1024x1024' }, { openaiApiKey: 'test-openai-key', fetchImpl }).catch(
+        (e) => e
+      );
+      const elapsedWallClock = Date.now() - started;
+
+      expect(error).toBeInstanceOf(ImagingServiceError);
+      expect(elapsedWallClock).toBeLessThan(2000);
+    } finally {
+      if (previous === undefined) delete process.env.IMAGING_TIMEOUT_MS;
+      else process.env.IMAGING_TIMEOUT_MS = previous;
+    }
+  });
 });
 
 // ---------------------------------------------------------------------------
@@ -310,5 +402,46 @@ describe('classifyAndDescribe', () => {
     expect(error).toBeInstanceOf(ImagingServiceError);
     expect(error.message).toContain('OPENROUTER_API');
     expect(fetchImpl).not.toHaveBeenCalled();
+  });
+
+  // -------------------------------------------------------------------------
+  // Timeout handling (ticket 006-001)
+  // -------------------------------------------------------------------------
+
+  it('rejects with ImagingServiceError naming provider and elapsed wait when the chat-completions call never resolves before the injected timeout', async () => {
+    const fetchImpl = vi.fn().mockImplementation(() => new Promise<never>(() => {}));
+    const started = Date.now();
+
+    const error = await classifyAndDescribe(
+      { imageBytes: Buffer.from('x') },
+      { openrouterApiKey: 'test-openrouter-key', fetchImpl, timeoutMs: 20 }
+    ).catch((e) => e);
+    const elapsedWallClock = Date.now() - started;
+
+    expect(error).toBeInstanceOf(ImagingServiceError);
+    expect(error.provider).toBe('openrouter');
+    expect(error.message).toMatch(/timed out/i);
+    expect(error.message).toMatch(/openrouter/i);
+    expect(error.message).toMatch(/\d+ms/);
+    expect(elapsedWallClock).toBeLessThan(2000);
+  });
+
+  it('is unaffected by the timeout mechanism when the call resolves well before the injected timeout', async () => {
+    const fixture = classificationCompletion({
+      isPhotograph: true,
+      isLogo: false,
+      style: 'photograph',
+      peopleReal: 'real',
+      description: 'A student robot on a workbench.',
+      tags: ['robot'],
+    });
+    const fetchImpl = vi.fn().mockResolvedValue(jsonResponse(fixture));
+
+    const result = await classifyAndDescribe(
+      { imageBytes: Buffer.from('x') },
+      { openrouterApiKey: 'test-openrouter-key', fetchImpl, timeoutMs: 50 }
+    );
+
+    expect(result.isPhotograph).toBe(true);
   });
 });
