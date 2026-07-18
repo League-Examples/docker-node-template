@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, afterEach } from 'vitest';
-import { render, screen, fireEvent, waitFor, within } from '@testing-library/react';
+import { render, screen, fireEvent, waitFor, within, act } from '@testing-library/react';
 import ChatPanel from '../../client/src/pages/ProjectDetail/ChatPanel';
 import type { ChatMessageDTO } from '../../client/src/pages/ProjectDetail/types';
 
@@ -328,6 +328,149 @@ describe('ChatPanel -- auto-expanding composer (client-only OOP change, 2026-07-
 
     await screen.findByText('ok');
     expect(composer.value).toBe('');
+  });
+});
+
+describe('ChatPanel -- stage progress UI: spinner, label, elapsed-time ticker (ticket 006-003)', () => {
+  it('renders a spinner and the stage label on a `stage` event', async () => {
+    let resolveSecondRead: (value: { done: boolean; value?: Uint8Array }) => void;
+    const encoder = new TextEncoder();
+    const secondRead = new Promise<{ done: boolean; value?: Uint8Array }>((resolve) => {
+      resolveSecondRead = resolve;
+    });
+    let callCount = 0;
+    const body = {
+      getReader() {
+        return {
+          read: async () => {
+            callCount += 1;
+            if (callCount === 1) {
+              return {
+                done: false,
+                value: encoder.encode(
+                  sseFrames([
+                    { type: 'stage', stage: 'knowledge_retrieval', label: 'Consulting knowledge sources…', startedAt: Date.now() },
+                  ]),
+                ),
+              };
+            }
+            return secondRead;
+          },
+        };
+      },
+    };
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue({ ok: true, body }));
+
+    render(<ChatPanel projectId={7} initialMessages={[]} />);
+    fireEvent.change(screen.getByLabelText('Message Claude…'), { target: { value: 'Go' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Send' }));
+
+    await screen.findByText('Consulting knowledge sources…');
+    expect(screen.getByTestId('chat-stage-spinner')).toBeInTheDocument();
+
+    resolveSecondRead!({ done: true, value: undefined });
+    await waitFor(() => expect(screen.queryByTestId('chat-stage')).not.toBeInTheDocument());
+  });
+
+  it('advances the elapsed-time display at least once per second, computed client-side, with no additional mock SSE frames', async () => {
+    vi.useFakeTimers();
+    try {
+      let resolveSecondRead: (value: { done: boolean; value?: Uint8Array }) => void;
+      const encoder = new TextEncoder();
+      const secondRead = new Promise<{ done: boolean; value?: Uint8Array }>((resolve) => {
+        resolveSecondRead = resolve;
+      });
+      let callCount = 0;
+      const startedAt = Date.now();
+      const body = {
+        getReader() {
+          return {
+            read: async () => {
+              callCount += 1;
+              if (callCount === 1) {
+                return {
+                  done: false,
+                  value: encoder.encode(
+                    sseFrames([{ type: 'stage', stage: 'drafting', label: 'Drafting flyer content…', startedAt }]),
+                  ),
+                };
+              }
+              return secondRead;
+            },
+          };
+        },
+      };
+      vi.stubGlobal('fetch', vi.fn().mockResolvedValue({ ok: true, body }));
+
+      render(<ChatPanel projectId={7} initialMessages={[]} />);
+      fireEvent.change(screen.getByLabelText('Message Claude…'), { target: { value: 'Go' } });
+      fireEvent.click(screen.getByRole('button', { name: 'Send' }));
+
+      // Let the fetch promise and first frame resolve before advancing timers.
+      await vi.waitFor(() => expect(screen.getByTestId('chat-stage-elapsed')).toHaveTextContent('0s'));
+
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(1000);
+      });
+      expect(screen.getByTestId('chat-stage-elapsed')).toHaveTextContent('1s');
+
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(1000);
+      });
+      expect(screen.getByTestId('chat-stage-elapsed')).toHaveTextContent('2s');
+
+      resolveSecondRead!({ done: true, value: undefined });
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('renders a generating_image stage label verbatim, without reformatting the call-index text', async () => {
+    const frames = sseFrames([
+      { type: 'stage', stage: 'generating_image', label: 'Generating image (#2)…', startedAt: Date.now() },
+      { type: 'message', content: 'Here is the new iteration.' },
+    ]);
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue({ ok: true, body: fakeStreamBody([frames]) }));
+
+    render(<ChatPanel projectId={7} initialMessages={[]} />);
+    fireEvent.change(screen.getByLabelText('Message Claude…'), { target: { value: 'Go' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Send' }));
+
+    await screen.findByText('Here is the new iteration.');
+  });
+
+  it('clears the spinner/stage line on the final `message` event', async () => {
+    const frames = sseFrames([
+      { type: 'stage', stage: 'drafting', label: 'Drafting flyer content…', startedAt: Date.now() },
+      { type: 'message', content: 'Done.' },
+    ]);
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue({ ok: true, body: fakeStreamBody([frames]) }));
+
+    render(<ChatPanel projectId={7} initialMessages={[]} />);
+    fireEvent.change(screen.getByLabelText('Message Claude…'), { target: { value: 'Go' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Send' }));
+
+    await screen.findByText('Done.');
+    expect(screen.queryByTestId('chat-stage')).not.toBeInTheDocument();
+  });
+
+  it('clears the spinner/stage line on an `error` event, and the existing error path still renders (incl. a ticket-001 imaging timeout)', async () => {
+    const frames = sseFrames([
+      { type: 'stage', stage: 'generating_image', label: 'Generating image (#1)…', startedAt: Date.now() },
+      {
+        type: 'error',
+        message: 'Image generation timed out after 300s waiting on OpenAI -- the upstream call never responded.',
+      },
+    ]);
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue({ ok: true, body: fakeStreamBody([frames]) }));
+
+    render(<ChatPanel projectId={7} initialMessages={[]} />);
+    fireEvent.change(screen.getByLabelText('Message Claude…'), { target: { value: 'Go' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Send' }));
+
+    const alert = await screen.findByRole('alert');
+    expect(alert).toHaveTextContent(/timed out after 300s waiting on OpenAI/i);
+    expect(screen.queryByTestId('chat-stage')).not.toBeInTheDocument();
   });
 });
 
