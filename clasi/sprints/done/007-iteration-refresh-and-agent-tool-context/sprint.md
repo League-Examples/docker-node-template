@@ -1,7 +1,7 @@
 ---
 id: '007'
 title: Iteration Refresh and Agent Tool Context
-status: planning-docs
+status: closed
 branch: sprint/007-iteration-refresh-and-agent-tool-context
 worktree: false
 use-cases:
