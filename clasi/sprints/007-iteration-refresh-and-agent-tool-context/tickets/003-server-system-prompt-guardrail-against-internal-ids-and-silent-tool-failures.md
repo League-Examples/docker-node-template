@@ -1,9 +1,11 @@
 ---
 id: '003'
 title: 'Server: system prompt guardrail against internal IDs and silent tool failures'
-status: open
-use-cases: [SUC-002]
-depends-on: ["002"]
+status: done
+use-cases:
+- SUC-002
+depends-on:
+- '002'
 github-issue: ''
 issue: agent-asks-user-for-internal-ids.md
 completes_issue: true
@@ -41,19 +43,19 @@ Parent sprint architecture:
 
 ## Acceptance Criteria
 
-- [ ] `SYSTEM_PROMPT_BASE` (or an appended section of the system prompt)
+- [x] `SYSTEM_PROMPT_BASE` (or an appended section of the system prompt)
       explicitly instructs the model to never ask the user for internal
       identifiers (database IDs, version numbers, internal keys, or
       similar).
-- [ ] `SYSTEM_PROMPT_BASE` explicitly instructs the model that when a
+- [x] `SYSTEM_PROMPT_BASE` explicitly instructs the model that when a
       tool call fails, it must state the failure to the user in plain
       language in its next message, rather than inventing a follow-up
       question or silently proceeding as if nothing happened.
-- [ ] The instruction wording is generic across all 15 Workspace MCP
+- [x] The instruction wording is generic across all 15 Workspace MCP
       Server tools (not hard-coded to `create_project` specifically) —
       matching Out of Scope's rejection of a tool-specific fix in favor
       of a general prompt policy.
-- [ ] Manual verification: given a scripted/mock provider turn where a
+- [x] Manual verification: given a scripted/mock provider turn where a
       tool call returns `isError: true` for a reason ticket 002 does not
       eliminate (e.g. a simulated `VersionConflictError` after
       injection), the turn's final assistant message states the failure

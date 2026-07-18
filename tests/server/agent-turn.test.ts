@@ -1073,6 +1073,58 @@ describe('runTurn -- create_project ownerUserId/version injection (ticket 007-00
 });
 
 // ---------------------------------------------------------------------------
+// Ticket 007-003: system prompt guardrail against internal IDs and silent
+// tool failures (issue agent-asks-user-for-internal-ids.md). Content
+// assertions only -- the model's actual behavior given the updated prompt
+// is a manual/product-review check (this ticket's last Acceptance
+// Criterion), not something a unit test against a scripted mock adapter can
+// assert.
+// ---------------------------------------------------------------------------
+
+describe('runTurn -- system prompt guardrail against internal IDs and silent tool failures (ticket 007-003)', () => {
+  it('sends a system prompt instructing the model never to ask for internal identifiers and to state tool failures plainly', async () => {
+    const sentPrompts: string[] = [];
+    const script: MockProviderScript = [{ kind: 'message', content: 'Sure, what would you like to work on?' }];
+
+    await runTurn(
+      { projectId: projectAId, message: 'Hello.' },
+      {
+        provider: createMockAdapter(script, { onSendTurn: (input) => sentPrompts.push(input.systemPrompt) }),
+        versioning: makeVersioningSpy(),
+      }
+    );
+
+    expect(sentPrompts).toHaveLength(1);
+    expect(sentPrompts[0]).toContain(
+      'Never ask the user for internal identifiers -- database IDs, project IDs, version numbers, internal keys, or similar'
+    );
+    expect(sentPrompts[0]).toContain('If a tool call fails, state in your next message, in plain language, what failed');
+  });
+
+  it('still sends the updated system prompt on the follow-up sendTurn call after a tool call returns isError: true', async () => {
+    const sentPrompts: string[] = [];
+    const script: MockProviderScript = [
+      { kind: 'tool_calls', calls: [{ id: 'fail-1', name: 'create_project', args: { id: -1, title: 'Nope' } }] },
+      { kind: 'message', content: 'That update failed.' },
+    ];
+
+    await runTurn(
+      { projectId: projectAId, message: 'Rename this project.' },
+      {
+        provider: createMockAdapter(script, { onSendTurn: (input) => sentPrompts.push(input.systemPrompt) }),
+        versioning: makeVersioningSpy(),
+      }
+    );
+
+    expect(sentPrompts).toHaveLength(2);
+    for (const prompt of sentPrompts) {
+      expect(prompt).toContain('Never ask the user for internal identifiers');
+      expect(prompt).toContain('If a tool call fails, state in your next message, in plain language, what failed');
+    }
+  });
+});
+
+// ---------------------------------------------------------------------------
 // Ticket 006-002: additive `stage` progress events at each phase transition.
 // ---------------------------------------------------------------------------
 

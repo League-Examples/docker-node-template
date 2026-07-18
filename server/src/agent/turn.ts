@@ -430,9 +430,24 @@ export function chatMessageToProviderMessage(row: ChatMessageModel): ProviderMes
 /** Base system prompt, prepended to knowledge-retrieval results when any
  * are found. Deliberately generic -- postcard/flyer-specific prompt
  * content generation is Sprint 004/005 scope. */
+// Guardrail additions (Sprint 007 ticket 003, issue
+// agent-asks-user-for-internal-ids.md): live incident on project 14,
+// "League of Mentors" (2026-07-17) -- after a `create_project` rename call
+// failed, the agent asked the end user "What's the owner user ID?" instead
+// of surfacing a plain-language failure. Ticket 002 closes the specific
+// context gap that caused *that* failure (the turn controller now injects
+// `ownerUserId`/`version` itself), but this prompt policy is the backstop
+// for every other tool and every other failure reason (e.g. a genuine
+// concurrent-edit `VersionConflictError` ticket 002 does not eliminate):
+// the model must never ask a user to supply an internal identifier for any
+// of the 15 registered Workspace MCP Server tools, and must state a tool
+// failure plainly in its next message rather than improvising a follow-up
+// question or silently continuing as if the call had succeeded.
 const SYSTEM_PROMPT_BASE =
   'You are the Flyerbot design assistant. Help the project owner develop postcard/flyer concepts. ' +
-  "Use only the tools provided when a change to the project's workspace or catalog is needed -- never fabricate a tool call for anything outside that list.";
+  "Use only the tools provided when a change to the project's workspace or catalog is needed -- never fabricate a tool call for anything outside that list. " +
+  'Never ask the user for internal identifiers -- database IDs, project IDs, version numbers, internal keys, or similar -- the system supplies these to every tool call automatically. ' +
+  'If a tool call fails, state in your next message, in plain language, what failed and why (as far as you know) -- do not invent a follow-up question or silently proceed as though the call had succeeded.';
 
 // ---------------------------------------------------------------------------
 // Project + active-stream context (Sprint 005 OOP change, 2026-07-15): the
