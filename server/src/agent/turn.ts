@@ -23,6 +23,15 @@
  * process restart between two turns is invisible to this function; the
  * next call reconstructs the identical context from the same rows.
  *
+ * **`create_project` argument injection (ticket 007-002, SUC-002)**: like
+ * `activeFace` below (asserted to the model as context, never a tool
+ * input), the model is never expected to know or ask for internal IDs --
+ * `dispatchToolCall`'s pre-dispatch step (`injectCreateProjectArgs`) fills
+ * `version`/`ownerUserId` on a `create_project` update from the project row
+ * this turn already scopes, and `ownerUserId` on a brand-new project from
+ * `RunTurnInput.authenticatedUserId`, only where the model's own args left
+ * a gap. `catalogTools.createProject`'s validation itself is unchanged.
+ *
  * **Turn serialization (R5, this ticket's AC5)**: the `Lock` table's
  * unique constraint rejects a conflicting acquisition immediately
  * (`LockConflictError`, see `agent-mcp/locks.ts`) rather than queuing at
@@ -421,9 +430,24 @@ export function chatMessageToProviderMessage(row: ChatMessageModel): ProviderMes
 /** Base system prompt, prepended to knowledge-retrieval results when any
  * are found. Deliberately generic -- postcard/flyer-specific prompt
  * content generation is Sprint 004/005 scope. */
+// Guardrail additions (Sprint 007 ticket 003, issue
+// agent-asks-user-for-internal-ids.md): live incident on project 14,
+// "League of Mentors" (2026-07-17) -- after a `create_project` rename call
+// failed, the agent asked the end user "What's the owner user ID?" instead
+// of surfacing a plain-language failure. Ticket 002 closes the specific
+// context gap that caused *that* failure (the turn controller now injects
+// `ownerUserId`/`version` itself), but this prompt policy is the backstop
+// for every other tool and every other failure reason (e.g. a genuine
+// concurrent-edit `VersionConflictError` ticket 002 does not eliminate):
+// the model must never ask a user to supply an internal identifier for any
+// of the 15 registered Workspace MCP Server tools, and must state a tool
+// failure plainly in its next message rather than improvising a follow-up
+// question or silently continuing as if the call had succeeded.
 const SYSTEM_PROMPT_BASE =
   'You are the Flyerbot design assistant. Help the project owner develop postcard/flyer concepts. ' +
-  "Use only the tools provided when a change to the project's workspace or catalog is needed -- never fabricate a tool call for anything outside that list.";
+  "Use only the tools provided when a change to the project's workspace or catalog is needed -- never fabricate a tool call for anything outside that list. " +
+  'Never ask the user for internal identifiers -- database IDs, project IDs, version numbers, internal keys, or similar -- the system supplies these to every tool call automatically. ' +
+  'If a tool call fails, state in your next message, in plain language, what failed and why (as far as you know) -- do not invent a follow-up question or silently proceed as though the call had succeeded.';
 
 // ---------------------------------------------------------------------------
 // Project + active-stream context (Sprint 005 OOP change, 2026-07-15): the
@@ -638,6 +662,17 @@ export interface RunTurnInput {
    * Defaults to `'front'` when omitted (an older client, or a test that
    * doesn't care), matching "a new project starts on Front". */
   activeFace?: 'front' | 'back';
+  /** The authenticated caller's `User.id` (ticket 007-002, SUC-002:
+   * "agent asks user for internal IDs"), threaded from `routes/chat.ts`'s
+   * `req.user.id`. Used only to fill `create_project`'s `ownerUserId` when
+   * the model omits it for a genuinely new (no `id`) project -- there is no
+   * existing `Project` row to source an owner from in that case, unlike an
+   * update, which sources its `ownerUserId`/`version` from the project
+   * row already scoped by `projectId` (see `dispatchToolCall` below).
+   * Optional and omittable like `activeFace`: existing callers/tests that
+   * don't set it are unaffected, and a `create_project` update (which
+   * never needs it) works the same either way. */
+  authenticatedUserId?: number;
 }
 
 export interface TurnControllerOptions {
@@ -681,6 +716,49 @@ export interface RunTurnResult {
 
 const DEFAULT_MAX_TOOL_ROUNDS = 8;
 
+const CREATE_PROJECT_TOOL_NAME = 'create_project';
+
+/**
+ * `create_project`-only pre-dispatch injection (ticket 007-002, SUC-002:
+ * "agent asks user for internal IDs" -- observed live asking the end user
+ * "What's the owner user ID?"). Fills the `ownerUserId`/`version` gaps the
+ * model has no way to know or ask for cleanly, from context this turn
+ * already has -- never overriding a value the model explicitly supplied
+ * (injection only fills a gap):
+ *
+ * - `args.id` set (updating an existing project): fills `version` and
+ *   `ownerUserId` from that project's current row when the model omitted
+ *   them, so a plain rename (`{ id, title }`) succeeds without the model
+ *   ever seeing those internal fields.
+ * - `args.id` unset (a genuinely new project): fills `ownerUserId` from
+ *   `ctx.authenticatedUserId` when the model omitted it -- there is no
+ *   existing `Project` row to source an owner from here.
+ *
+ * `catalogTools.createProject`'s own signature and validation are
+ * untouched; this only changes what `turn.ts` passes into it.
+ */
+async function injectCreateProjectArgs(
+  args: Record<string, unknown>,
+  ctx: { authenticatedUserId?: number; prismaClient: any }
+): Promise<Record<string, unknown>> {
+  const merged = { ...args };
+
+  if (merged.id !== undefined) {
+    const existing = await ctx.prismaClient.project.findUnique({
+      where: { id: merged.id },
+      select: { version: true, ownerUserId: true },
+    });
+    if (existing) {
+      if (merged.version === undefined) merged.version = existing.version;
+      if (merged.ownerUserId === undefined) merged.ownerUserId = existing.ownerUserId;
+    }
+  } else if (merged.ownerUserId === undefined && ctx.authenticatedUserId !== undefined) {
+    merged.ownerUserId = ctx.authenticatedUserId;
+  }
+
+  return merged;
+}
+
 async function dispatchToolCall(
   call: ProviderToolCall,
   ctx: {
@@ -691,6 +769,7 @@ async function dispatchToolCall(
     lockHolder: string;
     prismaClient: any;
     activeFace: 'front' | 'back';
+    authenticatedUserId?: number;
   }
 ): Promise<unknown> {
   if (call.name === IMAGE_GENERATION_TOOL_NAME) {
@@ -709,7 +788,16 @@ async function dispatchToolCall(
   if (!handler) {
     throw new Error(`No Workspace MCP Server tool named "${call.name}"`);
   }
-  return handler(call.args, {
+
+  const args =
+    call.name === CREATE_PROJECT_TOOL_NAME
+      ? await injectCreateProjectArgs((call.args ?? {}) as Record<string, unknown>, {
+          authenticatedUserId: ctx.authenticatedUserId,
+          prismaClient: ctx.prismaClient,
+        })
+      : call.args;
+
+  return handler(args, {
     versioning: ctx.versioning,
     lockHolder: ctx.lockHolder,
     prismaClient: ctx.prismaClient,
@@ -832,6 +920,7 @@ export async function runTurn(input: RunTurnInput, options: TurnControllerOption
             lockHolder: holder,
             prismaClient,
             activeFace,
+            authenticatedUserId: input.authenticatedUserId,
           });
         } catch (err: any) {
           isError = true;

@@ -31,7 +31,13 @@ import {
   type WorkspaceToolHandler,
 } from '../../server/src/agent/turn';
 import { createMockAdapter, type MockProviderScript } from '../../server/src/agent/providers/mock';
-import { createKnowledgeEntry, addAssetToCollection, addReference, createIteration } from '../../server/src/agent-mcp/catalogTools';
+import {
+  createKnowledgeEntry,
+  addAssetToCollection,
+  addReference,
+  createIteration,
+  createProject,
+} from '../../server/src/agent-mcp/catalogTools';
 import { acquireLock, releaseLock } from '../../server/src/agent-mcp/locks';
 import { resolveWorkspacePath } from '../../server/src/services/workspaceDirectorySync';
 import { createRealImageVisionClient } from '../../server/src/agent/realImageVisionClient';
@@ -905,6 +911,216 @@ describe('runTurn -- ticket 005-002 tools dispatch through the mock adapter', ()
 
     expect(result.toolCalls[0]).toMatchObject({ name: 'search_catalog', args: toolCallArgs });
     expect(Array.isArray(result.toolCalls[0].result)).toBe(true);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Ticket 007-002: create_project ownerUserId/version injection at the turn
+// controller layer (SUC-002 -- the model never needs to know or ask for
+// internal IDs). catalogTools.createProject's own validation is untouched
+// -- these tests dispatch through runTurn with a spy `create_project`
+// handler that forwards to the real `createProject` after recording the
+// args it actually received, so the injection is verified directly.
+// ---------------------------------------------------------------------------
+
+describe('runTurn -- create_project ownerUserId/version injection (ticket 007-002, SUC-002)', () => {
+  let injectionProjectId: number;
+  let otherOwnerId: number;
+
+  function spyCreateProjectHandlers(receivedArgs: unknown[]): Record<string, WorkspaceToolHandler> {
+    return {
+      create_project: async (args: any, options: any) => {
+        receivedArgs.push(args);
+        return createProject(args, options);
+      },
+    };
+  }
+
+  beforeAll(async () => {
+    const project = await prisma.project.create({
+      data: { title: `${marker}-injection-project`, ownerUserId: ownerId },
+    });
+    injectionProjectId = project.id;
+    cleanup.projectIds.push(injectionProjectId);
+
+    const otherOwner = await prisma.user.create({
+      data: { email: `${marker}-other-owner@example.com`, displayName: 'Other Owner' },
+    });
+    otherOwnerId = otherOwner.id;
+  });
+
+  afterAll(async () => {
+    await prisma.user.deleteMany({ where: { id: otherOwnerId } });
+  });
+
+  it('fills version and ownerUserId from the DB when the model updates the current project supplying only id + title (rename end-to-end)', async () => {
+    const before = await prisma.project.findUniqueOrThrow({ where: { id: injectionProjectId } });
+    const receivedArgs: unknown[] = [];
+    const script: MockProviderScript = [
+      {
+        kind: 'tool_calls',
+        calls: [{ id: 'cp-1', name: 'create_project', args: { id: injectionProjectId, title: 'New Name' } }],
+      },
+      { kind: 'message', content: 'Renamed the project.' },
+    ];
+
+    const result = await runTurn(
+      { projectId: injectionProjectId, message: 'Rename this project to New Name.' },
+      { provider: createMockAdapter(script), toolHandlers: spyCreateProjectHandlers(receivedArgs), versioning: makeVersioningSpy() }
+    );
+
+    expect(receivedArgs).toHaveLength(1);
+    expect(receivedArgs[0]).toMatchObject({
+      id: injectionProjectId,
+      title: 'New Name',
+      version: before.version,
+      ownerUserId: before.ownerUserId,
+    });
+
+    expect(result.toolCalls[0].name).toBe('create_project');
+
+    const after = await prisma.project.findUniqueOrThrow({ where: { id: injectionProjectId } });
+    expect(after.title).toBe('New Name');
+    expect(after.version).toBe(before.version + 1);
+  });
+
+  it('fills ownerUserId from RunTurnInput.authenticatedUserId when the model creates a genuinely new project with no id and no ownerUserId', async () => {
+    const receivedArgs: unknown[] = [];
+    const script: MockProviderScript = [
+      {
+        kind: 'tool_calls',
+        calls: [{ id: 'cp-2', name: 'create_project', args: { title: `${marker}-brand-new-project` } }],
+      },
+      { kind: 'message', content: 'Created the new project.' },
+    ];
+
+    const result = await runTurn(
+      { projectId: injectionProjectId, message: 'Start a new project.', authenticatedUserId: ownerId },
+      { provider: createMockAdapter(script), toolHandlers: spyCreateProjectHandlers(receivedArgs), versioning: makeVersioningSpy() }
+    );
+
+    expect(receivedArgs[0]).toMatchObject({ title: `${marker}-brand-new-project`, ownerUserId: ownerId });
+    expect(receivedArgs[0]).not.toHaveProperty('id');
+
+    const createdId = (result.toolCalls[0].result as any).id;
+    cleanup.projectIds.push(createdId);
+  });
+
+  it('passes through an explicit model-supplied ownerUserId unchanged on an update, never overriding it with the current owner', async () => {
+    const receivedArgs: unknown[] = [];
+    const script: MockProviderScript = [
+      {
+        kind: 'tool_calls',
+        calls: [
+          {
+            id: 'cp-3',
+            name: 'create_project',
+            args: { id: injectionProjectId, ownerUserId: otherOwnerId },
+          },
+        ],
+      },
+      { kind: 'message', content: 'Updated the owner.' },
+    ];
+
+    await runTurn(
+      { projectId: injectionProjectId, message: 'Change the owner.' },
+      { provider: createMockAdapter(script), toolHandlers: spyCreateProjectHandlers(receivedArgs), versioning: makeVersioningSpy() }
+    );
+
+    expect(receivedArgs[0]).toMatchObject({ id: injectionProjectId, ownerUserId: otherOwnerId });
+
+    // Restore the owner back for subsequent tests in this describe block.
+    const restored = await prisma.project.findUniqueOrThrow({ where: { id: injectionProjectId } });
+    await prisma.project.update({ where: { id: injectionProjectId }, data: { ownerUserId: ownerId, version: restored.version + 1 } });
+  });
+
+  it('a concurrent update after injection still surfaces VersionConflictError as an isError tool result (unchanged failure path)', async () => {
+    const receivedArgs: unknown[] = [];
+    const raceHandlers: Record<string, WorkspaceToolHandler> = {
+      create_project: async (args: any, options: any) => {
+        receivedArgs.push(args);
+        // Simulate a concurrent update landing after this turn's injection
+        // read the version, but before the handler's own update executes --
+        // the injected version is now stale.
+        const current = await prisma.project.findUniqueOrThrow({ where: { id: injectionProjectId } });
+        await prisma.project.update({
+          where: { id: injectionProjectId },
+          data: { version: current.version + 1 },
+        });
+        return createProject(args, options);
+      },
+    };
+    const script: MockProviderScript = [
+      {
+        kind: 'tool_calls',
+        calls: [{ id: 'cp-4', name: 'create_project', args: { id: injectionProjectId, title: 'Raced Name' } }],
+      },
+      { kind: 'message', content: 'Attempted the rename.' },
+    ];
+    const events: TurnEvent[] = [];
+
+    const result = await runTurn(
+      { projectId: injectionProjectId, message: 'Rename again.' },
+      { provider: createMockAdapter(script), toolHandlers: raceHandlers, versioning: makeVersioningSpy(), onEvent: (e) => events.push(e) }
+    );
+
+    expect(receivedArgs[0]).toMatchObject({ id: injectionProjectId, title: 'Raced Name' });
+    expect((result.toolCalls[0].result as any).error).toContain('Version conflict');
+    expect(
+      events.some((e) => e.type === 'tool_call_finished' && e.name === 'create_project' && e.isError === true)
+    ).toBe(true);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Ticket 007-003: system prompt guardrail against internal IDs and silent
+// tool failures (issue agent-asks-user-for-internal-ids.md). Content
+// assertions only -- the model's actual behavior given the updated prompt
+// is a manual/product-review check (this ticket's last Acceptance
+// Criterion), not something a unit test against a scripted mock adapter can
+// assert.
+// ---------------------------------------------------------------------------
+
+describe('runTurn -- system prompt guardrail against internal IDs and silent tool failures (ticket 007-003)', () => {
+  it('sends a system prompt instructing the model never to ask for internal identifiers and to state tool failures plainly', async () => {
+    const sentPrompts: string[] = [];
+    const script: MockProviderScript = [{ kind: 'message', content: 'Sure, what would you like to work on?' }];
+
+    await runTurn(
+      { projectId: projectAId, message: 'Hello.' },
+      {
+        provider: createMockAdapter(script, { onSendTurn: (input) => sentPrompts.push(input.systemPrompt) }),
+        versioning: makeVersioningSpy(),
+      }
+    );
+
+    expect(sentPrompts).toHaveLength(1);
+    expect(sentPrompts[0]).toContain(
+      'Never ask the user for internal identifiers -- database IDs, project IDs, version numbers, internal keys, or similar'
+    );
+    expect(sentPrompts[0]).toContain('If a tool call fails, state in your next message, in plain language, what failed');
+  });
+
+  it('still sends the updated system prompt on the follow-up sendTurn call after a tool call returns isError: true', async () => {
+    const sentPrompts: string[] = [];
+    const script: MockProviderScript = [
+      { kind: 'tool_calls', calls: [{ id: 'fail-1', name: 'create_project', args: { id: -1, title: 'Nope' } }] },
+      { kind: 'message', content: 'That update failed.' },
+    ];
+
+    await runTurn(
+      { projectId: projectAId, message: 'Rename this project.' },
+      {
+        provider: createMockAdapter(script, { onSendTurn: (input) => sentPrompts.push(input.systemPrompt) }),
+        versioning: makeVersioningSpy(),
+      }
+    );
+
+    expect(sentPrompts).toHaveLength(2);
+    for (const prompt of sentPrompts) {
+      expect(prompt).toContain('Never ask the user for internal identifiers');
+      expect(prompt).toContain('If a tool call fails, state in your next message, in plain language, what failed');
+    }
   });
 });
 

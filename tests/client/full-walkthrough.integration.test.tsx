@@ -33,14 +33,14 @@ import App from '../../client/src/App';
  * "drag" in the sprint's prose and "double-click" in the shipped UI refer
  * to the same user action.
  *
- * **A reload step is threaded in deliberately.** `OutputPane.tsx`'s and
- * `ProjectDetailsHeader.tsx`'s own header comments document this app's
- * design: a completed chat turn's side effects (a new `Iteration` row) are
- * not pushed back into `ProjectDetail`'s already-rendered state -- they
- * surface on the next `GET /api/projects/:id`, i.e. a reload. This test
- * performs that reload the way a real user would (navigating back to the
- * project list and back into the project), not by reaching into React
- * internals to fake a live push update.
+ * **No manual reload needed for a new iteration** (sprint 007, ticket
+ * 007-001): `ProjectDetail/index.tsx`'s `handleToolCallFinished` now
+ * refetches the project on a successful `generate_image` completion, so
+ * both generated iterations below show up in the Front stream immediately
+ * after each chat turn -- this test still exercises a manual "navigate out
+ * and back" reload later (to confirm persistence survives a real reload
+ * too), but no longer treats the reload as the *only* way the gallery
+ * picks up a just-generated iteration.
  */
 
 function sseFrames(events: unknown[]): string {
@@ -369,29 +369,33 @@ describe('Full walkthrough (sprint 005 capstone, sprint.md Success Criteria)', (
         target: { value: 'Make a postcard with the robot logo, warm colors' },
       });
       fireEvent.click(screen.getByRole('button', { name: 'Send' }));
-      expect(await screen.findByText(/iteration 1/i)).toBeInTheDocument();
+      expect(await within(screen.getByTestId('chat-messages')).findByText(/iteration 1/i)).toBeInTheDocument();
       expect(screen.queryByTestId('chat-error')).not.toBeInTheDocument();
+
+      // Sprint 007 (ticket 007-001): a successful `generate_image`
+      // completion refetches the project immediately, so the new iteration
+      // is already visible in the Front stream -- no manual reload needed.
+      await screen.findByTestId('iteration-row-1');
 
       // ---- Chat turn 2: iterate. ----
       fireEvent.change(screen.getByLabelText('Message Claude…'), {
         target: { value: 'Make it brighter' },
       });
       fireEvent.click(screen.getByRole('button', { name: 'Send' }));
-      expect(await screen.findByText(/iteration 2/i)).toBeInTheDocument();
+      expect(await within(screen.getByTestId('chat-messages')).findByText(/iteration 2/i)).toBeInTheDocument();
       expect(screen.queryByTestId('chat-error')).not.toBeInTheDocument();
 
-      // The output pane doesn't show either generated iteration yet --
-      // this app's documented "surfaces on the next reload" design (see
-      // module header). Confirm that's still true before reloading.
-      expect(screen.getByText('No front iterations yet.')).toBeInTheDocument();
+      // Both generated iterations already landed in the Front stream
+      // (Sprint 005 OOP change, 2026-07-15: `generate_image` tags new
+      // iterations into whichever tab is active, and this walkthrough never
+      // switches off the default Front tab) -- no separate "mark as front"
+      // step or manual reload is needed; accepting is the only remaining
+      // action.
+      await screen.findByTestId('iteration-row-2');
 
-      // ---- Reload (navigate out and back in) to pick up the generated
-      // iterations, then mark the first one accepted. Both generated
-      // iterations already landed in the Front stream (Sprint 005 OOP
-      // change, 2026-07-15: `generate_image` tags new iterations into
-      // whichever tab is active, and this walkthrough never switches off
-      // the default Front tab) -- no separate "mark as front" step is
-      // needed anymore; accepting is the only remaining action. ----
+      // ---- Reload (navigate out and back in) to confirm the generated
+      // iterations also persist across a real reload, then mark the first
+      // one accepted. ----
       fireEvent.click(screen.getByRole('link', { name: 'Back to projects' }));
       const projectCard = (await screen.findByText('Untitled project')).closest('a')!;
       fireEvent.click(projectCard);
@@ -435,5 +439,10 @@ describe('Full walkthrough (sprint 005 capstone, sprint.md Success Criteria)', (
       expect(screen.queryByRole('alert')).not.toBeInTheDocument();
       expect(consoleError).not.toHaveBeenCalled();
     },
+    // Sprint 007 (ticket 007-001): each generate_image completion now
+    // triggers one extra GET /api/projects/:id round trip, so this
+    // already-long walkthrough needs more headroom than vitest's default
+    // 5000ms to avoid flaking in CI.
+    15000,
   );
 });

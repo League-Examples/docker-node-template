@@ -228,7 +228,15 @@ describe('POST /api/projects/:projectId/chat -- streams a scripted turn', () => 
     expect(res.status).toBe(200);
     expect(res.headers['content-type']).toContain('text/event-stream');
     expect(mockRunTurn).toHaveBeenCalledTimes(1);
-    expect(mockRunTurn.mock.calls[0][0]).toEqual({ projectId: 42, message: 'Please help.' });
+    expect(mockRunTurn.mock.calls[0][0]).toEqual({
+      projectId: 42,
+      message: 'Please help.',
+      activeFace: undefined,
+      // ticket 007-002: the logged-in admin's authenticated user id,
+      // threaded through so runTurn's create_project dispatch can fill
+      // ownerUserId for a genuinely new project.
+      authenticatedUserId: expect.any(Number),
+    });
 
     // ticket 004-002 AC2: production wiring passes the real,
     // imaging.ts-backed ImageVisionClient instead of relying on turn.ts's

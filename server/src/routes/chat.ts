@@ -54,6 +54,13 @@ chatRouter.post('/projects/:projectId/chat', requireAuth, async (req, res) => {
   const activeFaceRaw = req.body?.activeFace;
   const activeFace = activeFaceRaw === 'front' || activeFaceRaw === 'back' ? activeFaceRaw : undefined;
 
+  // Ticket 007-002 (SUC-002): the authenticated caller's id, threaded
+  // through so `runTurn`'s `create_project` dispatch can fill `ownerUserId`
+  // for a genuinely new project without the model ever needing to know or
+  // ask for that internal id (same `req.user.id` pattern as
+  // `routes/projects.ts`).
+  const authenticatedUserId = (req.user as any).id;
+
   res.setHeader('Content-Type', 'text/event-stream');
   res.setHeader('Cache-Control', 'no-cache');
   res.setHeader('Connection', 'keep-alive');
@@ -61,7 +68,7 @@ chatRouter.post('/projects/:projectId/chat', requireAuth, async (req, res) => {
 
   try {
     await runTurn(
-      { projectId, message, activeFace },
+      { projectId, message, activeFace, authenticatedUserId },
       { onEvent: (event) => writeEvent(res, event), imageVisionClient }
     );
   } catch (err: any) {

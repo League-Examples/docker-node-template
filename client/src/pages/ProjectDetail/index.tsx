@@ -149,13 +149,26 @@ export default function ProjectDetail() {
     });
   }
 
-  /** SUC-015: `ChatPanel`'s forwarded `tool_call_finished` events -- only
-   * a successful `search_catalog` call updates the drawer's filtered set;
-   * every other tool call (or a `search_catalog` call that errored) is
-   * ignored here (the chat bubble/status text already surfaces those). */
+  /** `ChatPanel`'s forwarded `tool_call_finished` events. Two independent
+   * branches coexist here, each keyed off `name` (ticket 007-001):
+   * - SUC-015: a successful `search_catalog` call updates the drawer's
+   *   filtered set.
+   * - SUC-001 (sprint 007): a successful `generate_image` completion means
+   *   a new `Iteration` row + PNG already landed server-side, but this
+   *   page's `iterations` state (fetched once at mount) has no way to know
+   *   that on its own -- so this refetches the project via the same
+   *   `loadProject()` the page already calls on mount (not a second SSE
+   *   stream, not a hand-mapped patch of the tool result into
+   *   `IterationDTO` -- see sprint.md's "Full refetch vs. patch-in-place").
+   *   `OutputPane` then re-renders the active stream from the refreshed
+   *   `iterations` with no page reload.
+   * Any other tool call (or an errored call of either kind) is ignored
+   * here -- the chat bubble/status text already surfaces those. */
   function handleToolCallFinished(name: string, result: unknown, isError: boolean) {
     if (name === 'search_catalog' && !isError && Array.isArray(result)) {
       setSearchCatalogMatches(result as SearchCatalogMatch[]);
+    } else if (name === 'generate_image' && !isError) {
+      void loadProject();
     }
   }
 
