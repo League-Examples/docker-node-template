@@ -56,6 +56,16 @@ import pino from 'pino';
  * -- via `pino` (`options.logger`, defaulting to a module-level instance
  * mirroring `app.ts`'s level convention: silent under `NODE_ENV=test`). No
  * budget cap is enforced (architecture-001 Open Question 7, unchanged).
+ *
+ * **Timeouts (ticket 006-001)**: every outbound `fetch` this module makes --
+ * both OpenAI calls, the image-download-by-URL fallback in
+ * `extractFirstImageBytes`, and the OpenRouter chat-completions call -- is
+ * bound to an `AbortController` timeout (default 5 minutes; overridable via
+ * `options.timeoutMs` or `IMAGING_TIMEOUT_MS`). On expiry the call rejects
+ * with the same `ImagingServiceError` type (never a bare `AbortError`),
+ * naming the provider and the elapsed wait, so a stalled upstream connection
+ * can no longer hang the caller (and the `project_turn` lock it holds)
+ * indefinitely.
  */
 
 // ---------------------------------------------------------------------------
@@ -70,6 +80,13 @@ const DEFAULT_OPENROUTER_MODEL = 'deepseek/deepseek-v4-pro';
 
 /** OpenAI truncates prompts; the predecessor's own cap. */
 const MAX_PROMPT_CHARS = 32000;
+
+/** Default per-call timeout for every outbound fetch in this module (ticket
+ * 006-001): image generation legitimately takes minutes, so this is
+ * generous, but a stalled upstream connection must not hang the caller (and
+ * the `project_turn` lock it holds) indefinitely. Overridable via
+ * `ImagingCallOptions.timeoutMs` or `process.env.IMAGING_TIMEOUT_MS`. */
+const DEFAULT_TIMEOUT_MS = 5 * 60 * 1000;
 
 const MIME_BY_EXTENSION: Record<string, string> = {
   '.png': 'image/png',
@@ -175,6 +192,75 @@ export interface ImagingCallOptions {
   fetchImpl?: typeof fetch;
   /** Test-injectable stand-in for the default `pino`-backed logger. */
   logger?: ImagingLogger;
+  /** Per-call `AbortController` timeout (ms) applied to every outbound fetch
+   * this call makes (generation/edits/download-fallback/chat-completions).
+   * Falls back to `process.env.IMAGING_TIMEOUT_MS`, then `DEFAULT_TIMEOUT_MS`
+   * (5 minutes). Tests inject a short value here to assert timeout behavior
+   * without waiting on the real default. */
+  timeoutMs?: number;
+}
+
+/** Resolves the effective timeout for a call: explicit option, then env var,
+ * then the 5-minute default. Ignores a non-positive/non-numeric env value
+ * rather than throwing, since it is not a required config value. */
+function resolveTimeoutMs(options: ImagingCallOptions): number {
+  if (typeof options.timeoutMs === 'number' && options.timeoutMs > 0) return options.timeoutMs;
+  const envValue = Number(process.env.IMAGING_TIMEOUT_MS);
+  if (Number.isFinite(envValue) && envValue > 0) return envValue;
+  return DEFAULT_TIMEOUT_MS;
+}
+
+/** Races `executor` (which receives an `AbortSignal` to attach to its
+ * fetch call) against a timeout. Uses a real timer rather than relying on
+ * the executor honoring the abort signal, so a test-injected `fetchImpl`
+ * that never resolves and never inspects the signal still times out
+ * (the ticket's test requirement) -- the signal is still passed through so
+ * a real `fetch` call is also actually cancelled, freeing its socket. On
+ * expiry, rejects with `ImagingServiceError` naming `provider` and the
+ * elapsed wait, never a bare `AbortError`. */
+function withTimeout<T>(
+  provider: 'openai' | 'openrouter',
+  timeoutMs: number,
+  executor: (signal: AbortSignal) => Promise<T>
+): Promise<T> {
+  const controller = new AbortController();
+  const startedAt = Date.now();
+
+  return new Promise<T>((resolve, reject) => {
+    let settled = false;
+
+    const timer = setTimeout(() => {
+      if (settled) return;
+      settled = true;
+      controller.abort();
+      const elapsedMs = Date.now() - startedAt;
+      reject(
+        new ImagingServiceError(
+          `${provider === 'openai' ? 'OpenAI' : 'OpenRouter'} request to ${provider} timed out after ${elapsedMs}ms (${(
+            elapsedMs / 1000
+          ).toFixed(1)}s) with no response`,
+          provider
+        )
+      );
+    }, timeoutMs);
+
+    Promise.resolve()
+      .then(() => executor(controller.signal))
+      .then(
+        (value) => {
+          if (settled) return;
+          settled = true;
+          clearTimeout(timer);
+          resolve(value);
+        },
+        (err) => {
+          if (settled) return;
+          settled = true;
+          clearTimeout(timer);
+          reject(err);
+        }
+      );
+  });
 }
 
 async function parseJsonResponse(response: Response, provider: 'openai' | 'openrouter'): Promise<any> {
@@ -223,6 +309,7 @@ export async function generateImage(input: GenerateImageInput, options: ImagingC
   const logger = options.logger ?? defaultLogger;
   const fetchImpl = options.fetchImpl ?? fetch;
   const apiKey = options.openaiApiKey ?? process.env.OPENAI_API_KEY;
+  const timeoutMs = resolveTimeoutMs(options);
 
   if (!apiKey) {
     throw new ImagingServiceError(
@@ -234,8 +321,8 @@ export async function generateImage(input: GenerateImageInput, options: ImagingC
   try {
     const bytes =
       input.referenceImages && input.referenceImages.length > 0
-        ? await callOpenAiEdits({ ...input, model, apiKey, fetchImpl, referenceImages: input.referenceImages })
-        : await callOpenAiGenerations({ ...input, model, apiKey, fetchImpl });
+        ? await callOpenAiEdits({ ...input, model, apiKey, fetchImpl, timeoutMs, referenceImages: input.referenceImages })
+        : await callOpenAiGenerations({ ...input, model, apiKey, fetchImpl, timeoutMs });
 
     logSpend(logger, {
       provider: 'openai',
@@ -263,6 +350,7 @@ async function callOpenAiGenerations(args: {
   model: string;
   apiKey: string;
   fetchImpl: typeof fetch;
+  timeoutMs: number;
 }): Promise<Buffer> {
   const payload: Record<string, unknown> = {
     model: args.model,
@@ -273,17 +361,20 @@ async function callOpenAiGenerations(args: {
   };
   if (args.background) payload.background = args.background;
 
-  const response = await args.fetchImpl(`${OPENAI_BASE}/images/generations`, {
-    method: 'POST',
-    headers: {
-      Authorization: `Bearer ${args.apiKey}`,
-      'Content-Type': 'application/json',
-    },
-    body: JSON.stringify(payload),
-  });
+  const response = await withTimeout('openai', args.timeoutMs, (signal) =>
+    args.fetchImpl(`${OPENAI_BASE}/images/generations`, {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${args.apiKey}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(payload),
+      signal,
+    })
+  );
 
   const data = await parseJsonResponse(response, 'openai');
-  return extractFirstImageBytes(data, 'openai');
+  return extractFirstImageBytes(data, 'openai', args.fetchImpl, args.timeoutMs);
 }
 
 async function callOpenAiEdits(args: {
@@ -293,6 +384,7 @@ async function callOpenAiEdits(args: {
   model: string;
   apiKey: string;
   fetchImpl: typeof fetch;
+  timeoutMs: number;
   referenceImages: string[];
 }): Promise<Buffer> {
   const form = new FormData();
@@ -308,17 +400,25 @@ async function callOpenAiEdits(args: {
     form.append('image[]', new Blob([bytes], { type: mimeTypeForPath(refPath) }), path.basename(refPath));
   }
 
-  const response = await args.fetchImpl(`${OPENAI_BASE}/images/edits`, {
-    method: 'POST',
-    headers: { Authorization: `Bearer ${args.apiKey}` },
-    body: form,
-  });
+  const response = await withTimeout('openai', args.timeoutMs, (signal) =>
+    args.fetchImpl(`${OPENAI_BASE}/images/edits`, {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${args.apiKey}` },
+      body: form,
+      signal,
+    })
+  );
 
   const data = await parseJsonResponse(response, 'openai');
-  return extractFirstImageBytes(data, 'openai');
+  return extractFirstImageBytes(data, 'openai', args.fetchImpl, args.timeoutMs);
 }
 
-async function extractFirstImageBytes(data: any, provider: 'openai' | 'openrouter'): Promise<Buffer> {
+async function extractFirstImageBytes(
+  data: any,
+  provider: 'openai' | 'openrouter',
+  fetchImpl: typeof fetch,
+  timeoutMs: number
+): Promise<Buffer> {
   const first = data?.data?.[0];
   if (!first) {
     throw new ImagingServiceError('OpenAI response contained no image data', provider);
@@ -327,7 +427,7 @@ async function extractFirstImageBytes(data: any, provider: 'openai' | 'openroute
     return Buffer.from(first.b64_json, 'base64');
   }
   if (typeof first.url === 'string') {
-    const imageResponse = await fetch(first.url);
+    const imageResponse = await withTimeout(provider, timeoutMs, (signal) => fetchImpl(first.url, { signal }));
     if (!imageResponse.ok) {
       throw new ImagingServiceError(`Failed to download generated image from ${first.url}: ${imageResponse.status}`, provider);
     }
@@ -374,6 +474,7 @@ export async function classifyAndDescribe(input: ClassifyAndDescribeInput, optio
   const logger = options.logger ?? defaultLogger;
   const fetchImpl = options.fetchImpl ?? fetch;
   const apiKey = options.openrouterApiKey ?? process.env.OPENROUTER_API;
+  const timeoutMs = resolveTimeoutMs(options);
 
   if (!apiKey) {
     throw new ImagingServiceError(
@@ -388,25 +489,28 @@ export async function classifyAndDescribe(input: ClassifyAndDescribeInput, optio
         ? { type: 'image_url', image_url: { url: input.imageUrl } }
         : { type: 'image_url', image_url: { url: `data:${input.mimeType ?? 'image/png'};base64,${input.imageBytes.toString('base64')}` } };
 
-    const response = await fetchImpl(`${OPENROUTER_BASE}/chat/completions`, {
-      method: 'POST',
-      headers: {
-        Authorization: `Bearer ${apiKey}`,
-        'Content-Type': 'application/json',
-        'HTTP-Referer': 'https://league.ai',
-        'X-Title': 'Flyerbot Description & Embedding Pipeline',
-      },
-      body: JSON.stringify({
-        model,
-        messages: [
-          {
-            role: 'user',
-            content: [imageContent, { type: 'text', text: CLASSIFICATION_PROMPT }],
-          },
-        ],
-        max_tokens: 2048,
-      }),
-    });
+    const response = await withTimeout('openrouter', timeoutMs, (signal) =>
+      fetchImpl(`${OPENROUTER_BASE}/chat/completions`, {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${apiKey}`,
+          'Content-Type': 'application/json',
+          'HTTP-Referer': 'https://league.ai',
+          'X-Title': 'Flyerbot Description & Embedding Pipeline',
+        },
+        body: JSON.stringify({
+          model,
+          messages: [
+            {
+              role: 'user',
+              content: [imageContent, { type: 'text', text: CLASSIFICATION_PROMPT }],
+            },
+          ],
+          max_tokens: 2048,
+        }),
+        signal,
+      })
+    );
 
     const data = await parseJsonResponse(response, 'openrouter');
     const text = extractMessageText(data);

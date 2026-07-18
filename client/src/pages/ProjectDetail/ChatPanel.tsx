@@ -97,6 +97,7 @@ interface ChatPanelProps {
 type TurnEvent =
   | { type: 'status'; status: 'lock_wait' | 'started' | 'completed' }
   | { type: 'knowledge_consulted'; entries: unknown[] }
+  | { type: 'stage'; stage: string; label: string; startedAt: number }
   | { type: 'tool_call_started'; callId: string; name: string; args: unknown }
   | { type: 'tool_call_finished'; callId: string; name: string; args: unknown; result: unknown; isError: boolean }
   | { type: 'message'; content: string }
@@ -148,8 +149,30 @@ export default function ChatPanel({ projectId, initialMessages, onToolCallFinish
   const [sending, setSending] = useState(false);
   const [statusText, setStatusText] = useState('');
   const [error, setError] = useState('');
+  // Ticket 006-003: the active turn stage (spinner + label + elapsed-time
+  // ticker), driven by `stage` TurnEvents (ticket 006-002). Independent of
+  // `statusText` above -- `statusText` keeps its pre-existing
+  // clear-on-every-event behavior (tool_call_started/finished included) for
+  // the tests that already assert that, while `stage` only clears on
+  // `message`/`error` (ticket's acceptance criteria) so a long-running stage
+  // like "Generating image (#2)…" stays visible across its tool-call's
+  // started/finished events, not just until the next one.
+  const [stage, setStage] = useState<{ stage: string; label: string; startedAt: number } | null>(null);
+  // Forces a re-render at least once per second while a stage is active, so
+  // the elapsed-time display (computed as `nowTick - stage.startedAt`)
+  // ticks locally without any additional SSE frames.
+  const [nowTick, setNowTick] = useState(() => Date.now());
   const nextLocalId = useRef(0);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
+
+  useEffect(() => {
+    if (!stage) return;
+    setNowTick(Date.now());
+    const interval = setInterval(() => setNowTick(Date.now()), 1000);
+    return () => clearInterval(interval);
+  }, [stage]);
+
+  const elapsedSeconds = stage ? Math.max(0, Math.floor((nowTick - stage.startedAt) / 1000)) : 0;
 
   // Auto-resize the composer: reset to 'auto' then re-measure scrollHeight,
   // capping at MAX_COMPOSER_LINES worth of line-height. Keyed on `input`
@@ -187,6 +210,9 @@ export default function ChatPanel({ projectId, initialMessages, onToolCallFinish
           `Consulted ${event.entries.length} knowledge ${event.entries.length === 1 ? 'entry' : 'entries'}…`,
         );
         break;
+      case 'stage':
+        setStage({ stage: event.stage, label: event.label, startedAt: event.startedAt });
+        break;
       case 'tool_call_started':
         setStatusText(toolStatusLabel(event.name));
         break;
@@ -196,12 +222,14 @@ export default function ChatPanel({ projectId, initialMessages, onToolCallFinish
         break;
       case 'message':
         setStatusText('');
+        setStage(null);
         appendBubble('assistant', event.content);
         break;
       case 'error':
         // Sprint success criteria: "no unhandled agent-runtime failure
         // surfaced silently" -- always render it, never just log it.
         setStatusText('');
+        setStage(null);
         setError(event.message);
         break;
     }
@@ -224,6 +252,7 @@ export default function ChatPanel({ projectId, initialMessages, onToolCallFinish
     } finally {
       setSending(false);
       setStatusText('');
+      setStage(null);
     }
   }
 
@@ -266,6 +295,17 @@ export default function ChatPanel({ projectId, initialMessages, onToolCallFinish
         ))}
       </div>
 
+      {stage && (
+        <p data-testid="chat-stage" className="flex items-center gap-2 px-4 pb-1 text-xs italic text-slate-400">
+          <span
+            data-testid="chat-stage-spinner"
+            aria-hidden="true"
+            className="inline-block h-3 w-3 animate-spin rounded-full border-2 border-slate-300 border-t-indigo-600"
+          />
+          <span>{stage.label}</span>
+          <span data-testid="chat-stage-elapsed">{elapsedSeconds}s</span>
+        </p>
+      )}
       {statusText && (
         <p data-testid="chat-status" className="px-4 pb-1 text-xs italic text-slate-400">
           {statusText}

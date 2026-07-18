@@ -608,6 +608,7 @@ function buildSystemPrompt(consulted: ConsultedKnowledgeEntry[], projectContextB
 export type TurnEvent =
   | { type: 'status'; status: 'lock_wait' | 'started' | 'completed' }
   | { type: 'knowledge_consulted'; entries: ConsultedKnowledgeEntry[] }
+  | { type: 'stage'; stage: string; label: string; startedAt: number }
   | { type: 'tool_call_started'; callId: string; name: string; args: unknown }
   | { type: 'tool_call_finished'; callId: string; name: string; args: unknown; result: unknown; isError: boolean }
   | { type: 'message'; content: string }
@@ -750,6 +751,7 @@ export async function runTurn(input: RunTurnInput, options: TurnControllerOption
 
     // -- Context reconstruction (D8): fresh from the DB every call. -----
     const historyRows = await loadHistory(input.projectId, prismaClient);
+    emit({ type: 'stage', stage: 'knowledge_retrieval', label: 'Consulting knowledge sources…', startedAt: Date.now() });
     const consultedKnowledge = retrieveKnowledge(input.message);
     if (consultedKnowledge.length > 0) {
       emit({ type: 'knowledge_consulted', entries: consultedKnowledge });
@@ -774,6 +776,14 @@ export async function runTurn(input: RunTurnInput, options: TurnControllerOption
     // -- Provider / tool-dispatch loop. ----------------------------------
     let finalContent: string | undefined;
     let rounds = 0;
+    // Whether a tool-call round has already completed this turn -- distinguishes
+    // the first provider.sendTurn call ("drafting") from any later one
+    // ("assembling"), per this ticket's phase-transition stage events.
+    let hadToolCallRound = false;
+    // Per-turn, monotonically-increasing count of generate_image calls
+    // dispatched so far (starting at 1) -- never a pre-announced "of N"
+    // total (sprint.md Design Rationale).
+    let generateImageCallCount = 0;
 
     while (finalContent === undefined) {
       rounds += 1;
@@ -782,6 +792,13 @@ export async function runTurn(input: RunTurnInput, options: TurnControllerOption
           `Turn for project ${input.projectId} exceeded ${maxToolRounds} tool-call rounds without a final message`
         );
       }
+
+      emit({
+        type: 'stage',
+        stage: hadToolCallRound ? 'assembling' : 'drafting',
+        label: hadToolCallRound ? 'Assembling flyer…' : 'Drafting flyer content…',
+        startedAt: Date.now(),
+      });
 
       const result: ProviderTurnResult = await provider.sendTurn({ systemPrompt, messages, tools: toolDefinitions });
 
@@ -794,6 +811,15 @@ export async function runTurn(input: RunTurnInput, options: TurnControllerOption
       const toolResults: { toolCallId: string; result: unknown; isError?: boolean }[] = [];
 
       for (const call of result.calls) {
+        if (call.name === IMAGE_GENERATION_TOOL_NAME) {
+          generateImageCallCount += 1;
+          emit({
+            type: 'stage',
+            stage: 'generating_image',
+            label: `Generating image (#${generateImageCallCount})…`,
+            startedAt: Date.now(),
+          });
+        }
         emit({ type: 'tool_call_started', callId: call.id, name: call.name, args: call.args });
         let callResult: unknown;
         let isError = false;
@@ -825,6 +851,8 @@ export async function runTurn(input: RunTurnInput, options: TurnControllerOption
 
       messages.push({ role: 'assistant', toolCalls: result.calls });
       messages.push({ role: 'user', toolResults });
+
+      hadToolCallRound = true;
     }
 
     const finalRow = await prismaClient.chatMessage.create({
