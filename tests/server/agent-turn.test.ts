@@ -907,3 +907,111 @@ describe('runTurn -- ticket 005-002 tools dispatch through the mock adapter', ()
     expect(Array.isArray(result.toolCalls[0].result)).toBe(true);
   });
 });
+
+// ---------------------------------------------------------------------------
+// Ticket 006-002: additive `stage` progress events at each phase transition.
+// ---------------------------------------------------------------------------
+
+describe('runTurn -- stage progress events (ticket 006-002)', () => {
+  function stageEvents(events: TurnEvent[]): Extract<TurnEvent, { type: 'stage' }>[] {
+    return events.filter((e): e is Extract<TurnEvent, { type: 'stage' }> => e.type === 'stage');
+  }
+
+  it('(a) a turn with no tool calls emits a knowledge_retrieval stage then a drafting stage, each with a Date.now()-style startedAt', async () => {
+    const events: TurnEvent[] = [];
+    const before = Date.now();
+
+    await runTurn(
+      { projectId: projectAId, message: 'Just chatting, no tools needed.' },
+      { provider: createMockAdapter([{ kind: 'message', content: 'Sure thing.' }]), versioning: makeVersioningSpy(), onEvent: (e) => events.push(e) }
+    );
+
+    const after = Date.now();
+    const stages = stageEvents(events);
+
+    expect(stages.map((s) => s.stage)).toEqual(['knowledge_retrieval', 'drafting']);
+    expect(stages[0].label).toBe('Consulting knowledge sources…');
+    expect(stages[1].label).toBe('Drafting flyer content…');
+    for (const s of stages) {
+      expect(s.startedAt).toBeGreaterThanOrEqual(before);
+      expect(s.startedAt).toBeLessThanOrEqual(after);
+    }
+
+    // Every pre-existing event still fires unchanged (AC7): status/message.
+    expect(events.some((e) => e.type === 'status' && e.status === 'started')).toBe(true);
+    expect(events.some((e) => e.type === 'message' && e.content === 'Sure thing.')).toBe(true);
+    expect(events.some((e) => e.type === 'status' && e.status === 'completed')).toBe(true);
+  });
+
+  it('(b) a turn with one generate_image call emits a generating_image stage labeled "#1", alongside the unchanged tool_call_started/_finished events', async () => {
+    const events: TurnEvent[] = [];
+    const stubClient: ImageVisionClient = {
+      async generateImage(input) {
+        return { imagePath: `projects/${input.projectId}/outputs/one.png` };
+      },
+    };
+    const script: MockProviderScript = [
+      { kind: 'tool_calls', calls: [{ id: 'img-1', name: IMAGE_GENERATION_TOOL_NAME, args: { prompt: 'a red postcard' } }] },
+      { kind: 'message', content: 'Generated the image.' },
+    ];
+
+    await runTurn(
+      { projectId: projectAId, message: 'Generate an image please.' },
+      { provider: createMockAdapter(script), imageVisionClient: stubClient, versioning: makeVersioningSpy(), onEvent: (e) => events.push(e) }
+    );
+
+    const stages = stageEvents(events);
+    expect(stages.map((s) => s.stage)).toEqual(['knowledge_retrieval', 'drafting', 'generating_image', 'assembling']);
+    expect(stages[2].label).toBe('Generating image (#1)…');
+
+    expect(events.some((e) => e.type === 'tool_call_started' && e.name === IMAGE_GENERATION_TOOL_NAME)).toBe(true);
+    expect(events.some((e) => e.type === 'tool_call_finished' && e.name === IMAGE_GENERATION_TOOL_NAME && !e.isError)).toBe(
+      true
+    );
+  });
+
+  it('(c) a turn with two generate_image calls in one round labels them #1 then #2, distinct and monotonically increasing', async () => {
+    const events: TurnEvent[] = [];
+    let n = 0;
+    const stubClient: ImageVisionClient = {
+      async generateImage(input) {
+        n += 1;
+        return { imagePath: `projects/${input.projectId}/outputs/multi-${n}.png` };
+      },
+    };
+    const script: MockProviderScript = [
+      {
+        kind: 'tool_calls',
+        calls: [
+          { id: 'img-1', name: IMAGE_GENERATION_TOOL_NAME, args: { prompt: 'first image' } },
+          { id: 'img-2', name: IMAGE_GENERATION_TOOL_NAME, args: { prompt: 'second image' } },
+        ],
+      },
+      { kind: 'message', content: 'Generated both images.' },
+    ];
+
+    await runTurn(
+      { projectId: projectAId, message: 'Generate two images please.' },
+      { provider: createMockAdapter(script), imageVisionClient: stubClient, versioning: makeVersioningSpy(), onEvent: (e) => events.push(e) }
+    );
+
+    const generatingImageStages = stageEvents(events).filter((s) => s.stage === 'generating_image');
+    expect(generatingImageStages.map((s) => s.label)).toEqual(['Generating image (#1)…', 'Generating image (#2)…']);
+  });
+
+  it('(d) a non-image tool call followed by a final message fires the assembling stage on the second provider.sendTurn call', async () => {
+    const events: TurnEvent[] = [];
+    const script: MockProviderScript = [
+      { kind: 'tool_calls', calls: [{ id: 'search-1', name: 'search_catalog', args: { query: 'stage-test-query' } }] },
+      { kind: 'message', content: 'Here is what I found.' },
+    ];
+
+    await runTurn(
+      { projectId: projectAId, message: 'Search the catalog.' },
+      { provider: createMockAdapter(script), versioning: makeVersioningSpy(), onEvent: (e) => events.push(e) }
+    );
+
+    const stages = stageEvents(events);
+    expect(stages.map((s) => s.stage)).toEqual(['knowledge_retrieval', 'drafting', 'assembling']);
+  });
+});
