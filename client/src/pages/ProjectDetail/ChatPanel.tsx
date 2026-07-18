@@ -80,6 +80,22 @@ import type { PostcardSide } from '../../lib/postcardFaceEditing';
  * produces (headings, lists, code blocks, ...) without pulling in the
  * `@tailwindcss/typography` plugin's `prose` classes, which aren't
  * installed in this project.
+ *
+ * **Auto-scroll to newest message (ticket 008-003, SUC-017)**: the
+ * `data-testid="chat-messages"` container is a plain ref + effect keyed on
+ * `messages.length` -- no new dependency. Every append (the user's own
+ * optimistic bubble in `sendMessage`, or an assistant reply/error via
+ * `handleTurnEvent`'s `message`/`error` cases) grows `messages`, which fires
+ * the effect after React commits and lays out the new bubble, and it sets
+ * `scrollTop = scrollHeight` to jump to the bottom. Keying on
+ * `messages.length` (not on `stage`/`statusText`, which change far more
+ * often during a turn) means the effect never fires on a render that
+ * didn't actually append a message. Reading `scrollHeight` inside the
+ * effect (which runs after DOM commit, not before) is what makes this work
+ * correctly for ticket 008-002's `react-markdown` bubbles too: a long code
+ * block changes the container's `scrollHeight` once Markdown has laid out,
+ * and the effect re-measures at that point rather than using a stale
+ * pre-render height.
  */
 
 export type ChatBubbleFrom = 'user' | 'assistant';
@@ -201,6 +217,20 @@ export default function ChatPanel({ projectId, initialMessages, onToolCallFinish
   const [nowTick, setNowTick] = useState(() => Date.now());
   const nextLocalId = useRef(0);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const messagesContainerRef = useRef<HTMLDivElement>(null);
+
+  // Ticket 008-003 (SUC-017): scroll the messages container to the bottom
+  // whenever a message is appended -- keyed on messages.length so it never
+  // fires on a render that didn't actually add a message (stage/statusText
+  // updates alone leave this array untouched). Runs after commit, so it
+  // re-measures scrollHeight against the just-laid-out DOM, including any
+  // react-markdown bubble whose content (e.g. a code block) grew the
+  // container's height. See this file's module header.
+  useEffect(() => {
+    const el = messagesContainerRef.current;
+    if (!el) return;
+    el.scrollTop = el.scrollHeight;
+  }, [messages.length]);
 
   useEffect(() => {
     if (!stage) return;
@@ -309,7 +339,7 @@ export default function ChatPanel({ projectId, initialMessages, onToolCallFinish
 
   return (
     <section className="flex h-full min-h-0 flex-col bg-white">
-      <div data-testid="chat-messages" className="flex-1 overflow-y-auto p-4 space-y-3">
+      <div ref={messagesContainerRef} data-testid="chat-messages" className="flex-1 overflow-y-auto p-4 space-y-3">
         {messages.length === 0 && (
           <div data-testid="chat-empty-state" className="text-left">
             <span className="inline-block max-w-[80%] rounded-lg bg-slate-100 px-3 py-2 text-sm text-slate-800">

@@ -536,6 +536,155 @@ describe('ChatPanel -- Markdown assistant bubbles (ticket 008-002, SUC-017)', ()
   });
 });
 
+describe('ChatPanel -- auto-scroll to newest message (ticket 008-003, SUC-017)', () => {
+  /** jsdom never computes real layout, so `scrollHeight` is always 0 --
+   * stub it (and spy on the `scrollTop` setter) on the messages container
+   * so the assertions below can observe the effect actually firing rather
+   * than a real pixel position (per the ticket's testing note). */
+  function stubScrollHeight(container: HTMLElement, value: number) {
+    Object.defineProperty(container, 'scrollHeight', { configurable: true, value });
+  }
+
+  function spyOnScrollTop(container: HTMLElement) {
+    const setter = vi.fn();
+    let current = 0;
+    Object.defineProperty(container, 'scrollTop', {
+      configurable: true,
+      get: () => current,
+      set: (value: number) => {
+        current = value;
+        setter(value);
+      },
+    });
+    return setter;
+  }
+
+  it('scrolls to the bottom when the user sends a message (optimistic append)', () => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue({ ok: true, body: fakeStreamBody([sseFrames([])]) }));
+
+    render(<ChatPanel projectId={7} initialMessages={[]} />);
+    const container = screen.getByTestId('chat-messages');
+    stubScrollHeight(container, 500);
+    const scrollTopSetter = spyOnScrollTop(container);
+
+    fireEvent.change(screen.getByLabelText('Message Claude…'), { target: { value: 'Make it warmer' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Send' }));
+
+    expect(scrollTopSetter).toHaveBeenCalledWith(500);
+  });
+
+  it('scrolls to the bottom when an assistant reply arrives via the `message` TurnEvent', async () => {
+    const frames = sseFrames([{ type: 'message', content: 'Here is the new iteration.' }]);
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue({ ok: true, body: fakeStreamBody([frames]) }));
+
+    render(<ChatPanel projectId={7} initialMessages={[]} />);
+    const container = screen.getByTestId('chat-messages');
+    stubScrollHeight(container, 800);
+    const scrollTopSetter = spyOnScrollTop(container);
+
+    fireEvent.change(screen.getByLabelText('Message Claude…'), { target: { value: 'Go' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Send' }));
+
+    await screen.findByText('Here is the new iteration.');
+    expect(scrollTopSetter).toHaveBeenCalledWith(800);
+  });
+
+  it('fires a fresh scroll-to-bottom on each sequential append, not just the first', async () => {
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce({ ok: true, body: fakeStreamBody([sseFrames([{ type: 'message', content: 'first reply' }])]) })
+      .mockResolvedValueOnce({ ok: true, body: fakeStreamBody([sseFrames([{ type: 'message', content: 'second reply' }])]) });
+    vi.stubGlobal('fetch', fetchMock);
+
+    render(<ChatPanel projectId={7} initialMessages={[]} />);
+    const container = screen.getByTestId('chat-messages');
+    stubScrollHeight(container, 100);
+    const scrollTopSetter = spyOnScrollTop(container);
+
+    fireEvent.change(screen.getByLabelText('Message Claude…'), { target: { value: 'Start the project' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Send' }));
+    await screen.findByText('first reply');
+    // user append + assistant append = 2 calls so far.
+    expect(scrollTopSetter).toHaveBeenCalledTimes(2);
+
+    stubScrollHeight(container, 250);
+    fireEvent.change(screen.getByLabelText('Message Claude…'), { target: { value: 'Now make it bigger' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Send' }));
+    await screen.findByText('second reply');
+    // another user append + assistant append = 4 calls total.
+    expect(scrollTopSetter).toHaveBeenCalledTimes(4);
+    expect(scrollTopSetter).toHaveBeenLastCalledWith(250);
+  });
+
+  it('does not scroll on a stage/statusText update alone (no new message appended)', async () => {
+    let resolveSecondRead: (value: { done: boolean; value?: Uint8Array }) => void;
+    const encoder = new TextEncoder();
+    const secondRead = new Promise<{ done: boolean; value?: Uint8Array }>((resolve) => {
+      resolveSecondRead = resolve;
+    });
+    let callCount = 0;
+    const body = {
+      getReader() {
+        return {
+          read: async () => {
+            callCount += 1;
+            if (callCount === 1) {
+              return {
+                done: false,
+                value: encoder.encode(
+                  sseFrames([{ type: 'stage', stage: 'drafting', label: 'Drafting flyer content…', startedAt: Date.now() }]),
+                ),
+              };
+            }
+            return secondRead;
+          },
+        };
+      },
+    };
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue({ ok: true, body }));
+
+    render(<ChatPanel projectId={7} initialMessages={[]} />);
+    const container = screen.getByTestId('chat-messages');
+    stubScrollHeight(container, 400);
+    const scrollTopSetter = spyOnScrollTop(container);
+
+    fireEvent.change(screen.getByLabelText('Message Claude…'), { target: { value: 'Go' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Send' }));
+
+    // The user's own send already appends one bubble, so one call is
+    // expected from that -- but the `stage` event that follows (no new
+    // message) must not add another.
+    await screen.findByText('Drafting flyer content…');
+    expect(scrollTopSetter).toHaveBeenCalledTimes(1);
+
+    resolveSecondRead!({ done: true, value: undefined });
+    await waitFor(() => expect(screen.queryByTestId('chat-stage')).not.toBeInTheDocument());
+    // Still just the one call from the original user append -- the stage
+    // clearing (stage -> null) on turn completion is not a message append.
+    expect(scrollTopSetter).toHaveBeenCalledTimes(1);
+  });
+
+  it('re-scrolls after a Markdown assistant bubble (e.g. a code block) grows the container height post-render', async () => {
+    const markdown = '```\nline one\nline two\nline three\n```';
+    const frames = sseFrames([{ type: 'message', content: markdown }]);
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue({ ok: true, body: fakeStreamBody([frames]) }));
+
+    render(<ChatPanel projectId={7} initialMessages={[]} />);
+    const container = screen.getByTestId('chat-messages');
+    // Height "grows" once the Markdown code block lays out -- the effect
+    // must read scrollHeight after commit, not a value captured earlier.
+    stubScrollHeight(container, 1200);
+    const scrollTopSetter = spyOnScrollTop(container);
+
+    fireEvent.change(screen.getByLabelText('Message Claude…'), { target: { value: 'Go' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Send' }));
+
+    await waitFor(() => expect(container.querySelector('pre code')).not.toBeNull());
+    expect(container.querySelector('pre code')?.textContent).toContain('line one');
+    expect(scrollTopSetter).toHaveBeenLastCalledWith(1200);
+  });
+});
+
 describe('ChatPanel -- non-admin authenticated user can start and continue a turn', () => {
   it('sends a first message, then a follow-up, both via the same POST endpoint (role-agnostic client)', async () => {
     const fetchMock = vi
