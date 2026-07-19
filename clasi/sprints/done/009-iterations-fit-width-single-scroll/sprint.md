@@ -1,10 +1,11 @@
 ---
 id: 009
 title: Iterations Fit-Width Single Scroll
-status: planning-docs
+status: closed
 branch: sprint/009-iterations-fit-width-single-scroll
 worktree: false
-use-cases: [SUC-016]
+use-cases:
+- SUC-016
 issues:
 - iterations-single-scroll-fit-width.md
 ---
