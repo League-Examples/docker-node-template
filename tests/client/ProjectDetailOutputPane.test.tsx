@@ -137,7 +137,7 @@ describe('OutputPane -- stream filtering by activeTab', () => {
   });
 });
 
-describe('OutputPane -- single scrollable list, width-fit images (sprint 009 ticket 001)', () => {
+describe('OutputPane -- single scrollable list, fixed 700px-height images (sprint 009 ticket 001)', () => {
   it('renders all iterations of the active stream in one container, newest-first, with no stage/history testids', () => {
     const iterations = [
       iteration({ id: 1, seq: 1, role: 'front' }),
@@ -195,7 +195,7 @@ describe('OutputPane -- single scrollable list, width-fit images (sprint 009 tic
     expect(within(listBack).getByTestId('iteration-row-3')).toBeInTheDocument();
   });
 
-  it('every iteration image is width-fit (w-full h-auto), carrying no fixed pixel cap of any kind', () => {
+  it('every iteration image is scaled to a fixed 700px height (h-[700px] w-auto), carrying no width cap', () => {
     const iterations = [
       iteration({ id: 1, seq: 1, role: 'front' }),
       iteration({ id: 2, seq: 2, role: 'front' }),
@@ -204,8 +204,10 @@ describe('OutputPane -- single scrollable list, width-fit images (sprint 009 tic
 
     for (const alt of ['Iteration 1', 'Iteration 2']) {
       const img = screen.getByAltText(alt);
-      expect(img.className).toContain('w-full');
-      expect(img.className).toContain('h-auto');
+      expect(img.className).toContain('h-[700px]');
+      expect(img.className).toContain('w-auto');
+      expect(img.className).not.toContain('w-full');
+      expect(img.className).not.toContain('h-auto');
       expect(img.className).not.toContain('max-h-[800px]');
       expect(img.className).not.toContain('max-w-[800px]');
       expect(img.className).not.toContain('max-h-full');
@@ -281,7 +283,7 @@ describe('OutputPane -- single scrollable list, width-fit images (sprint 009 tic
     expect(within(list).getByAltText('Iteration 2')).toBeInTheDocument();
   });
 
-  it('non-accepted rows still render the read-only PostcardOverlay against the new width-fit image sizing', () => {
+  it('non-accepted rows still render the read-only PostcardOverlay against the new fixed 700px-height image sizing', () => {
     const editor = fakePostcardEditor({
       regionsBySide: {
         front: [{ name: 'front_headline', label: 'Headline', style: '', position: { top: '1in', left: '0.5in', width: '3.4in' }, font: { family: 'Arial', size: '24px' } }],
@@ -303,8 +305,8 @@ describe('OutputPane -- single scrollable list, width-fit images (sprint 009 tic
     fireEvent.load(img);
 
     expect(screen.getByTestId('overlay-region-text-front_headline')).toHaveTextContent('Shared text');
-    expect(img.className).toContain('w-full');
-    expect(img.className).toContain('h-auto');
+    expect(img.className).toContain('h-[700px]');
+    expect(img.className).toContain('w-auto');
   });
 });
 

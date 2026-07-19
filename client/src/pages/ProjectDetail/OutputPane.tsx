@@ -47,23 +47,22 @@ import type { UsePostcardEditorStateResult } from './usePostcardEditorState';
  * different iteration in the stream carries the same regions over to the
  * new image, per the stakeholder's explicit requirement).
  *
- * **Single scrollable list, width-fit images (sprint 009 ticket 001)**:
- * Sprint 008 split the active stream into a non-scrolling "stage" (the
- * single newest iteration, height-fit to whatever flex space was left
- * between the fixed header and the chat panel) plus a separately
- * scrollable "history" strip (everything else, flat `800x800`-capped).
- * The stakeholder corrected that design
- * (`clasi/issues/iterations-single-scroll-fit-width.md`): the height-fit
- * stage made the newest poster too small to actually look at, and the
- * split itself was unwanted. Now every iteration of the active stream
- * renders in ONE `overflow-y-auto` scrollable list, newest-first
- * (unchanged ordering rule) -- no stage/history distinction of any kind.
- * Every row's image is sized to the width of that list (`w-full h-auto`,
- * aspect ratio preserved) -- no `max-h`/`max-w` pixel cap of any kind,
- * neither the old flat `800x800` history cap nor the stage's
- * `max-h-full`/`object-contain` fit-to-height rule. Pure CSS, no
- * `ResizeObserver`/`getBoundingClientRect` hack -- resizing the window
- * rescales every image with the container's width for free.
+ * **Single scrollable list, fixed 700px-height images (sprint 009 ticket
+ * 001, revised 2026-07-18)**: Sprint 008 split the active stream into a
+ * non-scrolling "stage" (the single newest iteration, height-fit to
+ * whatever flex space was left between the fixed header and the chat
+ * panel) plus a separately scrollable "history" strip (everything else,
+ * flat `800x800`-capped). The stakeholder corrected that design
+ * (`clasi/issues/iterations-single-scroll-fit-width.md`): the split
+ * itself was unwanted -- every iteration of the active stream now renders
+ * in ONE `overflow-y-auto` scrollable list, newest-first (unchanged
+ * ordering rule), no stage/history distinction of any kind. Every row's
+ * image is scaled to a fixed 700px height (`h-[700px] w-auto`, aspect
+ * ratio preserved) -- width is NOT capped; a follow-up stakeholder
+ * correction the same day replaced the initial "scale to the list's
+ * width" rule with this fixed-height rule so every poster renders at a
+ * consistent, comfortably viewable size regardless of the pane's width.
+ * Pure CSS, no `ResizeObserver`/`getBoundingClientRect` hack.
  */
 
 interface OutputPaneProps {
@@ -272,11 +271,11 @@ interface IterationImageProps {
   overlayQr?: PostcardQr | null;
 }
 
-/** One read-only iteration's image + overlay -- scaled to the width of its
- * container (`w-full h-auto`), aspect ratio preserved, no pixel cap of any
- * kind (sprint 009 ticket 001: width is the only constraint). `<img>`'s
- * `onLoad` fires `useMeasuredWidth`'s measure so `PostcardOverlay` scales
- * to the `<img>`'s actual rendered pixel width. */
+/** One read-only iteration's image + overlay -- scaled to a fixed 700px
+ * height (`h-[700px] w-auto`), aspect ratio preserved, no width cap
+ * (stakeholder correction, 2026-07-18: height, not width, is the sizing
+ * constraint). `<img>`'s `onLoad` fires `useMeasuredWidth`'s measure so
+ * `PostcardOverlay` scales to the `<img>`'s actual rendered pixel width. */
 function IterationImage({ src, alt, overlayRegions, overlayQr }: IterationImageProps) {
   const imgRef = useRef<HTMLImageElement>(null);
   const { widthPx, measure } = useMeasuredWidth(imgRef, src);
@@ -284,8 +283,8 @@ function IterationImage({ src, alt, overlayRegions, overlayQr }: IterationImageP
   const showOverlay = (overlayRegions && overlayRegions.length > 0) || !!overlayQr;
 
   return (
-    <div className="relative w-full">
-      <img ref={imgRef} src={src} alt={alt} onLoad={measure} className="block w-full h-auto object-contain" />
+    <div className="relative inline-block">
+      <img ref={imgRef} src={src} alt={alt} onLoad={measure} className="block h-[700px] w-auto object-contain" />
       {showOverlay && <PostcardOverlay regions={overlayRegions ?? []} qr={overlayQr} widthPx={widthPx} />}
     </div>
   );
