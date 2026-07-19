@@ -331,7 +331,7 @@ describe('runTurn -- project + active-stream context injection', () => {
     // Iteration.seq increments per-project across every stream (not
     // independently per role) -- frontAccepted was created first (seq 1),
     // backDraft second (seq 2).
-    expect(systemPrompt).toContain('front: #1 (accepted, most recent) -- 1 iteration');
+    expect(systemPrompt).toContain('front: #1: "front concept" (accepted, most recent) -- 1 iteration');
     expect(systemPrompt).toContain('back: #2 (most recent) -- 1 iteration');
     expect(systemPrompt).toContain('style: a hand-drawn autumn leaf motif');
   });
@@ -1086,13 +1086,37 @@ describe('runTurn -- PROJECT CONTEXT iteration listing (sprint 010 ticket 001)',
     // Iteration.seq increments per-project across every stream (not
     // independently per role) -- the three front iterations take seq 1-3,
     // so the single back iteration created afterward is seq 4.
-    expect(capturedSystemPrompt).toContain('front: #1, #2 (accepted), #3 (most recent) -- 3 iterations');
+    expect(capturedSystemPrompt).toContain(
+      'front: #1: "front v1", #2: "front v2" (accepted), #3: "front v3" (most recent) -- 3 iterations'
+    );
     expect(capturedSystemPrompt).toContain('back: #4 (most recent) -- 1 iteration');
 
     // No raw imagePath-shaped string ever reaches the rendered prompt --
     // only seq numbers, role, and accepted (sprint 010 Design Rationale).
     expect(capturedSystemPrompt).not.toContain('iterations/');
     expect(capturedSystemPrompt).not.toContain('.png');
+  });
+
+  // Sprint 012 ticket 001 (agent-iteration-number-grounding.md): ties a
+  // specific seq's rendered active-stream hint directly to that seq's
+  // stored promptUsed, so "iteration 2" maps to seq 2's actual recorded
+  // prompt, not an invented description.
+  it('ties "iteration N" to seq N: a specific seq\'s rendered active-stream hint contains that seq\'s stored promptUsed text (sprint 012 ticket 001)', async () => {
+    let capturedSystemPrompt = '';
+    const adapter = createMockAdapter([{ kind: 'message', content: 'Sure thing.' }], {
+      onSendTurn: (input) => {
+        capturedSystemPrompt = input.systemPrompt;
+      },
+    });
+
+    await runTurn(
+      { projectId: listingProjectId, message: 'What is in iteration 2?', activeFace: 'front' },
+      { provider: adapter, versioning: makeVersioningSpy() }
+    );
+
+    // front2 (seq 2) was created with promptUsed: 'front v2' -- seq 2's
+    // rendered hint must contain that exact text.
+    expect(capturedSystemPrompt).toContain('#2: "front v2"');
   });
 });
 
@@ -1755,6 +1779,68 @@ describe('runTurn -- generate_image routes through the real ImageVisionClient en
     const iterations = await prisma.iteration.findMany({ where: { projectId: projectAId } });
     expect(iterations).toHaveLength(0);
   });
+
+  // Sprint 012 ticket 001 regression (agent-iteration-number-grounding.md):
+  // planning traced that promptUsed is populated unconditionally by
+  // realImageVisionClient.generateImage regardless of whether
+  // editSourceIteration was set on the generate_image call -- this test
+  // pins that guarantee end-to-end (through runTurn, not just a direct
+  // catalogTools call) and confirms the edit-created iteration's prompt
+  // renders a hint in the very next turn's PROJECT CONTEXT.
+  it('an edit-created iteration (editSourceIteration set) gets a non-empty promptUsed that renders a hint in the next PROJECT CONTEXT (sprint 012 ticket 001 regression)', async () => {
+    const generateImage = () => Promise.resolve(fixtureImage('edit-regression-fixture-bytes'));
+    const realClient = createRealImageVisionClient({ generateImage, versioning: makeVersioningSpy() });
+
+    // Seed iteration #1 with a fresh generation (no editSourceIteration).
+    const seedScript: MockProviderScript = [
+      { kind: 'tool_calls', calls: [{ id: 'seed-1', name: IMAGE_GENERATION_TOOL_NAME, args: { prompt: 'a postcard base' } }] },
+      { kind: 'message', content: 'Generated the base image.' },
+    ];
+    await runTurn(
+      { projectId: projectAId, message: 'Please generate a base image.' },
+      { provider: createMockAdapter(seedScript), imageVisionClient: realClient, versioning: makeVersioningSpy() }
+    );
+    const seeded = await prisma.iteration.findFirstOrThrow({
+      where: { projectId: projectAId },
+      orderBy: { seq: 'asc' },
+    });
+
+    // A second turn edits that seeded iteration by number.
+    const editPrompt = 'make the seeded postcard brighter and add a sunset';
+    const editScript: MockProviderScript = [
+      {
+        kind: 'tool_calls',
+        calls: [
+          { id: 'edit-regression-1', name: IMAGE_GENERATION_TOOL_NAME, args: { prompt: editPrompt, editSourceIteration: seeded.seq } },
+        ],
+      },
+      { kind: 'message', content: 'Updated the image.' },
+    ];
+    await runTurn(
+      { projectId: projectAId, message: 'Make it brighter with a sunset.' },
+      { provider: createMockAdapter(editScript), imageVisionClient: realClient, versioning: makeVersioningSpy() }
+    );
+
+    const edited = await prisma.iteration.findFirstOrThrow({
+      where: { projectId: projectAId, seq: seeded.seq + 1 },
+    });
+    expect(edited.promptUsed).toBe(editPrompt);
+    expect(edited.promptUsed.length).toBeGreaterThan(0);
+
+    // The next turn's PROJECT CONTEXT (active stream: front, the default)
+    // shows the edit-created iteration's hint, sourced from its promptUsed.
+    let capturedSystemPrompt = '';
+    const adapter = createMockAdapter([{ kind: 'message', content: 'Sure.' }], {
+      onSendTurn: (input) => {
+        capturedSystemPrompt = input.systemPrompt;
+      },
+    });
+    await runTurn(
+      { projectId: projectAId, message: 'What do we have so far?' },
+      { provider: adapter, versioning: makeVersioningSpy() }
+    );
+    expect(capturedSystemPrompt).toContain(`#${edited.seq}: "${editPrompt}"`);
+  });
 });
 
 // ---------------------------------------------------------------------------
@@ -2049,6 +2135,33 @@ describe('runTurn -- system prompt guardrail against internal IDs and silent too
       'Never ask the user for internal identifiers -- database IDs, project IDs, version numbers, internal keys, or similar'
     );
     expect(sentPrompts[0]).toContain('If a tool call fails, state in your next message, in plain language, what failed');
+  });
+
+  // Sprint 012 ticket 001 (agent-iteration-number-grounding.md): live
+  // incident, project 14, 2026-07-19 -- the agent hedged that UI numbering
+  // and its internal numbering "may not line up" and then fabricated a
+  // description of a referenced iteration. This asserts the new trust
+  // statement is present, mirroring the assertion style just above for the
+  // existing "Never ask the user for internal identifiers" guardrail.
+  it('sends a system prompt stating the user\'s iteration number is exactly the UI seq/editSourceIteration value and instructing the model to say plainly when it cannot identify one', async () => {
+    const sentPrompts: string[] = [];
+    const script: MockProviderScript = [{ kind: 'message', content: 'Sure, what would you like to work on?' }];
+
+    await runTurn(
+      { projectId: projectAId, message: 'Hello.' },
+      {
+        provider: createMockAdapter(script, { onSendTurn: (input) => sentPrompts.push(input.systemPrompt) }),
+        versioning: makeVersioningSpy(),
+      }
+    );
+
+    expect(sentPrompts).toHaveLength(1);
+    expect(sentPrompts[0]).toContain(
+      'The iteration number the user says (e.g. "iteration 3") is exactly the same number shown as "Iteration 3" in the UI and the same value editSourceIteration resolves against'
+    );
+    expect(sentPrompts[0]).toContain(
+      'If you cannot identify a referenced iteration or describe its actual content, say so plainly rather than invent a description.'
+    );
   });
 
   it('still sends the updated system prompt on the follow-up sendTurn call after a tool call returns isError: true', async () => {

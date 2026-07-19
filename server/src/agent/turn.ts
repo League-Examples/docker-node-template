@@ -476,7 +476,8 @@ const SYSTEM_PROMPT_BASE =
   "Use only the tools provided when a change to the project's workspace or catalog is needed -- never fabricate a tool call for anything outside that list. " +
   'Never ask the user for internal identifiers -- database IDs, project IDs, version numbers, internal keys, or similar -- the system supplies these to every tool call automatically. ' +
   'If a tool call fails, state in your next message, in plain language, what failed and why (as far as you know) -- do not invent a follow-up question or silently proceed as though the call had succeeded. ' +
-  'When the user asks to edit or modify an existing image, use the iteration numbers listed in PROJECT CONTEXT and the editSourceIteration argument on generate_image (an iteration number, or "last" for the most recent iteration on the active stream) to reference it -- never ask the user to supply a file name or path.';
+  'When the user asks to edit or modify an existing image, use the iteration numbers listed in PROJECT CONTEXT and the editSourceIteration argument on generate_image (an iteration number, or "last" for the most recent iteration on the active stream) to reference it -- never ask the user to supply a file name or path. ' +
+  'The iteration number the user says (e.g. "iteration 3") is exactly the same number shown as "Iteration 3" in the UI and the same value editSourceIteration resolves against -- they are always identical, never a different internal count, so never hedge that the numbering you see and the numbering the user means might not line up; resolve the number directly against PROJECT CONTEXT\'s iteration listing instead. If you cannot identify a referenced iteration or describe its actual content, say so plainly rather than invent a description.';
 
 // ---------------------------------------------------------------------------
 // Project + active-stream context (Sprint 005 OOP change, 2026-07-15): the
@@ -496,6 +497,7 @@ interface ProjectContextIteration {
   seq: number;
   role: string | null;
   accepted: boolean;
+  promptUsed: string;
 }
 
 interface ProjectContextReference {
@@ -523,7 +525,7 @@ async function loadProjectContext(projectId: number, prismaClient: any): Promise
 
   const iterations = await prismaClient.iteration.findMany({
     where: { projectId },
-    select: { seq: true, role: true, accepted: true },
+    select: { seq: true, role: true, accepted: true, promptUsed: true },
     orderBy: { seq: 'asc' },
   });
 
@@ -584,15 +586,65 @@ function summarizeStream(iterations: ProjectContextIteration[]): string {
   return `${listing} -- ${countLabel}`;
 }
 
+/** Trims and truncates a stored `Iteration.promptUsed` value to a short
+ * per-seq content hint (sprint 012 ticket 001, issue
+ * agent-iteration-number-grounding.md): the model cannot see the images
+ * themselves, so `promptUsed` -- the prompt or edit instruction that
+ * produced that iteration -- is the only grounded content signal available
+ * for "what does iteration N contain." Truncates to `maxChars` with a
+ * trailing ellipsis so a long prompt/edit-instruction never bloats the
+ * system prompt unboundedly. An empty/falsy input (should not occur given
+ * the schema's non-null column, but handled defensively) renders a plain
+ * placeholder rather than an empty quoted string, so the listing never
+ * looks broken. */
+function truncatePromptHint(promptUsed: string, maxChars = 80): string {
+  const trimmed = (promptUsed ?? '').trim();
+  if (!trimmed) return '(no prompt recorded)';
+  if (trimmed.length <= maxChars) return trimmed;
+  return `${trimmed.slice(0, maxChars)}...`;
+}
+
+/** Active-stream-only counterpart to `summarizeStream` (sprint 012 ticket
+ * 001): reuses the same accepted/most-recent tag logic, but prefixes each
+ * entry with a truncated `promptUsed` hint -- e.g. `#1: "front concept"
+ * (accepted, most recent) -- 1 iteration` -- so the model has something to
+ * ground a description of a specific referenced iteration in, instead of
+ * inventing one. Scoped to the active stream only (Design Rationale,
+ * sprint.md): the inactive stream keeps the bare `summarizeStream`
+ * rendering, bounding per-turn prompt-token growth to the stream actually
+ * in play. */
+function summarizeActiveStream(iterations: ProjectContextIteration[]): string {
+  if (iterations.length === 0) return 'no iterations yet';
+  const sorted = [...iterations].sort((a, b) => a.seq - b.seq);
+  const mostRecentSeq = sorted[sorted.length - 1].seq;
+  const listing = sorted
+    .map((i) => {
+      const tags: string[] = [];
+      if (i.accepted) tags.push('accepted');
+      if (i.seq === mostRecentSeq) tags.push('most recent');
+      const hint = `#${i.seq}: "${truncatePromptHint(i.promptUsed)}"`;
+      return tags.length > 0 ? `${hint} (${tags.join(', ')})` : hint;
+    })
+    .join(', ');
+  const countLabel = sorted.length === 1 ? '1 iteration' : `${sorted.length} iterations`;
+  return `${listing} -- ${countLabel}`;
+}
+
 /** Per-stream iteration-number listing -- "what exists so far" for the
  * PROJECT CONTEXT block (sprint 010 ticket 001; replaces the former
  * counts-plus-accepted-seq-only summary, which gave the model no way to
- * identify an individual prior iteration to edit). */
-function summarizeIterations(iterations: ProjectContextIteration[]): string {
+ * identify an individual prior iteration to edit). Sprint 012 ticket 001:
+ * the stream matching `activeFace` renders via `summarizeActiveStream`
+ * (per-seq content hints from `promptUsed`); the other stream(s) keep the
+ * bare `summarizeStream` rendering, unchanged. */
+function summarizeIterations(iterations: ProjectContextIteration[], activeFace: 'front' | 'back'): string {
   const front = iterations.filter((i) => i.role === 'front');
   const back = iterations.filter((i) => i.role === 'back');
   const other = iterations.filter((i) => i.role !== 'front' && i.role !== 'back');
-  const parts = [`front: ${summarizeStream(front)}`, `back: ${summarizeStream(back)}`];
+  const parts = [
+    `front: ${activeFace === 'front' ? summarizeActiveStream(front) : summarizeStream(front)}`,
+    `back: ${activeFace === 'back' ? summarizeActiveStream(back) : summarizeStream(back)}`,
+  ];
   if (other.length > 0) parts.push(`unassigned: ${summarizeStream(other)}`);
   return parts.join('; ');
 }
@@ -614,7 +666,7 @@ function buildProjectContextBlock(context: ProjectContext | null, activeFace: 'f
     'PROJECT CONTEXT:',
     `- Project: "${project.title}" (status: ${project.status})`,
     `- Creative brief: ${formatDetailsHeader(project.detailsHeader)}`,
-    `- Iterations so far: ${summarizeIterations(iterations)}`,
+    `- Iterations so far: ${summarizeIterations(iterations, activeFace)}`,
     `- References attached: ${summarizeReferences(references)}`,
     `- Active stream: You are working on the ${faceLabel} of this postcard. Any image you generate this turn ` +
       `becomes a new iteration in the ${faceLabel} stream.`,
