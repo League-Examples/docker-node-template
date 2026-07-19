@@ -1,7 +1,7 @@
 ---
 id: '012'
 title: Iteration Number Grounding
-status: planning-docs
+status: closed
 branch: sprint/012-iteration-number-grounding
 worktree: false
 use-cases:
