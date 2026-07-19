@@ -137,8 +137,8 @@ describe('OutputPane -- stream filtering by activeTab', () => {
   });
 });
 
-describe('OutputPane -- stage/history split (sprint 008 ticket 001)', () => {
-  it('the newest iteration (highest seq) of the active stream renders in the stage; the rest render in the history strip', () => {
+describe('OutputPane -- single scrollable list, width-fit images (sprint 009 ticket 001)', () => {
+  it('renders all iterations of the active stream in one container, newest-first, with no stage/history testids', () => {
     const iterations = [
       iteration({ id: 1, seq: 1, role: 'front' }),
       iteration({ id: 2, seq: 2, role: 'front' }),
@@ -146,23 +146,22 @@ describe('OutputPane -- stage/history split (sprint 008 ticket 001)', () => {
     ];
     renderOutputPane(iterations, { activeTab: 'front' });
 
-    const stage = screen.getByTestId('iteration-stage');
-    const history = screen.getByTestId('iteration-history');
-    expect(within(stage).getByTestId('iteration-row-3')).toBeInTheDocument();
-    expect(within(stage).queryByTestId('iteration-row-2')).not.toBeInTheDocument();
-    expect(within(stage).queryByTestId('iteration-row-1')).not.toBeInTheDocument();
-    expect(within(history).getByTestId('iteration-row-2')).toBeInTheDocument();
-    expect(within(history).getByTestId('iteration-row-1')).toBeInTheDocument();
-    expect(within(history).queryByTestId('iteration-row-3')).not.toBeInTheDocument();
-  });
-
-  it('no history strip when the active stream has only one iteration', () => {
-    renderOutputPane([iteration({ id: 1, seq: 1, role: 'front' })], { activeTab: 'front' });
-    expect(screen.getByTestId('iteration-stage')).toBeInTheDocument();
+    const list = screen.getByTestId('iteration-list');
+    expect(within(list).getByTestId('iteration-row-3')).toBeInTheDocument();
+    expect(within(list).getByTestId('iteration-row-2')).toBeInTheDocument();
+    expect(within(list).getByTestId('iteration-row-1')).toBeInTheDocument();
+    expect(screen.queryByTestId('iteration-stage')).not.toBeInTheDocument();
     expect(screen.queryByTestId('iteration-history')).not.toBeInTheDocument();
   });
 
-  it('switching activeTab re-computes both the stage and the history region from the newly filtered stream', () => {
+  it('renders correctly with a single iteration -- same single-list rendering as with many', () => {
+    renderOutputPane([iteration({ id: 1, seq: 1, role: 'front' })], { activeTab: 'front' });
+    expect(within(screen.getByTestId('iteration-list')).getByTestId('iteration-row-1')).toBeInTheDocument();
+    expect(screen.queryByTestId('iteration-stage')).not.toBeInTheDocument();
+    expect(screen.queryByTestId('iteration-history')).not.toBeInTheDocument();
+  });
+
+  it('switching activeTab re-computes the single list from the newly filtered stream', () => {
     const iterations = [
       iteration({ id: 1, seq: 1, role: 'front' }),
       iteration({ id: 2, seq: 2, role: 'front' }),
@@ -178,8 +177,9 @@ describe('OutputPane -- stage/history split (sprint 008 ticket 001)', () => {
         postcardEditor={fakePostcardEditor()}
       />,
     );
-    expect(within(screen.getByTestId('iteration-stage')).getByTestId('iteration-row-2')).toBeInTheDocument();
-    expect(within(screen.getByTestId('iteration-history')).getByTestId('iteration-row-1')).toBeInTheDocument();
+    const listFront = screen.getByTestId('iteration-list');
+    expect(within(listFront).getByTestId('iteration-row-2')).toBeInTheDocument();
+    expect(within(listFront).getByTestId('iteration-row-1')).toBeInTheDocument();
 
     rerender(
       <OutputPane
@@ -190,30 +190,30 @@ describe('OutputPane -- stage/history split (sprint 008 ticket 001)', () => {
         postcardEditor={fakePostcardEditor()}
       />,
     );
-    expect(within(screen.getByTestId('iteration-stage')).getByTestId('iteration-row-4')).toBeInTheDocument();
-    expect(within(screen.getByTestId('iteration-history')).getByTestId('iteration-row-3')).toBeInTheDocument();
+    const listBack = screen.getByTestId('iteration-list');
+    expect(within(listBack).getByTestId('iteration-row-4')).toBeInTheDocument();
+    expect(within(listBack).getByTestId('iteration-row-3')).toBeInTheDocument();
   });
 
-  it('the stage image carries fit-to-space CSS (object-contain, max-h-full/max-w-full), not the old fixed 800px cap', () => {
+  it('every iteration image is width-fit (w-full h-auto), carrying no fixed pixel cap of any kind', () => {
     const iterations = [
       iteration({ id: 1, seq: 1, role: 'front' }),
       iteration({ id: 2, seq: 2, role: 'front' }),
     ];
     renderOutputPane(iterations, { activeTab: 'front' });
 
-    const stageImg = within(screen.getByTestId('iteration-stage')).getByAltText('Iteration 2');
-    expect(stageImg.className).toContain('object-contain');
-    expect(stageImg.className).toContain('max-h-full');
-    expect(stageImg.className).toContain('max-w-full');
-    expect(stageImg.className).not.toContain('max-h-[800px]');
-    expect(stageImg.className).not.toContain('max-w-[800px]');
-
-    const historyImg = within(screen.getByTestId('iteration-history')).getByAltText('Iteration 1');
-    expect(historyImg.className).toContain('max-h-[800px]');
-    expect(historyImg.className).toContain('max-w-[800px]');
+    for (const alt of ['Iteration 1', 'Iteration 2']) {
+      const img = screen.getByAltText(alt);
+      expect(img.className).toContain('w-full');
+      expect(img.className).toContain('h-auto');
+      expect(img.className).not.toContain('max-h-[800px]');
+      expect(img.className).not.toContain('max-w-[800px]');
+      expect(img.className).not.toContain('max-h-full');
+      expect(img.className).not.toContain('max-w-full');
+    }
   });
 
-  it('accept/delete behavior is unchanged for a stage-item iteration', async () => {
+  it('accept/delete behavior is unchanged for the first row in the list', async () => {
     const iterations = [
       iteration({ id: 1, seq: 1, role: 'front' }),
       iteration({ id: 2, seq: 2, role: 'front' }),
@@ -222,7 +222,7 @@ describe('OutputPane -- stage/history split (sprint 008 ticket 001)', () => {
     vi.stubGlobal('fetch', fetchMock);
     renderOutputPane(iterations, { activeTab: 'front' });
 
-    // Iteration 2 (seq 2) is the stage item.
+    // Iteration 2 (seq 2) is the first (newest) row.
     fireEvent.click(screen.getByLabelText('Iteration 2 accepted'));
     await waitFor(() => {
       expect(fetchMock).toHaveBeenCalledWith(
@@ -235,7 +235,7 @@ describe('OutputPane -- stage/history split (sprint 008 ticket 001)', () => {
     expect(screen.getByTestId('delete-confirm-2')).toBeInTheDocument();
   });
 
-  it('accept/delete behavior is unchanged for a history-item iteration', async () => {
+  it('accept/delete behavior is unchanged for a later row in the list', async () => {
     const iterations = [
       iteration({ id: 1, seq: 1, role: 'front' }),
       iteration({ id: 2, seq: 2, role: 'front' }),
@@ -244,7 +244,7 @@ describe('OutputPane -- stage/history split (sprint 008 ticket 001)', () => {
     vi.stubGlobal('fetch', fetchMock);
     renderOutputPane(iterations, { activeTab: 'front' });
 
-    // Iteration 1 (seq 1) is a history item.
+    // Iteration 1 (seq 1) is a later (older) row.
     fireEvent.click(screen.getByLabelText('Iteration 1 accepted'));
     await waitFor(() => {
       expect(fetchMock).toHaveBeenCalledWith(
@@ -257,26 +257,54 @@ describe('OutputPane -- stage/history split (sprint 008 ticket 001)', () => {
     expect(screen.getByTestId('delete-confirm-1')).toBeInTheDocument();
   });
 
-  it('the inline PostcardFaceEditor renders correctly when the accepted row is the stage item', () => {
+  it('the inline PostcardFaceEditor renders correctly when the accepted row is newest in the list', () => {
     const iterations = [
       iteration({ id: 1, seq: 1, role: 'front' }),
       iteration({ id: 2, seq: 2, role: 'front', accepted: true }),
     ];
     renderOutputPane(iterations, { activeTab: 'front' });
 
-    expect(within(screen.getByTestId('iteration-stage')).getByTestId('postcard-preview')).toBeInTheDocument();
-    expect(within(screen.getByTestId('iteration-history')).getByAltText('Iteration 1')).toBeInTheDocument();
+    const list = screen.getByTestId('iteration-list');
+    expect(within(list).getByTestId('postcard-preview')).toBeInTheDocument();
+    expect(within(list).getByAltText('Iteration 1')).toBeInTheDocument();
   });
 
-  it('the inline PostcardFaceEditor renders correctly when the accepted row is a history item', () => {
+  it('the inline PostcardFaceEditor renders correctly when the accepted row is older in the list', () => {
     const iterations = [
       iteration({ id: 1, seq: 1, role: 'front', accepted: true }),
       iteration({ id: 2, seq: 2, role: 'front' }),
     ];
     renderOutputPane(iterations, { activeTab: 'front' });
 
-    expect(within(screen.getByTestId('iteration-history')).getByTestId('postcard-preview')).toBeInTheDocument();
-    expect(within(screen.getByTestId('iteration-stage')).getByAltText('Iteration 2')).toBeInTheDocument();
+    const list = screen.getByTestId('iteration-list');
+    expect(within(list).getByTestId('postcard-preview')).toBeInTheDocument();
+    expect(within(list).getByAltText('Iteration 2')).toBeInTheDocument();
+  });
+
+  it('non-accepted rows still render the read-only PostcardOverlay against the new width-fit image sizing', () => {
+    const editor = fakePostcardEditor({
+      regionsBySide: {
+        front: [{ name: 'front_headline', label: 'Headline', style: '', position: { top: '1in', left: '0.5in', width: '3.4in' }, font: { family: 'Arial', size: '24px' } }],
+        back: [],
+      },
+      regionText: { front_headline: 'Shared text' },
+    });
+    const iterations = [
+      iteration({ id: 1, seq: 1, role: 'front', accepted: true, imagePath: 'projects/7/iterations/1.png' }),
+      iteration({ id: 2, seq: 2, role: 'front', accepted: false, imagePath: 'projects/7/iterations/2.png' }),
+    ];
+    renderOutputPane(iterations, { activeTab: 'front', postcardEditor: editor });
+
+    const img = screen.getByAltText('Iteration 2');
+    Object.defineProperty(img, 'getBoundingClientRect', {
+      value: () => ({ width: 600, height: 400, top: 0, left: 0, right: 600, bottom: 400, x: 0, y: 0, toJSON() {} }),
+      configurable: true,
+    });
+    fireEvent.load(img);
+
+    expect(screen.getByTestId('overlay-region-text-front_headline')).toHaveTextContent('Shared text');
+    expect(img.className).toContain('w-full');
+    expect(img.className).toContain('h-auto');
   });
 });
 
