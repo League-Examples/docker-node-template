@@ -22,7 +22,7 @@ import { describe, it, expect, beforeAll, afterAll, afterEach } from 'vitest';
 import { prisma } from '../../server/src/services/prisma';
 import {
   runTurn,
-  chatMessageToProviderMessage,
+  chatMessageToProviderMessages,
   TurnLockTimeoutError,
   IMAGE_GENERATION_TOOL_NAME,
   WORKSPACE_TOOL_DEFINITIONS,
@@ -43,6 +43,7 @@ import { resolveWorkspacePath } from '../../server/src/services/workspaceDirecto
 import { createRealImageVisionClient } from '../../server/src/agent/realImageVisionClient';
 import type { ImageVisionClient } from '../../server/src/agent/imageVisionStub';
 import type { GenerateImageResult as ImagingGenerateImageResult } from '../../server/src/services/imaging';
+import type { ChatMessageModel } from '../../server/src/generated/prisma/models/ChatMessage';
 
 const marker = `t005turn${Date.now()}`;
 
@@ -430,9 +431,129 @@ describe('runTurn -- statelessness (D8)', () => {
     const rows = await prisma.chatMessage.findMany({ where: { projectId: projectBId }, orderBy: { id: 'asc' } });
     expect(rows).toHaveLength(4); // user1, assistant-final1, user2, assistant-final2
 
-    const expectedHistory = rows.slice(0, 2).map(chatMessageToProviderMessage);
+    const expectedHistory = rows.slice(0, 2).flatMap(chatMessageToProviderMessages);
     expect(capturedMessages.slice(0, 2)).toEqual(expectedHistory);
     expect(capturedMessages[2]).toEqual({ role: 'user', content: 'Second message, continuing the conversation.' });
+  });
+});
+
+// ---------------------------------------------------------------------------
+// chatMessageToProviderMessages -- structured tool-round reconstruction
+// (sprint 011 ticket 001, tool-call-history-prose-causes-hallucinated-
+// calls.md). Unit-level shape assertions directly on the function, using
+// plain constructed rows -- no DB/runTurn involvement needed here. The
+// end-to-end regression (seeded history replayed through a mock adapter)
+// is ticket 002's scope.
+// ---------------------------------------------------------------------------
+
+describe('chatMessageToProviderMessages -- structured tool-round reconstruction (011-001)', () => {
+  function makeRow(overrides: Partial<ChatMessageModel>): ChatMessageModel {
+    return {
+      id: 1,
+      projectId: 1,
+      role: 'assistant',
+      content: '',
+      toolCalls: null,
+      createdAt: new Date(),
+      ...overrides,
+    } as ChatMessageModel;
+  }
+
+  it('reconstructs a single-call tool-round row to exactly two messages (assistant toolCalls, user toolResults) with matching ids', () => {
+    const row = makeRow({
+      id: 42,
+      role: 'assistant',
+      content: '',
+      toolCalls: [{ name: 'create_knowledge_entry', args: { name: 'palette' }, result: { id: 7 } }] as any,
+    });
+
+    const messages = chatMessageToProviderMessages(row);
+
+    expect(messages).toHaveLength(2);
+    expect(messages[0]).toEqual({
+      role: 'assistant',
+      content: undefined,
+      toolCalls: [{ id: 'hist-42-0', name: 'create_knowledge_entry', args: { name: 'palette' } }],
+    });
+    expect(messages[1]).toEqual({
+      role: 'user',
+      toolResults: [{ toolCallId: 'hist-42-0', result: { id: 7 } }],
+    });
+  });
+
+  it('reconstructs a multi-call tool-round row to one assistant message carrying all calls and one user message carrying all matching results, no id reused', () => {
+    const row = makeRow({
+      id: 99,
+      role: 'assistant',
+      content: '',
+      toolCalls: [
+        { name: 'generate_image', args: { prompt: 'a red postcard' }, result: { imagePath: 'iter-1.png' } },
+        { name: 'generate_image', args: { prompt: 'a blue postcard' }, result: { imagePath: 'iter-2.png' } },
+      ] as any,
+    });
+
+    const messages = chatMessageToProviderMessages(row);
+
+    expect(messages).toHaveLength(2);
+    const assistantMessage = messages[0];
+    const userMessage = messages[1];
+    expect(assistantMessage.toolCalls).toHaveLength(2);
+    expect(assistantMessage.toolCalls).toEqual([
+      { id: 'hist-99-0', name: 'generate_image', args: { prompt: 'a red postcard' } },
+      { id: 'hist-99-1', name: 'generate_image', args: { prompt: 'a blue postcard' } },
+    ]);
+    expect(userMessage.toolResults).toEqual([
+      { toolCallId: 'hist-99-0', result: { imagePath: 'iter-1.png' } },
+      { toolCallId: 'hist-99-1', result: { imagePath: 'iter-2.png' } },
+    ]);
+    const ids = assistantMessage.toolCalls!.map((c) => c.id);
+    expect(new Set(ids).size).toBe(ids.length);
+  });
+
+  it('carries a tool-round row\'s non-empty content as the leading assistant message\'s content alongside its toolCalls', () => {
+    const row = makeRow({
+      id: 7,
+      role: 'assistant',
+      content: 'Here is what I did:',
+      toolCalls: [{ name: 'create_iteration', args: {}, result: { ok: true } }] as any,
+    });
+
+    const messages = chatMessageToProviderMessages(row);
+
+    expect(messages[0]).toMatchObject({ role: 'assistant', content: 'Here is what I did:' });
+    expect(messages[0].toolCalls).toHaveLength(1);
+  });
+
+  it('reconstructs two consecutive tool-round rows to a strictly alternating assistant/user/assistant/user sequence, no back-to-back assistant messages, with ids unique across both rows', () => {
+    const rowOne = makeRow({
+      id: 10,
+      role: 'assistant',
+      content: '',
+      toolCalls: [{ name: 'create_iteration', args: { seq: 1 }, result: { ok: true } }] as any,
+    });
+    const rowTwo = makeRow({
+      id: 11,
+      role: 'assistant',
+      content: '',
+      toolCalls: [{ name: 'create_iteration', args: { seq: 2 }, result: { ok: true } }] as any,
+    });
+
+    const messages = [rowOne, rowTwo].flatMap(chatMessageToProviderMessages);
+
+    expect(messages).toHaveLength(4);
+    expect(messages.map((m) => m.role)).toEqual(['assistant', 'user', 'assistant', 'user']);
+
+    const allToolCallIds = messages.flatMap((m) => m.toolCalls?.map((c) => c.id) ?? []);
+    expect(allToolCallIds).toEqual(['hist-10-0', 'hist-11-0']);
+    expect(new Set(allToolCallIds).size).toBe(allToolCallIds.length);
+  });
+
+  it('maps a plain content-only row to a single unchanged message (regression guard)', () => {
+    const row = makeRow({ id: 5, role: 'user', content: 'Just a plain message.', toolCalls: null });
+
+    const messages = chatMessageToProviderMessages(row);
+
+    expect(messages).toEqual([{ role: 'user', content: 'Just a plain message.' }]);
   });
 });
 

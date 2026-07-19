@@ -53,6 +53,7 @@ import type {
   ProviderToolCall,
   ProviderToolCallRecord,
   ProviderToolDefinition,
+  ProviderToolResult,
   ProviderTurnResult,
 } from './providers/types';
 import { createStubImageVisionClient, type ImageVisionClient, type GenerateImageResult } from './imageVisionStub';
@@ -407,24 +408,51 @@ async function loadHistory(projectId: number, prismaClient: any): Promise<ChatMe
   });
 }
 
-/** Maps a persisted `ChatMessage` row from a *past* turn back into a
- * `ProviderMessage` for the next turn's history. A past tool-call round
- * (role `assistant`, non-null `toolCalls`) is rendered as plain
- * conversational text summarizing what was called and its result --
- * deliberately not as `ProviderMessage.toolCalls`/`toolResults`, which
- * only make sense for the *live*, in-progress tool-call round-trip within
- * one `sendTurn` exchange (matching provider-call ids that no longer
- * exist once a turn is over and persisted). */
-export function chatMessageToProviderMessage(row: ChatMessageModel): ProviderMessage {
+/** Maps a persisted `ChatMessage` row from a *past* turn back into the
+ * `ProviderMessage`(s) it represents, for replay into the next turn's
+ * history (sprint 011: `tool-call-history-prose-causes-hallucinated-
+ * calls.md`). A plain row (`role !== 'assistant'`, or a null `toolCalls`)
+ * still maps to exactly one message -- unchanged from before this sprint.
+ * A past tool-call round (`role === 'assistant'`, non-null `toolCalls`)
+ * now expands into **two** messages: an assistant message carrying
+ * `toolCalls` immediately followed by a user message carrying the
+ * matching `toolResults` -- the exact structured shape the *live*
+ * in-turn loop already builds mid-turn (see the `messages.push(...)`
+ * pair in the tool-dispatch loop below), never the old free-form
+ * "Called tool ... -> result ..." prose sentence.
+ *
+ * Each call is given a freshly-minted id, `hist-<row.id>-<index>`,
+ * scoped only to the one `sendTurn` request being assembled here --
+ * never persisted. A synthetic id is exactly as valid to the provider as
+ * an original one: `providers/anthropic.ts`'s own module doc describes
+ * each `sendTurn` call as one independent, stateless request, so the
+ * provider only needs a `tool_use` id to match its `tool_result` *within
+ * that one request's `messages` array* -- it has no way to check an id
+ * against any earlier, separate request, and no requirement that an id
+ * was ever "real". `row.id` (the `ChatMessage` primary key, globally
+ * unique and monotonically increasing) keeps every synthetic id unique
+ * across the whole replayed history plus the live round in the same
+ * request (live ids come from the Anthropic SDK's own `toolu_`
+ * namespace, which never collides with the `hist-` prefix). */
+export function chatMessageToProviderMessages(row: ChatMessageModel): ProviderMessage[] {
   const role = row.role === 'assistant' ? 'assistant' : 'user';
   if (role === 'assistant' && row.toolCalls) {
     const records = row.toolCalls as unknown as ProviderToolCallRecord[];
-    const summary = records
-      .map((r) => `Called tool "${r.name}" with args ${JSON.stringify(r.args)} -> result ${JSON.stringify(r.result)}`)
-      .join('\n');
-    return { role, content: row.content ? `${row.content}\n${summary}` : summary };
+    const toolCalls: ProviderToolCall[] = records.map((r, i) => ({
+      id: `hist-${row.id}-${i}`,
+      name: r.name,
+      args: r.args,
+    }));
+    const toolResults: ProviderToolResult[] = records.map((r, i) => ({
+      toolCallId: `hist-${row.id}-${i}`,
+      result: r.result,
+    }));
+    return [
+      { role: 'assistant', content: row.content || undefined, toolCalls },
+      { role: 'user', toolResults },
+    ];
   }
-  return { role, content: row.content };
+  return [{ role, content: row.content }];
 }
 
 /** Base system prompt, prepended to knowledge-retrieval results when any
@@ -960,7 +988,7 @@ export async function runTurn(input: RunTurnInput, options: TurnControllerOption
     createdMessages.push(userRow);
 
     const messages: ProviderMessage[] = [
-      ...historyRows.map(chatMessageToProviderMessage),
+      ...historyRows.flatMap(chatMessageToProviderMessages),
       { role: 'user', content: input.message },
     ];
 
