@@ -47,25 +47,22 @@ import type { UsePostcardEditorStateResult } from './usePostcardEditorState';
  * different iteration in the stream carries the same regions over to the
  * new image, per the stakeholder's explicit requirement).
  *
- * **Stage / history split (sprint 008 ticket 001)**: this component used to
- * render the active stream as one undifferentiated scrolling list, every
- * card capped at a flat `max-h-[800px] max-w-[800px]` regardless of how
- * much vertical space was actually available -- on common laptop screens
- * that flat cap was frequently taller than the real space between the
- * fixed header and the (now-flex-sibling) chat panel, so the newest
- * iteration required scrolling to see in full
- * (`clasi/issues/iterations-fit-viewport.md`). Now the active stream's
- * NEWEST iteration (highest `seq`) renders alone in a non-scrolling
- * "stage" region (`flex-1 min-h-0`) whose `<img>` uses `max-h-full
- * max-w-full object-contain` so it scales down to exactly fill whatever
- * height its flex parent computes -- pure CSS, no `ResizeObserver`/
- * `getBoundingClientRect`, correct across window resizes for free. Older
- * iterations of the same stream render below/around it in their own
- * independently scrollable "history" strip, keeping the old flat
- * `800x800` cap (relocated, not changed -- see sprint.md's Open Questions:
- * full-size/scrollable, not thumbnails, for this sprint). Both sub-regions
- * share this file's existing accept/delete/inline-edit logic verbatim --
- * only the container/image-sizing CSS differs by region.
+ * **Single scrollable list, fixed 700px-height images (sprint 009 ticket
+ * 001, revised 2026-07-18)**: Sprint 008 split the active stream into a
+ * non-scrolling "stage" (the single newest iteration, height-fit to
+ * whatever flex space was left between the fixed header and the chat
+ * panel) plus a separately scrollable "history" strip (everything else,
+ * flat `800x800`-capped). The stakeholder corrected that design
+ * (`clasi/issues/iterations-single-scroll-fit-width.md`): the split
+ * itself was unwanted -- every iteration of the active stream now renders
+ * in ONE `overflow-y-auto` scrollable list, newest-first (unchanged
+ * ordering rule), no stage/history distinction of any kind. Every row's
+ * image is scaled to a fixed 700px height (`h-[700px] w-auto`, aspect
+ * ratio preserved) -- width is NOT capped; a follow-up stakeholder
+ * correction the same day replaced the initial "scale to the list's
+ * width" rule with this fixed-height rule so every poster renders at a
+ * consistent, comfortably viewable size regardless of the pane's width.
+ * Pure CSS, no `ResizeObserver`/`getBoundingClientRect` hack.
  */
 
 interface OutputPaneProps {
@@ -125,12 +122,6 @@ export default function OutputPane({
     .filter((iteration) => iteration.role === activeTab)
     .sort((a, b) => b.seq - a.seq);
 
-  // Stage: the single newest iteration (highest `seq`) of the active
-  // stream. History: everything else, oldest-to-newest order unchanged
-  // (still newest-first among themselves) -- see this file's module
-  // header. `undefined` when the stream is empty.
-  const [stageIteration, ...historyIterations] = streamIterations;
-
   // Regions/QR for the active face -- the SAME state `PostcardFaceEditor`
   // edits, converted to the read-only overlay's DTO shape for every
   // non-accepted row in the stream (see module header: text boxes are
@@ -162,31 +153,17 @@ export default function OutputPane({
     }
   }
 
-  /** One iteration row -- shared verbatim between the stage and the
-   * history strip (module header): accept/delete/inline-edit behavior is
-   * identical either way. `stage` only changes the container/image-sizing
-   * CSS: the stage row fills its flex parent's full height
-   * (`flex-1 min-h-0`) and its bare image scales via `max-h-full
-   * max-w-full object-contain`; a history row keeps the old flat
-   * `800x800`-capped, width-bounded card (relocated, not changed). */
-  function renderIterationRow(iteration: IterationDTO, stage: boolean) {
+  /** One iteration row in the single scrollable list -- accept/delete/
+   * inline-edit behavior is identical regardless of position. A single
+   * render path: no stage/history branch. */
+  function renderIterationRow(iteration: IterationDTO) {
     return (
       <div
         key={iteration.id}
         data-testid={`iteration-row-${iteration.id}`}
-        className={
-          stage
-            ? 'relative flex min-h-0 flex-1 flex-col rounded border border-slate-200 bg-slate-100'
-            : 'relative mx-auto w-full max-w-[800px] rounded border border-slate-200 bg-slate-100'
-        }
+        className="relative flex w-full flex-col rounded border border-slate-200 bg-slate-100"
       >
-        <div
-          className={
-            stage
-              ? 'relative flex min-h-0 flex-1 items-center justify-center overflow-hidden p-4'
-              : 'relative flex items-center justify-center overflow-hidden p-4'
-          }
-        >
+        <div className="relative flex items-center justify-center overflow-hidden p-4">
           {iteration.accepted ? (
             <PostcardFaceEditor
               side={activeTab}
@@ -210,7 +187,6 @@ export default function OutputPane({
               alt={`Iteration ${iteration.seq}`}
               overlayRegions={overlayRegions}
               overlayQr={overlayQr}
-              fitToSpace={stage}
             />
           )}
           <span className="absolute left-2 top-2 rounded bg-white/85 px-2 py-0.5 text-sm text-slate-700">
@@ -278,26 +254,11 @@ export default function OutputPane({
       {streamIterations.length === 0 ? (
         <p className="p-4 text-sm text-slate-400">No {activeTab} iterations yet.</p>
       ) : (
-        <>
-          {/* Stage: the newest iteration, non-scrolling, CSS-fit to
-              whatever height this flex column has left (module header). */}
-          <div className="flex min-h-0 flex-1 flex-col p-4" data-testid="iteration-stage">
-            {renderIterationRow(stageIteration!, true)}
+        <div className="flex-1 min-h-0 overflow-y-auto p-4" data-testid="iteration-list">
+          <div className="flex flex-col gap-4">
+            {streamIterations.map((iteration) => renderIterationRow(iteration))}
           </div>
-
-          {/* History: older iterations of the same stream, independently
-              scrollable, unchanged accept/delete/inline-edit behavior. */}
-          {historyIterations.length > 0 && (
-            <div
-              className="max-h-[45%] flex-shrink-0 overflow-y-auto border-t border-slate-200 p-4"
-              data-testid="iteration-history"
-            >
-              <div className="flex flex-col gap-4">
-                {historyIterations.map((iteration) => renderIterationRow(iteration, false))}
-              </div>
-            </div>
-          )}
-        </>
+        </div>
       )}
     </div>
   );
@@ -308,38 +269,22 @@ interface IterationImageProps {
   alt: string;
   overlayRegions?: PostcardContentRegionDTO[];
   overlayQr?: PostcardQr | null;
-  /** Sprint 008 ticket 001: `true` for the stage's newest-iteration image
-   * -- scales via `max-h-full max-w-full` so it fits exactly whatever
-   * height its flex parent (the stage region) computes, instead of the
-   * flat `800x800` cap history rows keep (module header). */
-  fitToSpace?: boolean;
 }
 
-/** One read-only iteration's image + overlay -- media caps at a flat
- * 800x800 for history rows (unchanged from before this sprint's rebuild),
- * or scales to fill the stage's available flex space when `fitToSpace` is
- * set (sprint 008 ticket 001); aspect preserved either way, centered.
- * `useMeasuredWidth` scales `PostcardOverlay` to the `<img>`'s actual
- * rendered pixel width. */
-function IterationImage({ src, alt, overlayRegions, overlayQr, fitToSpace }: IterationImageProps) {
+/** One read-only iteration's image + overlay -- scaled to a fixed 700px
+ * height (`h-[700px] w-auto`), aspect ratio preserved, no width cap
+ * (stakeholder correction, 2026-07-18: height, not width, is the sizing
+ * constraint). `<img>`'s `onLoad` fires `useMeasuredWidth`'s measure so
+ * `PostcardOverlay` scales to the `<img>`'s actual rendered pixel width. */
+function IterationImage({ src, alt, overlayRegions, overlayQr }: IterationImageProps) {
   const imgRef = useRef<HTMLImageElement>(null);
   const { widthPx, measure } = useMeasuredWidth(imgRef, src);
 
   const showOverlay = (overlayRegions && overlayRegions.length > 0) || !!overlayQr;
 
   return (
-    <div className={fitToSpace ? 'relative flex h-full min-h-0 max-w-full items-center justify-center' : 'relative inline-block'}>
-      <img
-        ref={imgRef}
-        src={src}
-        alt={alt}
-        onLoad={measure}
-        className={
-          fitToSpace
-            ? 'block h-auto max-h-full w-auto max-w-full object-contain'
-            : 'mx-auto block h-auto max-h-[800px] w-auto max-w-[800px] object-contain'
-        }
-      />
+    <div className="relative inline-block">
+      <img ref={imgRef} src={src} alt={alt} onLoad={measure} className="block h-[700px] w-auto object-contain" />
       {showOverlay && <PostcardOverlay regions={overlayRegions ?? []} qr={overlayQr} widthPx={widthPx} />}
     </div>
   );
