@@ -319,12 +319,19 @@ describe('runTurn -- project + active-stream context injection', () => {
     expect(systemPrompt).toContain('promote the fall festival');
   });
 
-  it('includes an iterations summary (per-stream counts and the accepted front iteration) and the attached reference', async () => {
+  // Sprint 010 ticket 001: the summary changed from counts-plus-accepted-
+  // seq-only to a per-stream iteration-number listing (each seq, with the
+  // accepted one and the most-recent one marked) -- see the dedicated
+  // "PROJECT CONTEXT iteration listing" describe block below for fuller
+  // coverage of the new rendering across several iterations per stream.
+  it('includes a per-stream iteration-number listing (marking accepted + most recent) and the attached reference', async () => {
     const systemPrompt = await captureSystemPrompt('front');
 
-    expect(systemPrompt).toContain('front: 1');
-    expect(systemPrompt).toContain('back: 1');
-    expect(systemPrompt).toContain('accepted: #1');
+    // Iteration.seq increments per-project across every stream (not
+    // independently per role) -- frontAccepted was created first (seq 1),
+    // backDraft second (seq 2).
+    expect(systemPrompt).toContain('front: #1 (accepted, most recent) -- 1 iteration');
+    expect(systemPrompt).toContain('back: #2 (most recent) -- 1 iteration');
     expect(systemPrompt).toContain('style: a hand-drawn autumn leaf motif');
   });
 
@@ -690,6 +697,320 @@ describe('WORKSPACE_TOOL_DEFINITIONS -- generate_image (AC1)', () => {
     expect(def).toBeDefined();
     expect(def!.inputSchema).toMatchObject({ type: 'object', required: ['prompt'] });
     expect((def!.inputSchema as any).properties.prompt).toBeDefined();
+  });
+
+  // Sprint 010 ticket 001: the vestigial top-level referenceImages
+  // property (never forwarded by dispatchToolCall, its own description
+  // already told the model not to use it) is gone; editSourceIteration
+  // (a number, or the literal "last") replaces it as the model's only
+  // sanctioned way to reference a prior iteration.
+  it('no longer advertises a top-level referenceImages property, and advertises editSourceIteration instead', () => {
+    const def = WORKSPACE_TOOL_DEFINITIONS.find((d) => d.name === IMAGE_GENERATION_TOOL_NAME);
+    const properties = (def!.inputSchema as any).properties;
+
+    expect(properties).not.toHaveProperty('referenceImages');
+    expect(properties).toHaveProperty('editSourceIteration');
+    expect(properties.editSourceIteration.description).toEqual(expect.any(String));
+    expect(properties.editSourceIteration.description.length).toBeGreaterThan(0);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Sprint 010 ticket 001: PROJECT CONTEXT's iteration listing (replaces the
+// former counts-plus-accepted-seq-only summary) -- lists each stream's
+// iteration numbers, marking the accepted one and the most-recent (highest
+// seq) one, and never renders a raw imagePath into the prompt.
+// ---------------------------------------------------------------------------
+
+describe('runTurn -- PROJECT CONTEXT iteration listing (sprint 010 ticket 001)', () => {
+  let listingProjectId: number;
+  const listingIterationIds: number[] = [];
+
+  beforeAll(async () => {
+    const project = await prisma.project.create({
+      data: { title: `${marker}-iteration-listing-project`, ownerUserId: ownerId, status: 'active' },
+    });
+    listingProjectId = project.id;
+
+    // front: #1 (not accepted), #2 (accepted, but not the highest seq),
+    // #3 (highest seq -- "most recent", not accepted).
+    const front1 = await createIteration(
+      { projectId: listingProjectId, imagePath: `${marker}/iterations/front-1.png`, promptUsed: 'front v1', role: 'front' },
+      { versioning: makeVersioningSpy() }
+    );
+    listingIterationIds.push(front1.id);
+
+    const front2 = await createIteration(
+      { projectId: listingProjectId, imagePath: `${marker}/iterations/front-2.png`, promptUsed: 'front v2', role: 'front' },
+      { versioning: makeVersioningSpy() }
+    );
+    listingIterationIds.push(front2.id);
+    await prisma.iteration.update({ where: { id: front2.id }, data: { accepted: true } });
+
+    const front3 = await createIteration(
+      { projectId: listingProjectId, imagePath: `${marker}/iterations/front-3.png`, promptUsed: 'front v3', role: 'front' },
+      { versioning: makeVersioningSpy() }
+    );
+    listingIterationIds.push(front3.id);
+
+    // back: a single, non-accepted iteration.
+    const back1 = await createIteration(
+      { projectId: listingProjectId, imagePath: `${marker}/iterations/back-1.png`, promptUsed: 'back v1', role: 'back' },
+      { versioning: makeVersioningSpy() }
+    );
+    listingIterationIds.push(back1.id);
+  });
+
+  afterAll(async () => {
+    await prisma.chatMessage.deleteMany({ where: { projectId: listingProjectId } });
+    await prisma.iteration.deleteMany({ where: { id: { in: listingIterationIds } } });
+    await prisma.project.deleteMany({ where: { id: listingProjectId } });
+  });
+
+  it('lists each seq per stream, marking the accepted one and the most-recent (highest-seq) one, with no raw imagePath in the text', async () => {
+    let capturedSystemPrompt = '';
+    const adapter = createMockAdapter([{ kind: 'message', content: 'Sure thing.' }], {
+      onSendTurn: (input) => {
+        capturedSystemPrompt = input.systemPrompt;
+      },
+    });
+
+    await runTurn(
+      { projectId: listingProjectId, message: 'What have we got so far?', activeFace: 'front' },
+      { provider: adapter, versioning: makeVersioningSpy() }
+    );
+
+    // Iteration.seq increments per-project across every stream (not
+    // independently per role) -- the three front iterations take seq 1-3,
+    // so the single back iteration created afterward is seq 4.
+    expect(capturedSystemPrompt).toContain('front: #1, #2 (accepted), #3 (most recent) -- 3 iterations');
+    expect(capturedSystemPrompt).toContain('back: #4 (most recent) -- 1 iteration');
+
+    // No raw imagePath-shaped string ever reaches the rendered prompt --
+    // only seq numbers, role, and accepted (sprint 010 Design Rationale).
+    expect(capturedSystemPrompt).not.toContain('iterations/');
+    expect(capturedSystemPrompt).not.toContain('.png');
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Sprint 010 ticket 001: dispatch-time editSourceIteration resolution
+// (image-edits-must-pass-source-image.md) -- the turn controller resolves
+// the model's editSourceIteration signal to a validated, workspace-rooted
+// reference-image path passed as modelParams.referenceImages, and discards
+// any raw referenceImages the model supplied directly.
+// ---------------------------------------------------------------------------
+
+describe('runTurn -- editSourceIteration resolves to a validated reference-image path (sprint 010 ticket 001)', () => {
+  let editProjectId: number;
+  const editIterationIds: number[] = [];
+  let frontSeq2Id: number; // accepted, but not the highest seq on front
+  let frontSeq4Id: number; // highest seq on front -- the "last" pick
+  let backSeq3Id: number; // interleaved on the other stream, higher raw seq than front's accepted one
+
+  beforeAll(async () => {
+    const project = await prisma.project.create({
+      data: { title: `${marker}-edit-source-project`, ownerUserId: ownerId },
+    });
+    editProjectId = project.id;
+
+    const front1 = await createIteration(
+      { projectId: editProjectId, imagePath: `projects/${editProjectId}/iterations/iter-1.png`, promptUsed: 'front v1', role: 'front' },
+      { versioning: makeVersioningSpy() }
+    );
+    editIterationIds.push(front1.id);
+
+    const front2 = await createIteration(
+      { projectId: editProjectId, imagePath: `projects/${editProjectId}/iterations/iter-2.png`, promptUsed: 'front v2', role: 'front' },
+      { versioning: makeVersioningSpy() }
+    );
+    frontSeq2Id = front2.id;
+    editIterationIds.push(front2.id);
+    await prisma.iteration.update({ where: { id: front2.id }, data: { accepted: true } });
+
+    const back3 = await createIteration(
+      { projectId: editProjectId, imagePath: `projects/${editProjectId}/iterations/iter-3.png`, promptUsed: 'back v1', role: 'back' },
+      { versioning: makeVersioningSpy() }
+    );
+    backSeq3Id = back3.id;
+    editIterationIds.push(back3.id);
+
+    const front4 = await createIteration(
+      { projectId: editProjectId, imagePath: `projects/${editProjectId}/iterations/iter-4.png`, promptUsed: 'front v3', role: 'front' },
+      { versioning: makeVersioningSpy() }
+    );
+    frontSeq4Id = front4.id;
+    editIterationIds.push(front4.id);
+  });
+
+  afterAll(async () => {
+    await prisma.chatMessage.deleteMany({ where: { projectId: editProjectId } });
+    await prisma.iteration.deleteMany({ where: { id: { in: editIterationIds } } });
+    await prisma.project.deleteMany({ where: { id: editProjectId } });
+  });
+
+  function stubImageVisionClient(calls: unknown[]): ImageVisionClient {
+    return {
+      async generateImage(input) {
+        calls.push(input);
+        return { imagePath: `projects/${input.projectId}/outputs/edit-test-${calls.length}.png` };
+      },
+    };
+  }
+
+  it('"last" resolves to the highest-seq iteration on the active face, even when the accepted iteration is not the highest seq', async () => {
+    const calls: any[] = [];
+    const script: MockProviderScript = [
+      {
+        kind: 'tool_calls',
+        calls: [{ id: 'edit-1', name: IMAGE_GENERATION_TOOL_NAME, args: { prompt: 'make it brighter', editSourceIteration: 'last' } }],
+      },
+      { kind: 'message', content: 'Updated the image.' },
+    ];
+
+    await runTurn(
+      { projectId: editProjectId, message: 'Make it brighter.', activeFace: 'front' },
+      { provider: createMockAdapter(script), imageVisionClient: stubImageVisionClient(calls), versioning: makeVersioningSpy() }
+    );
+
+    expect(calls).toHaveLength(1);
+    const iteration4 = await prisma.iteration.findUniqueOrThrow({ where: { id: frontSeq4Id } });
+    expect(calls[0].modelParams.referenceImages).toEqual([resolveWorkspacePath(iteration4.imagePath)]);
+  });
+
+  it('"last" with zero iterations on the active face yields no referenceImages (SUC-020, no regression)', async () => {
+    // A dedicated, separate project with iterations only on 'front' --
+    // editProjectId's own fixture has a 'back' iteration (backSeq3Id),
+    // so this scenario needs a project where 'back' truly has none.
+    const noBackProject = await prisma.project.create({
+      data: { title: `${marker}-no-back-iterations-project`, ownerUserId: ownerId },
+    });
+    const frontOnly = await createIteration(
+      { projectId: noBackProject.id, imagePath: `projects/${noBackProject.id}/iterations/iter-1.png`, promptUsed: 'front only', role: 'front' },
+      { versioning: makeVersioningSpy() }
+    );
+    cleanup.projectIds.push(noBackProject.id);
+    cleanup.iterationIds.push(frontOnly.id);
+
+    const calls: any[] = [];
+    const script: MockProviderScript = [
+      {
+        kind: 'tool_calls',
+        calls: [{ id: 'edit-2', name: IMAGE_GENERATION_TOOL_NAME, args: { prompt: 'start something new here', editSourceIteration: 'last' } }],
+      },
+      { kind: 'message', content: 'Generated a new image.' },
+    ];
+
+    await runTurn(
+      { projectId: noBackProject.id, message: 'Try something new.', activeFace: 'back' },
+      { provider: createMockAdapter(script), imageVisionClient: stubImageVisionClient(calls), versioning: makeVersioningSpy() }
+    );
+
+    expect(calls).toHaveLength(1);
+    expect(calls[0].modelParams?.referenceImages).toBeUndefined();
+  });
+
+  it('a numeric editSourceIteration resolves to that iteration regardless of stream/role or accepted status', async () => {
+    const calls: any[] = [];
+    const backIteration = await prisma.iteration.findUniqueOrThrow({ where: { id: backSeq3Id } });
+    const script: MockProviderScript = [
+      {
+        kind: 'tool_calls',
+        calls: [
+          { id: 'edit-3', name: IMAGE_GENERATION_TOOL_NAME, args: { prompt: 'edit the back one', editSourceIteration: backIteration.seq } },
+        ],
+      },
+      { kind: 'message', content: 'Updated the back image.' },
+    ];
+
+    // activeFace is 'front', but the named iteration belongs to 'back' --
+    // naming an iteration overrides stream/role and accepted status alike.
+    await runTurn(
+      { projectId: editProjectId, message: 'Edit iteration by number.', activeFace: 'front' },
+      { provider: createMockAdapter(script), imageVisionClient: stubImageVisionClient(calls), versioning: makeVersioningSpy() }
+    );
+
+    expect(calls).toHaveLength(1);
+    expect(calls[0].modelParams.referenceImages).toEqual([resolveWorkspacePath(backIteration.imagePath)]);
+  });
+
+  it('a numeric editSourceIteration with no matching row throws, surfacing as isError on tool_call_finished without crashing the turn', async () => {
+    const calls: any[] = [];
+    const events: TurnEvent[] = [];
+    const nonexistentSeq = 999999;
+    const script: MockProviderScript = [
+      {
+        kind: 'tool_calls',
+        calls: [
+          { id: 'edit-4', name: IMAGE_GENERATION_TOOL_NAME, args: { prompt: 'edit a nonexistent iteration', editSourceIteration: nonexistentSeq } },
+        ],
+      },
+      { kind: 'message', content: "That iteration doesn't exist." },
+    ];
+
+    const result = await runTurn(
+      { projectId: editProjectId, message: 'Edit iteration 999999.', activeFace: 'front' },
+      {
+        provider: createMockAdapter(script),
+        imageVisionClient: stubImageVisionClient(calls),
+        versioning: makeVersioningSpy(),
+        onEvent: (e) => events.push(e),
+      }
+    );
+
+    expect(calls).toHaveLength(0);
+    expect(result.finalMessage).toBe("That iteration doesn't exist.");
+    expect((result.toolCalls[0].result as any).error).toContain(String(nonexistentSeq));
+    expect(
+      events.some(
+        (e) => e.type === 'tool_call_finished' && e.name === IMAGE_GENERATION_TOOL_NAME && e.isError === true
+      )
+    ).toBe(true);
+  });
+
+  it('editSourceIteration omitted entirely behaves identically to a plain generate_image call (no referenceImages)', async () => {
+    const calls: any[] = [];
+    const script: MockProviderScript = [
+      { kind: 'tool_calls', calls: [{ id: 'edit-5', name: IMAGE_GENERATION_TOOL_NAME, args: { prompt: 'a brand new design' } }] },
+      { kind: 'message', content: 'Generated the image.' },
+    ];
+
+    await runTurn(
+      { projectId: editProjectId, message: 'Make something new.', activeFace: 'front' },
+      { provider: createMockAdapter(script), imageVisionClient: stubImageVisionClient(calls), versioning: makeVersioningSpy() }
+    );
+
+    expect(calls).toHaveLength(1);
+    expect(calls[0].modelParams?.referenceImages).toBeUndefined();
+  });
+
+  // Hardening (sprint 010 Design Rationale): the only sanctioned way to
+  // reference a prior image is by iteration number -- any raw path the
+  // model nests under modelParams.referenceImages directly is silently
+  // discarded, whether or not editSourceIteration was also set.
+  it('discards a model-supplied modelParams.referenceImages even when editSourceIteration is absent', async () => {
+    const calls: any[] = [];
+    const script: MockProviderScript = [
+      {
+        kind: 'tool_calls',
+        calls: [
+          {
+            id: 'edit-6',
+            name: IMAGE_GENERATION_TOOL_NAME,
+            args: { prompt: 'sneaky raw path', modelParams: { referenceImages: '/etc/passwd' } },
+          },
+        ],
+      },
+      { kind: 'message', content: 'Generated the image.' },
+    ];
+
+    await runTurn(
+      { projectId: editProjectId, message: 'Generate an image.', activeFace: 'front' },
+      { provider: createMockAdapter(script), imageVisionClient: stubImageVisionClient(calls), versioning: makeVersioningSpy() }
+    );
+
+    expect(calls).toHaveLength(1);
+    expect(calls[0].modelParams?.referenceImages).toBeUndefined();
   });
 });
 

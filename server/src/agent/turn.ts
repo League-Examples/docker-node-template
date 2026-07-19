@@ -56,6 +56,7 @@ import type {
   ProviderTurnResult,
 } from './providers/types';
 import { createStubImageVisionClient, type ImageVisionClient, type GenerateImageResult } from './imageVisionStub';
+import { resolveWorkspacePath } from '../services/workspaceDirectorySync';
 import * as fsTools from '../agent-mcp/fsTools';
 import * as catalogTools from '../agent-mcp/catalogTools';
 import type { VersioningRecorder } from '../agent-mcp/fsTools';
@@ -370,15 +371,14 @@ export const WORKSPACE_TOOL_DEFINITIONS: ProviderToolDefinition[] = [
       type: 'object',
       properties: {
         prompt: { type: 'string', description: 'The prompt text describing the desired image.' },
-        referenceImages: {
-          type: 'array',
-          items: { type: 'string' },
+        editSourceIteration: {
+          type: ['integer', 'string'],
           description:
-            'Optional filesystem paths to reference images for an edit-style generation. Note: nest under modelParams.referenceImages -- this call site only forwards prompt and modelParams.',
+            'Set only when the user is asking to edit/modify an existing image rather than create a brand-new one. Pass the iteration number shown in PROJECT CONTEXT to edit that specific iteration, or "last" to edit the most recent iteration on the active stream. Omit entirely for a fresh, from-scratch generation.',
         },
         modelParams: {
           description:
-            'Optional free-form model parameters (e.g. size, referenceImages, background), passed through unmodified to the Image & Vision Service.',
+            'Optional free-form model parameters (e.g. size, background), passed through unmodified to the Image & Vision Service. Do not set referenceImages here -- use editSourceIteration instead to reference a prior image; any referenceImages set here is discarded.',
         },
       },
       required: ['prompt'],
@@ -447,7 +447,8 @@ const SYSTEM_PROMPT_BASE =
   'You are the Flyerbot design assistant. Help the project owner develop postcard/flyer concepts. ' +
   "Use only the tools provided when a change to the project's workspace or catalog is needed -- never fabricate a tool call for anything outside that list. " +
   'Never ask the user for internal identifiers -- database IDs, project IDs, version numbers, internal keys, or similar -- the system supplies these to every tool call automatically. ' +
-  'If a tool call fails, state in your next message, in plain language, what failed and why (as far as you know) -- do not invent a follow-up question or silently proceed as though the call had succeeded.';
+  'If a tool call fails, state in your next message, in plain language, what failed and why (as far as you know) -- do not invent a follow-up question or silently proceed as though the call had succeeded. ' +
+  'When the user asks to edit or modify an existing image, use the iteration numbers listed in PROJECT CONTEXT and the editSourceIteration argument on generate_image (an iteration number, or "last" for the most recent iteration on the active stream) to reference it -- never ask the user to supply a file name or path.';
 
 // ---------------------------------------------------------------------------
 // Project + active-stream context (Sprint 005 OOP change, 2026-07-15): the
@@ -531,21 +532,41 @@ function formatDetailsHeader(detailsHeader: unknown): string {
   return entries.map(([key, value]) => `${key}: ${value}`).join('; ');
 }
 
-/** Per-stream counts plus which iteration (if any) is the accepted one in
- * each stream -- "what exists so far" for the PROJECT CONTEXT block. */
-function summarizeIterations(iterations: ProjectContextIteration[]): string {
+/** Renders one stream's iterations as an ordered listing of `seq` numbers,
+ * marking which one is `accepted` and which one is most recent (highest
+ * `seq`) -- e.g. `"#1, #2 (accepted), #3 (most recent) -- 3 iterations"`.
+ * Only `seq`/`accepted` (never `imagePath`) ever reach this text (sprint
+ * 010 Design Rationale: a raw filesystem path is exactly the kind of
+ * internal identifier the model should never see or transcribe), so the
+ * model can map an ordinal like "iteration three" or "the last one" to a
+ * `seq` it can then pass back as `generate_image`'s `editSourceIteration`. */
+function summarizeStream(iterations: ProjectContextIteration[]): string {
   if (iterations.length === 0) return 'no iterations yet';
+  const sorted = [...iterations].sort((a, b) => a.seq - b.seq);
+  const mostRecentSeq = sorted[sorted.length - 1].seq;
+  const listing = sorted
+    .map((i) => {
+      const tags: string[] = [];
+      if (i.accepted) tags.push('accepted');
+      if (i.seq === mostRecentSeq) tags.push('most recent');
+      return tags.length > 0 ? `#${i.seq} (${tags.join(', ')})` : `#${i.seq}`;
+    })
+    .join(', ');
+  const countLabel = sorted.length === 1 ? '1 iteration' : `${sorted.length} iterations`;
+  return `${listing} -- ${countLabel}`;
+}
+
+/** Per-stream iteration-number listing -- "what exists so far" for the
+ * PROJECT CONTEXT block (sprint 010 ticket 001; replaces the former
+ * counts-plus-accepted-seq-only summary, which gave the model no way to
+ * identify an individual prior iteration to edit). */
+function summarizeIterations(iterations: ProjectContextIteration[]): string {
   const front = iterations.filter((i) => i.role === 'front');
   const back = iterations.filter((i) => i.role === 'back');
   const other = iterations.filter((i) => i.role !== 'front' && i.role !== 'back');
-  const acceptedFront = front.find((i) => i.accepted);
-  const acceptedBack = back.find((i) => i.accepted);
-  const parts = [
-    `front: ${front.length} (accepted: ${acceptedFront ? `#${acceptedFront.seq}` : 'none'})`,
-    `back: ${back.length} (accepted: ${acceptedBack ? `#${acceptedBack.seq}` : 'none'})`,
-  ];
-  if (other.length > 0) parts.push(`unassigned: ${other.length}`);
-  return parts.join(', ');
+  const parts = [`front: ${summarizeStream(front)}`, `back: ${summarizeStream(back)}`];
+  if (other.length > 0) parts.push(`unassigned: ${summarizeStream(other)}`);
+  return parts.join('; ');
 }
 
 function summarizeReferences(references: ProjectContextReference[]): string {
@@ -759,6 +780,60 @@ async function injectCreateProjectArgs(
   return merged;
 }
 
+const EDIT_SOURCE_ITERATION_LAST = 'last';
+
+/**
+ * `generate_image`-only pre-dispatch resolver (sprint 010 ticket 001,
+ * completing `image-edits-must-pass-source-image.md`). Same shape/call
+ * site as `injectCreateProjectArgs` above: turns the model's structured
+ * `editSourceIteration` signal (an iteration number, or the literal
+ * `"last"`) into the source `Iteration.imagePath` to edit -- never a raw
+ * path the model supplies itself (Design Rationale: the model decides
+ * *whether* this is an edit and *which* iteration, by number; the server
+ * resolves that number to a real, validated path).
+ *
+ * - Absent (`undefined`/`null`): resolves to nothing -- fresh generation,
+ *   no source image (SUC-020).
+ * - `"last"`: the highest-`seq` `Iteration` row where `role ===
+ *   ctx.activeFace`, read fresh against `ctx.prismaClient` -- never the
+ *   turn-start `ProjectContext` snapshot, so a "now change that" reference
+ *   later in the same multi-round turn sees an iteration generated earlier
+ *   in that same turn. No matching row resolves to nothing, a graceful
+ *   fallback rather than an error (SUC-018/SUC-020).
+ * - A number (or numeric string): the `Iteration` row with that `seq` for
+ *   `ctx.projectId`, regardless of `role`/`accepted` (SUC-019). No
+ *   matching row throws a plain `Error`, surfaced through the existing
+ *   tool-call `isError`/catch path in the dispatch loop below -- no new
+ *   failure channel.
+ */
+async function resolveEditSourceIteration(
+  editSourceIteration: unknown,
+  ctx: { projectId: number; activeFace: 'front' | 'back'; prismaClient: any }
+): Promise<string | null> {
+  if (editSourceIteration === undefined || editSourceIteration === null) return null;
+
+  if (editSourceIteration === EDIT_SOURCE_ITERATION_LAST) {
+    const iteration = await ctx.prismaClient.iteration.findFirst({
+      where: { projectId: ctx.projectId, role: ctx.activeFace },
+      orderBy: { seq: 'desc' },
+    });
+    return iteration ? iteration.imagePath : null;
+  }
+
+  const seq = typeof editSourceIteration === 'number' ? editSourceIteration : Number(editSourceIteration);
+  if (!Number.isFinite(seq)) {
+    throw new Error(`generate_image: invalid editSourceIteration value ${JSON.stringify(editSourceIteration)}`);
+  }
+
+  const iteration = await ctx.prismaClient.iteration.findFirst({
+    where: { projectId: ctx.projectId, seq },
+  });
+  if (!iteration) {
+    throw new Error(`generate_image: no iteration #${seq} found for this project`);
+  }
+  return iteration.imagePath;
+}
+
 async function dispatchToolCall(
   call: ProviderToolCall,
   ctx: {
@@ -773,12 +848,40 @@ async function dispatchToolCall(
   }
 ): Promise<unknown> {
   if (call.name === IMAGE_GENERATION_TOOL_NAME) {
-    const args = (call.args ?? {}) as { prompt?: string; modelParams?: unknown };
+    const args = (call.args ?? {}) as {
+      prompt?: string;
+      modelParams?: Record<string, unknown>;
+      editSourceIteration?: unknown;
+    };
     if (!args.prompt) throw new Error('generate_image: prompt is required');
+
+    const sourceImagePath = await resolveEditSourceIteration(args.editSourceIteration, {
+      projectId: ctx.projectId,
+      activeFace: ctx.activeFace,
+      prismaClient: ctx.prismaClient,
+    });
+
+    // Any modelParams.referenceImages the model supplied directly is
+    // discarded here, whether or not editSourceIteration was also set --
+    // the only sanctioned way to reference a prior image is now by
+    // iteration number (sprint 010 Design Rationale: this closes the
+    // pre-existing unvalidated-fs.readFile gap in imaging.ts's
+    // callOpenAiEdits, which never validates a caller-supplied path).
+    const { referenceImages: _discardedReferenceImages, ...restModelParams } = (args.modelParams ??
+      {}) as Record<string, unknown>;
+    const modelParams: Record<string, unknown> = { ...restModelParams };
+    if (sourceImagePath) {
+      // Containment check (the same one fsTools.ts/catalogTools.ts and
+      // realImageVisionClient.ts already apply to every other
+      // workspace-rooted path) before this path ever reaches
+      // imaging.ts's callOpenAiEdits.
+      modelParams.referenceImages = [resolveWorkspacePath(sourceImagePath)];
+    }
+
     const result: GenerateImageResult = await ctx.imageVisionClient.generateImage({
       prompt: args.prompt,
       projectId: ctx.projectId,
-      modelParams: args.modelParams,
+      modelParams,
       activeFace: ctx.activeFace,
     });
     return result;
