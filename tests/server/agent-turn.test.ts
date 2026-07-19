@@ -22,7 +22,7 @@ import { describe, it, expect, beforeAll, afterAll, afterEach } from 'vitest';
 import { prisma } from '../../server/src/services/prisma';
 import {
   runTurn,
-  chatMessageToProviderMessage,
+  chatMessageToProviderMessages,
   TurnLockTimeoutError,
   IMAGE_GENERATION_TOOL_NAME,
   WORKSPACE_TOOL_DEFINITIONS,
@@ -43,6 +43,7 @@ import { resolveWorkspacePath } from '../../server/src/services/workspaceDirecto
 import { createRealImageVisionClient } from '../../server/src/agent/realImageVisionClient';
 import type { ImageVisionClient } from '../../server/src/agent/imageVisionStub';
 import type { GenerateImageResult as ImagingGenerateImageResult } from '../../server/src/services/imaging';
+import type { ChatMessageModel } from '../../server/src/generated/prisma/models/ChatMessage';
 
 const marker = `t005turn${Date.now()}`;
 
@@ -430,9 +431,311 @@ describe('runTurn -- statelessness (D8)', () => {
     const rows = await prisma.chatMessage.findMany({ where: { projectId: projectBId }, orderBy: { id: 'asc' } });
     expect(rows).toHaveLength(4); // user1, assistant-final1, user2, assistant-final2
 
-    const expectedHistory = rows.slice(0, 2).map(chatMessageToProviderMessage);
+    const expectedHistory = rows.slice(0, 2).flatMap(chatMessageToProviderMessages);
     expect(capturedMessages.slice(0, 2)).toEqual(expectedHistory);
     expect(capturedMessages[2]).toEqual({ role: 'user', content: 'Second message, continuing the conversation.' });
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Regression test (sprint 011 ticket 002, issue
+// tool-call-history-prose-causes-hallucinated-calls.md): reproduces the live
+// project-14 incident's failure shape -- several (4+) prior persisted
+// tool-call rounds already accumulated in a project's history -- and proves
+// ticket 001's structured-replay fix against it. History is seeded directly
+// via this file's Prisma client (same pattern as the D8 block above),
+// mirroring the exact three-row-per-turn shape a completed `runTurn` call
+// itself persists: a user request row, an assistant tool-round row
+// (`content: ''`, `toolCalls` populated) and an assistant final-message row.
+// One seeded round carries two calls, exercising ticket 001's
+// multi-call-per-round id scheme, not just the single-call case.
+// ---------------------------------------------------------------------------
+
+describe('runTurn -- structured tool-call history replay (issue: tool-call-history-prose-causes-hallucinated-calls)', () => {
+  let historyProjectId: number;
+
+  async function seedToolRound(
+    userText: string,
+    calls: Array<{ name: string; args: unknown; result: unknown }>,
+    finalText: string
+  ): Promise<void> {
+    await prisma.chatMessage.create({ data: { projectId: historyProjectId, role: 'user', content: userText } });
+    await prisma.chatMessage.create({
+      data: { projectId: historyProjectId, role: 'assistant', content: '', toolCalls: calls as any },
+    });
+    await prisma.chatMessage.create({ data: { projectId: historyProjectId, role: 'assistant', content: finalText } });
+  }
+
+  beforeAll(async () => {
+    const project = await prisma.project.create({
+      data: { title: `${marker}-history-replay-project`, ownerUserId: ownerId },
+    });
+    historyProjectId = project.id;
+
+    await seedToolRound(
+      'Make a red postcard front.',
+      [{ name: 'generate_image', args: { prompt: 'a red postcard front' }, result: { imagePath: 'iterations/iter-1.png' } }],
+      'Generated the first draft.'
+    );
+    await seedToolRound(
+      'Make it a bit brighter.',
+      [{ name: 'generate_image', args: { prompt: 'brighter red postcard front' }, result: { imagePath: 'iterations/iter-2.png' } }],
+      'Brightened the design.'
+    );
+    // Round 3: a multi-call round -- two generate_image calls persisted in
+    // one row, exactly ticket 001's multi-call-per-row id scheme.
+    await seedToolRound(
+      'Add a matching back design and a border on the front.',
+      [
+        { name: 'generate_image', args: { prompt: 'a matching postcard back' }, result: { imagePath: 'iterations/iter-3.png' } },
+        { name: 'generate_image', args: { prompt: 'add a border to the front' }, result: { imagePath: 'iterations/iter-4.png' } },
+      ],
+      'Added the back design and the border.'
+    );
+    await seedToolRound(
+      'Try a blue color scheme instead.',
+      [{ name: 'generate_image', args: { prompt: 'blue color scheme' }, result: { imagePath: 'iterations/iter-5.png' } }],
+      'Switched to a blue color scheme.'
+    );
+  });
+
+  afterAll(async () => {
+    await prisma.chatMessage.deleteMany({ where: { projectId: historyProjectId } });
+    await prisma.project.deleteMany({ where: { id: historyProjectId } });
+  });
+
+  it('replays 4+ accumulated tool-call rounds (one multi-call) as structured toolCalls/toolResults, strictly alternating, and dispatches a real generate_image call for the new turn', async () => {
+    // Each `onSendTurn` invocation gets its own shallow copy of
+    // `input.messages` -- the turn controller keeps mutating (pushing to)
+    // the *same* array object across the loop's later `sendTurn` calls, so
+    // capturing the bare reference would let a later push silently rewrite
+    // what an earlier "captured" batch looks like once inspected after the
+    // fact. Copying at call time freezes each batch as it truly was sent.
+    const capturedMessageBatches: unknown[][] = [];
+    const dispatchedCalls: unknown[] = [];
+    const stubClient: ImageVisionClient = {
+      async generateImage(input) {
+        dispatchedCalls.push(input);
+        return { imagePath: `projects/${input.projectId}/outputs/history-replay-test.png` };
+      },
+    };
+
+    const script: MockProviderScript = [
+      {
+        kind: 'tool_calls',
+        calls: [{ id: 'live-1', name: IMAGE_GENERATION_TOOL_NAME, args: { prompt: 'one more edit, in a green color scheme' } }],
+      },
+      { kind: 'message', content: 'Switched to a green color scheme.' },
+    ];
+    const adapter = createMockAdapter(script, {
+      onSendTurn: (input) => {
+        capturedMessageBatches.push([...input.messages]);
+      },
+    });
+
+    await runTurn(
+      { projectId: historyProjectId, message: 'Actually, make it green.' },
+      { provider: adapter, imageVisionClient: stubClient, versioning: makeVersioningSpy() }
+    );
+
+    // (4) The turn dispatches the scripted real generate_image call --
+    // not a narrated imitation.
+    expect(dispatchedCalls).toHaveLength(1);
+
+    // The FIRST sendTurn call is exactly what the model is shown as
+    // "history" for this new request: the 4 seeded rounds' replayed
+    // messages plus this turn's own new user message -- none of this
+    // turn's own (not-yet-dispatched) tool round is in it yet.
+    const messages = capturedMessageBatches[0] as any[];
+
+    // (1) Every historical tool round appears as an assistant toolCalls
+    // message immediately followed by a user toolResults message -- never
+    // as a single message whose content contains the fabricated "Called
+    // tool" prose string from the pre-fix code.
+    const toolCallMessages = messages.filter((m) => m.toolCalls);
+    expect(toolCallMessages).toHaveLength(4); // one per seeded round
+    for (const m of messages) {
+      expect(m.content ?? '').not.toContain('Called tool');
+    }
+
+    // (2) Ids pair correctly within each historical round: the
+    // toolCallId on each toolResults entry matches an id in the
+    // immediately preceding toolCalls entry.
+    for (let i = 0; i < messages.length; i++) {
+      if (messages[i].toolCalls) {
+        const toolCallsMessage = messages[i];
+        const toolResultsMessage = messages[i + 1];
+        expect(toolResultsMessage).toBeDefined();
+        expect(toolResultsMessage.role).toBe('user');
+        expect(toolResultsMessage.toolResults).toBeDefined();
+        const callIds = toolCallsMessage.toolCalls.map((c: any) => c.id);
+        const resultIds = toolResultsMessage.toolResults.map((r: any) => r.toolCallId);
+        expect(resultIds).toEqual(callIds);
+      }
+    }
+
+    // The multi-call round (round 3) reconstructed with 2 calls in one
+    // message, ids unique within the round.
+    const multiCallMessage = toolCallMessages.find((m) => m.toolCalls.length === 2);
+    expect(multiCallMessage).toBeDefined();
+    const multiCallIds = multiCallMessage!.toolCalls.map((c: any) => c.id);
+    expect(new Set(multiCallIds).size).toBe(2);
+
+    // (3) Roles strictly alternate user/assistant across the entire
+    // captured messages array, including across the seeded historical
+    // rounds and into this new turn's own user message -- no two
+    // consecutive entries share a role, asserted programmatically over
+    // the whole array (not spot-checked).
+    for (let i = 1; i < messages.length; i++) {
+      expect(messages[i].role).not.toBe(messages[i - 1].role);
+    }
+    expect(messages[messages.length - 1]).toEqual({ role: 'user', content: 'Actually, make it green.' });
+
+    // (4, continued) The resulting persisted ChatMessage row for the new
+    // round has a populated toolCalls field containing the real
+    // dispatched call/result.
+    const rows = await prisma.chatMessage.findMany({ where: { projectId: historyProjectId }, orderBy: { id: 'asc' } });
+    expect(rows).toHaveLength(15); // 4 seeded rounds x 3 rows + this turn's [user, tool-round, final]
+    const newToolRoundRow = rows.find(
+      (r) =>
+        r.role === 'assistant' &&
+        r.toolCalls !== null &&
+        (r.toolCalls as any[])[0]?.args?.prompt === 'one more edit, in a green color scheme'
+    );
+    expect(newToolRoundRow).toBeDefined();
+    expect((newToolRoundRow!.toolCalls as any[])[0]).toMatchObject({
+      name: IMAGE_GENERATION_TOOL_NAME,
+      result: { imagePath: expect.stringContaining('history-replay-test.png') },
+    });
+
+    // (5) Direct negative-control assertion, kept explicit rather than
+    // only implied by the positive structured-shape checks above: no
+    // ChatMessage.content anywhere in the project's history -- seeded or
+    // newly created -- contains the fabricated "Called tool" narration
+    // string after the turn completes.
+    for (const row of rows) {
+      expect(row.content).not.toContain('Called tool');
+    }
+  });
+});
+
+// ---------------------------------------------------------------------------
+// chatMessageToProviderMessages -- structured tool-round reconstruction
+// (sprint 011 ticket 001, tool-call-history-prose-causes-hallucinated-
+// calls.md). Unit-level shape assertions directly on the function, using
+// plain constructed rows -- no DB/runTurn involvement needed here. The
+// end-to-end regression (seeded history replayed through a mock adapter)
+// is ticket 002's scope.
+// ---------------------------------------------------------------------------
+
+describe('chatMessageToProviderMessages -- structured tool-round reconstruction (011-001)', () => {
+  function makeRow(overrides: Partial<ChatMessageModel>): ChatMessageModel {
+    return {
+      id: 1,
+      projectId: 1,
+      role: 'assistant',
+      content: '',
+      toolCalls: null,
+      createdAt: new Date(),
+      ...overrides,
+    } as ChatMessageModel;
+  }
+
+  it('reconstructs a single-call tool-round row to exactly two messages (assistant toolCalls, user toolResults) with matching ids', () => {
+    const row = makeRow({
+      id: 42,
+      role: 'assistant',
+      content: '',
+      toolCalls: [{ name: 'create_knowledge_entry', args: { name: 'palette' }, result: { id: 7 } }] as any,
+    });
+
+    const messages = chatMessageToProviderMessages(row);
+
+    expect(messages).toHaveLength(2);
+    expect(messages[0]).toEqual({
+      role: 'assistant',
+      content: undefined,
+      toolCalls: [{ id: 'hist-42-0', name: 'create_knowledge_entry', args: { name: 'palette' } }],
+    });
+    expect(messages[1]).toEqual({
+      role: 'user',
+      toolResults: [{ toolCallId: 'hist-42-0', result: { id: 7 } }],
+    });
+  });
+
+  it('reconstructs a multi-call tool-round row to one assistant message carrying all calls and one user message carrying all matching results, no id reused', () => {
+    const row = makeRow({
+      id: 99,
+      role: 'assistant',
+      content: '',
+      toolCalls: [
+        { name: 'generate_image', args: { prompt: 'a red postcard' }, result: { imagePath: 'iter-1.png' } },
+        { name: 'generate_image', args: { prompt: 'a blue postcard' }, result: { imagePath: 'iter-2.png' } },
+      ] as any,
+    });
+
+    const messages = chatMessageToProviderMessages(row);
+
+    expect(messages).toHaveLength(2);
+    const assistantMessage = messages[0];
+    const userMessage = messages[1];
+    expect(assistantMessage.toolCalls).toHaveLength(2);
+    expect(assistantMessage.toolCalls).toEqual([
+      { id: 'hist-99-0', name: 'generate_image', args: { prompt: 'a red postcard' } },
+      { id: 'hist-99-1', name: 'generate_image', args: { prompt: 'a blue postcard' } },
+    ]);
+    expect(userMessage.toolResults).toEqual([
+      { toolCallId: 'hist-99-0', result: { imagePath: 'iter-1.png' } },
+      { toolCallId: 'hist-99-1', result: { imagePath: 'iter-2.png' } },
+    ]);
+    const ids = assistantMessage.toolCalls!.map((c) => c.id);
+    expect(new Set(ids).size).toBe(ids.length);
+  });
+
+  it('carries a tool-round row\'s non-empty content as the leading assistant message\'s content alongside its toolCalls', () => {
+    const row = makeRow({
+      id: 7,
+      role: 'assistant',
+      content: 'Here is what I did:',
+      toolCalls: [{ name: 'create_iteration', args: {}, result: { ok: true } }] as any,
+    });
+
+    const messages = chatMessageToProviderMessages(row);
+
+    expect(messages[0]).toMatchObject({ role: 'assistant', content: 'Here is what I did:' });
+    expect(messages[0].toolCalls).toHaveLength(1);
+  });
+
+  it('reconstructs two consecutive tool-round rows to a strictly alternating assistant/user/assistant/user sequence, no back-to-back assistant messages, with ids unique across both rows', () => {
+    const rowOne = makeRow({
+      id: 10,
+      role: 'assistant',
+      content: '',
+      toolCalls: [{ name: 'create_iteration', args: { seq: 1 }, result: { ok: true } }] as any,
+    });
+    const rowTwo = makeRow({
+      id: 11,
+      role: 'assistant',
+      content: '',
+      toolCalls: [{ name: 'create_iteration', args: { seq: 2 }, result: { ok: true } }] as any,
+    });
+
+    const messages = [rowOne, rowTwo].flatMap(chatMessageToProviderMessages);
+
+    expect(messages).toHaveLength(4);
+    expect(messages.map((m) => m.role)).toEqual(['assistant', 'user', 'assistant', 'user']);
+
+    const allToolCallIds = messages.flatMap((m) => m.toolCalls?.map((c) => c.id) ?? []);
+    expect(allToolCallIds).toEqual(['hist-10-0', 'hist-11-0']);
+    expect(new Set(allToolCallIds).size).toBe(allToolCallIds.length);
+  });
+
+  it('maps a plain content-only row to a single unchanged message (regression guard)', () => {
+    const row = makeRow({ id: 5, role: 'user', content: 'Just a plain message.', toolCalls: null });
+
+    const messages = chatMessageToProviderMessages(row);
+
+    expect(messages).toEqual([{ role: 'user', content: 'Just a plain message.' }]);
   });
 });
 
