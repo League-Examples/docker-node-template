@@ -1,5 +1,8 @@
 ---
-status: pending
+status: done
+sprint: '013'
+tickets:
+- 013-001
 ---
 
 # Test harness: one persistent HTTP server per test file (kill residual suite flake)
