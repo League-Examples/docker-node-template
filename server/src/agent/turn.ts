@@ -954,8 +954,20 @@ async function dispatchToolCall(
       // Containment check (the same one fsTools.ts/catalogTools.ts and
       // realImageVisionClient.ts already apply to every other
       // workspace-rooted path) before this path ever reaches
-      // imaging.ts's callOpenAiEdits.
-      modelParams.referenceImages = [resolveWorkspacePath(sourceImagePath)];
+      // imaging.ts's callOpenAiEdits -- an escaping path throws here and
+      // is surfaced through the existing tool-call isError path, exactly
+      // as before this ticket. Ticket 013-002 (SUC-025): the *resolved,
+      // absolute* return value is discarded, never stored --
+      // modelParams.referenceImages keeps the original, already-
+      // workspace-relative sourceImagePath, so Iteration.modelParams (and
+      // GET /api/projects*, which serializes it unmodified) never carries
+      // the server's absolute host filesystem layout. imaging.ts's
+      // callOpenAiEdits independently re-resolves this same relative path
+      // (with its own containment check) immediately before reading the
+      // file, so the containment guarantee holds even if some future
+      // caller of imaging.generateImage isn't this dispatch path.
+      resolveWorkspacePath(sourceImagePath);
+      modelParams.referenceImages = [sourceImagePath];
     }
 
     const result: GenerateImageResult = await ctx.imageVisionClient.generateImage({

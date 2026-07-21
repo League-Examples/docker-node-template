@@ -1202,7 +1202,9 @@ describe('runTurn -- editSourceIteration resolves to a validated reference-image
 
     expect(calls).toHaveLength(1);
     const iteration4 = await prisma.iteration.findUniqueOrThrow({ where: { id: frontSeq4Id } });
-    expect(calls[0].modelParams.referenceImages).toEqual([resolveWorkspacePath(iteration4.imagePath)]);
+    // Ticket 013-002 (SUC-025): the relative Iteration.imagePath, never
+    // the resolveWorkspacePath-resolved absolute value.
+    expect(calls[0].modelParams.referenceImages).toEqual([iteration4.imagePath]);
   });
 
   it('"last" with zero iterations on the active face yields no referenceImages (SUC-020, no regression)', async () => {
@@ -1258,7 +1260,9 @@ describe('runTurn -- editSourceIteration resolves to a validated reference-image
     );
 
     expect(calls).toHaveLength(1);
-    expect(calls[0].modelParams.referenceImages).toEqual([resolveWorkspacePath(backIteration.imagePath)]);
+    // Ticket 013-002 (SUC-025): the relative Iteration.imagePath, never
+    // the resolveWorkspacePath-resolved absolute value.
+    expect(calls[0].modelParams.referenceImages).toEqual([backIteration.imagePath]);
   });
 
   it('a numeric editSourceIteration with no matching row throws, surfacing as isError on tool_call_finished without crashing the turn', async () => {
@@ -1426,7 +1430,9 @@ describe('runTurn -- edit-source resolution (sprint 010, SUC-018/019/020)', () =
     const iter3 = await prisma.iteration.findUniqueOrThrow({ where: { id: iterationThreeId } });
     expect(iter1.accepted).toBe(true);
     expect(iter3.seq).toBeGreaterThan(iter1.seq);
-    expect(calls[0].modelParams.referenceImages).toEqual([resolveWorkspacePath(iter3.imagePath)]);
+    // Ticket 013-002 (SUC-025): the relative Iteration.imagePath, never
+    // the resolveWorkspacePath-resolved absolute value.
+    expect(calls[0].modelParams.referenceImages).toEqual([iter3.imagePath]);
   });
 
   it('SUC-019: a named iteration ("use iteration two") overrides the "last" default, naming iteration 2 specifically (non-last, non-accepted)', async () => {
@@ -1449,7 +1455,9 @@ describe('runTurn -- edit-source resolution (sprint 010, SUC-018/019/020)', () =
     );
 
     expect(calls).toHaveLength(1);
-    expect(calls[0].modelParams.referenceImages).toEqual([resolveWorkspacePath(iter2.imagePath)]);
+    // Ticket 013-002 (SUC-025): the relative Iteration.imagePath, never
+    // the resolveWorkspacePath-resolved absolute value.
+    expect(calls[0].modelParams.referenceImages).toEqual([iter2.imagePath]);
   });
 
   it('SUC-019 negative: editSourceIteration: 99 (nonexistent) surfaces as tool_call_finished isError:true, and the turn still completes', async () => {
@@ -1662,7 +1670,9 @@ describe('runTurn -- edit-source resolution (sprint 010, SUC-018/019/020)', () =
       // moments earlier in this same runTurn call -- not the turn-start
       // ProjectContext snapshot, which was loaded before either iteration
       // existed.
-      expect(calls[1].modelParams.referenceImages).toEqual([resolveWorkspacePath(createdImagePaths[0])]);
+      // Ticket 013-002 (SUC-025): the relative Iteration.imagePath, never
+      // the resolveWorkspacePath-resolved absolute value.
+      expect(calls[1].modelParams.referenceImages).toEqual([createdImagePaths[0]]);
     });
   });
 });
@@ -1840,6 +1850,53 @@ describe('runTurn -- generate_image routes through the real ImageVisionClient en
       { provider: adapter, versioning: makeVersioningSpy() }
     );
     expect(capturedSystemPrompt).toContain(`#${edited.seq}: "${editPrompt}"`);
+  });
+
+  // Ticket 013-002 (SUC-025, iteration-modelparams-leaks-absolute-path.md):
+  // a freshly-created edit-sourced Iteration.modelParams.referenceImages
+  // must hold the relative Iteration.imagePath, never the
+  // resolveWorkspacePath-resolved absolute value that used to be stored
+  // (and that GET /api/projects*/PROJECT_DETAIL_INCLUDE then serialized
+  // to every authenticated browser). Read back from the DB after the
+  // turn -- not just asserted on the in-memory dispatch args -- so this
+  // proves the value that actually lands in the persisted row.
+  it('a freshly-created edit-sourced Iteration.modelParams.referenceImages contains the relative imagePath, never an absolute one (ticket 013-002, SUC-025)', async () => {
+    const generateImage = () => Promise.resolve(fixtureImage('path-leak-regression-fixture-bytes'));
+    const realClient = createRealImageVisionClient({ generateImage, versioning: makeVersioningSpy() });
+
+    const seedScript: MockProviderScript = [
+      { kind: 'tool_calls', calls: [{ id: 'leak-seed-1', name: IMAGE_GENERATION_TOOL_NAME, args: { prompt: 'a postcard base' } }] },
+      { kind: 'message', content: 'Generated the base image.' },
+    ];
+    await runTurn(
+      { projectId: projectAId, message: 'Please generate a base image.' },
+      { provider: createMockAdapter(seedScript), imageVisionClient: realClient, versioning: makeVersioningSpy() }
+    );
+    const seeded = await prisma.iteration.findFirstOrThrow({
+      where: { projectId: projectAId },
+      orderBy: { seq: 'asc' },
+    });
+
+    const editScript: MockProviderScript = [
+      {
+        kind: 'tool_calls',
+        calls: [{ id: 'leak-edit-1', name: IMAGE_GENERATION_TOOL_NAME, args: { prompt: 'brighten it', editSourceIteration: seeded.seq } }],
+      },
+      { kind: 'message', content: 'Brightened the image.' },
+    ];
+    await runTurn(
+      { projectId: projectAId, message: 'Brighten it.' },
+      { provider: createMockAdapter(editScript), imageVisionClient: realClient, versioning: makeVersioningSpy() }
+    );
+
+    const edited = await prisma.iteration.findFirstOrThrow({
+      where: { projectId: projectAId, seq: seeded.seq + 1 },
+    });
+
+    const referenceImages = (edited.modelParams as { referenceImages?: string[] } | null)?.referenceImages;
+    expect(referenceImages).toEqual([seeded.imagePath]);
+    expect(referenceImages![0].startsWith('/')).toBe(false);
+    expect(referenceImages![0]).not.toContain(resolveWorkspacePath('.'));
   });
 });
 

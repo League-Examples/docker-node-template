@@ -1,13 +1,20 @@
 import fs from 'fs/promises';
 import path from 'path';
 import pino from 'pino';
+import { resolveWorkspacePath } from './workspaceDirectorySync';
 
 /**
  * Image & Vision Service (architecture-001 Module 9; architecture-update.md
  * Sprint 004 Step 3). The only place in the codebase that talks to OpenAI
  * or OpenRouter directly -- a stateless, side-effect-free HTTP wrapper with
  * zero outward dependencies on any other Flyerbot module (a pure
- * Infrastructure leaf). Two entry points:
+ * Infrastructure leaf), with one narrow exception: `callOpenAiEdits` imports
+ * `services/workspaceDirectorySync.ts`'s `resolveWorkspacePath` (ticket
+ * 013-002, SUC-025) to enforce path containment on a caller-supplied
+ * reference-image path immediately before reading it -- an Infrastructure-
+ * to-Infrastructure dependency (that module is itself dependency-free), not
+ * a Domain-layer one, so this remains a leaf relative to every Domain-layer
+ * node. Two entry points:
  *
  * - `generateImage`: OpenAI direct. `POST /v1/images/generations` when no
  *   reference images are attached, `POST /v1/images/edits` (multipart,
@@ -29,15 +36,19 @@ import pino from 'pino';
  *   ticket 003's Description & Embedding Pipeline writes the result
  *   directly into `AssetDescription`.
  *
- * **Reference images are read from caller-supplied filesystem paths**
- * (matching the predecessor's `_generate_openai_edits(..., reference_images,
- * ...)` exactly, which opens each path directly). This does not violate
+ * **Reference images are read from caller-supplied, workspace-relative
+ * paths** (ticket 013-002, SUC-025 -- previously the caller resolved the
+ * path to absolute itself before calling in; now `callOpenAiEdits` resolves
+ * each `referenceImages` entry via `resolveWorkspacePath` immediately
+ * before reading it, rejecting one that would escape the workspace root
+ * independent of whether the caller already validated it, then opens it
+ * directly, matching the predecessor's `_generate_openai_edits(...,
+ * reference_images, ...)` read shape exactly). This does not violate
  * architecture-001's "no DB or filesystem access of its own" boundary
  * statement for this module -- that statement is about *persistence*: this
  * module never writes to the Workspace Filesystem or the Catalog Store.
- * Reading bytes from a path the caller already resolved (ticket 002 owns
- * path resolution against the Workspace Filesystem tree) to attach as a
- * multipart upload is a pure passthrough, not a persistence side effect.
+ * Reading bytes from a workspace-relative path to attach as a multipart
+ * upload is a pure passthrough, not a persistence side effect.
  *
  * **Credentials, constructed lazily**: no API key is read, and no network
  * call is made, until `generateImage`/`classifyAndDescribe` actually run.
@@ -286,8 +297,10 @@ export interface GenerateImageInput {
   /** The prompt text describing the desired image. */
   prompt: string;
   size: ImageSize;
-  /** Filesystem paths to reference image files. Presence of one or more
-   * routes the call through `/v1/images/edits` instead of
+  /** Workspace-relative paths to reference image files (ticket 013-002,
+   * SUC-025) -- resolved internally via `resolveWorkspacePath` immediately
+   * before each is read, never a raw/absolute filesystem path. Presence of
+   * one or more routes the call through `/v1/images/edits` instead of
    * `/v1/images/generations`; each file is read and attached as an
    * `image[]` multipart part, matching the predecessor's
    * `_generate_openai_edits` exactly. */
@@ -396,8 +409,16 @@ async function callOpenAiEdits(args: {
   if (args.background) form.append('background', args.background);
 
   for (const refPath of args.referenceImages) {
-    const bytes = await fs.readFile(refPath);
-    form.append('image[]', new Blob([bytes], { type: mimeTypeForPath(refPath) }), path.basename(refPath));
+    // Containment check at the actual read sink (ticket 013-002, SUC-025
+    // "Secondary" defense-in-depth note): resolves independently of
+    // whether the caller (turn.ts's dispatchToolCall) already validated
+    // the path, so this guarantee holds even for a future caller that
+    // doesn't. Throws a plain Error ("Path escapes workspace root: ...")
+    // for an escaping path, which the caller's try/catch (generateImage,
+    // below) wraps into an ImagingServiceError before any fetch is made.
+    const resolvedPath = resolveWorkspacePath(refPath);
+    const bytes = await fs.readFile(resolvedPath);
+    form.append('image[]', new Blob([bytes], { type: mimeTypeForPath(resolvedPath) }), path.basename(resolvedPath));
   }
 
   const response = await withTimeout('openai', args.timeoutMs, (signal) =>

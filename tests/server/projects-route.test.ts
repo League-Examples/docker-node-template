@@ -30,6 +30,7 @@ import { describe, it, expect, vi, beforeAll, beforeEach, afterAll } from 'vites
 import request from 'supertest';
 import type { Server } from 'http';
 import { startTestServer, stopTestServer } from './helpers/testServer';
+import { getWorkspaceRoot } from '../../server/src/services/workspaceDirectorySync';
 
 process.env.NODE_ENV = 'test';
 
@@ -420,6 +421,36 @@ describe('GET /api/projects/:id', () => {
     const ids = res.body.iterations.map((i: any) => i.id);
     expect(ids).toContain(realIteration.id);
     expect(ids).not.toContain(agentPageIteration.id);
+  });
+
+  // Ticket 013-002 (SUC-025, iteration-modelparams-leaks-absolute-path.md):
+  // PROJECT_DETAIL_INCLUDE selects full iteration rows with no field
+  // restriction, so modelParams rides along verbatim -- this proves the
+  // route serializes whatever workspace-relative path was persisted
+  // as-is, never reconstructing or exposing the server's absolute
+  // WORKSPACE_DIR prefix.
+  it('never exposes an absolute path in an edit-sourced iteration\'s modelParams.referenceImages (ticket 013-002, SUC-025)', async () => {
+    const project = await makeProject(userAId, `${marker}-detail-modelparams-path-leak`);
+    const sourceRelPath = `projects/${project.id}/iterations/iter-1.png`;
+    const editIteration = await prisma.iteration.create({
+      data: {
+        projectId: project.id,
+        seq: 1,
+        imagePath: `projects/${project.id}/iterations/iter-2.png`,
+        promptUsed: 'edit fixture',
+        modelParams: { referenceImages: [sourceRelPath] },
+      },
+    });
+    cleanup.iterationIds.push(editIteration.id);
+
+    const agent = await loginAsUserA();
+    const res = await agent.get(`/api/projects/${project.id}`);
+
+    expect(res.status).toBe(200);
+    const returned = res.body.iterations.find((i: any) => i.id === editIteration.id);
+    expect(returned.modelParams.referenceImages).toEqual([sourceRelPath]);
+    expect(returned.modelParams.referenceImages[0].startsWith('/')).toBe(false);
+    expect(returned.modelParams.referenceImages[0]).not.toContain(getWorkspaceRoot());
   });
 });
 

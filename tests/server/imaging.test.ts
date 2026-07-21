@@ -7,6 +7,14 @@
  * `process.env.OPENROUTER_API` are deleted in `beforeEach` so this suite
  * proves the module stays green with no real key present and no network
  * access (architecture-update.md R4-equivalent for this module).
+ *
+ * Ticket 013-002 (SUC-025): `callOpenAiEdits` now resolves each
+ * `referenceImages` entry via `resolveWorkspacePath` immediately before
+ * reading it, so this file's reference-image fixtures live under a
+ * test-scoped `WORKSPACE_DIR` (the `workspaceDirectorySync.ts`-documented
+ * test convention, matching `tests/server/agent-mcp-fs-tools.test.ts` and
+ * others) and pass a workspace-relative path, never a bare `os.tmpdir()`
+ * absolute path.
  */
 import fs from 'fs/promises';
 import os from 'os';
@@ -17,11 +25,30 @@ import {
   ImagingServiceError,
   type ImagingLogger,
 } from '../../server/src/services/imaging';
+import { resolveWorkspacePath } from '../../server/src/services/workspaceDirectorySync';
 
 const previousOpenaiKey = process.env.OPENAI_API_KEY;
 const previousOpenrouterKey = process.env.OPENROUTER_API;
 const previousImageModel = process.env.IMAGE_MODEL;
 const previousOpenrouterModel = process.env.OPENROUTER_MODEL;
+
+let testRoot: string;
+let previousWorkspaceDir: string | undefined;
+
+beforeAll(async () => {
+  testRoot = await fs.mkdtemp(path.join(os.tmpdir(), 'flyerbot-imaging-test-'));
+  previousWorkspaceDir = process.env.WORKSPACE_DIR;
+  process.env.WORKSPACE_DIR = testRoot;
+});
+
+afterAll(async () => {
+  if (previousWorkspaceDir === undefined) {
+    delete process.env.WORKSPACE_DIR;
+  } else {
+    process.env.WORKSPACE_DIR = previousWorkspaceDir;
+  }
+  await fs.rm(testRoot, { recursive: true, force: true });
+});
 
 beforeEach(() => {
   // This suite must stay green with no real OPENAI_API_KEY/OPENROUTER_API
@@ -96,40 +123,58 @@ describe('generateImage', () => {
   });
 
   it('with one or more reference image paths calls /v1/images/edits and attaches them', async () => {
-    const tmpDir = await fs.mkdtemp(path.join(os.tmpdir(), 'imaging-test-'));
-    const refPath = path.join(tmpDir, 'reference.png');
+    // Ticket 013-002 (SUC-025): the fixture lives under the test-scoped
+    // WORKSPACE_DIR and generateImage receives a workspace-relative path
+    // -- callOpenAiEdits resolves it internally via resolveWorkspacePath
+    // immediately before reading it.
+    const refRelPath = 'refs/reference.png';
     const refBytes = Buffer.from('fake-reference-png-bytes');
-    await fs.writeFile(refPath, refBytes);
+    const refAbsPath = resolveWorkspacePath(refRelPath);
+    await fs.mkdir(path.dirname(refAbsPath), { recursive: true });
+    await fs.writeFile(refAbsPath, refBytes);
 
-    try {
-      const fetchImpl = vi.fn().mockResolvedValue(jsonResponse({ data: [{ b64_json: SAMPLE_B64 }] }));
+    const fetchImpl = vi.fn().mockResolvedValue(jsonResponse({ data: [{ b64_json: SAMPLE_B64 }] }));
 
-      const result = await generateImage(
-        { prompt: 'edit this scene', size: '1536x1024', referenceImages: [refPath] },
-        { openaiApiKey: 'test-openai-key', fetchImpl }
-      );
+    const result = await generateImage(
+      { prompt: 'edit this scene', size: '1536x1024', referenceImages: [refRelPath] },
+      { openaiApiKey: 'test-openai-key', fetchImpl }
+    );
 
-      expect(fetchImpl).toHaveBeenCalledTimes(1);
-      const [url, init] = fetchImpl.mock.calls[0];
-      expect(url).toBe('https://api.openai.com/v1/images/edits');
-      expect(init.method).toBe('POST');
-      expect(init.headers.Authorization).toBe('Bearer test-openai-key');
+    expect(fetchImpl).toHaveBeenCalledTimes(1);
+    const [url, init] = fetchImpl.mock.calls[0];
+    expect(url).toBe('https://api.openai.com/v1/images/edits');
+    expect(init.method).toBe('POST');
+    expect(init.headers.Authorization).toBe('Bearer test-openai-key');
 
-      const form = init.body as FormData;
-      expect(form.get('model')).toBe('gpt-image-2');
-      expect(form.get('size')).toBe('1536x1024');
-      expect(form.get('quality')).toBe('high');
+    const form = init.body as FormData;
+    expect(form.get('model')).toBe('gpt-image-2');
+    expect(form.get('size')).toBe('1536x1024');
+    expect(form.get('quality')).toBe('high');
 
-      const images = form.getAll('image[]') as unknown as Blob[];
-      expect(images).toHaveLength(1);
-      expect(images[0].type).toBe('image/png');
-      const uploadedBytes = Buffer.from(await images[0].arrayBuffer());
-      expect(uploadedBytes.equals(refBytes)).toBe(true);
+    const images = form.getAll('image[]') as unknown as Blob[];
+    expect(images).toHaveLength(1);
+    expect(images[0].type).toBe('image/png');
+    const uploadedBytes = Buffer.from(await images[0].arrayBuffer());
+    expect(uploadedBytes.equals(refBytes)).toBe(true);
 
-      expect(result.bytes.equals(SAMPLE_IMAGE_BYTES)).toBe(true);
-    } finally {
-      await fs.rm(tmpDir, { recursive: true, force: true });
-    }
+    expect(result.bytes.equals(SAMPLE_IMAGE_BYTES)).toBe(true);
+  });
+
+  it('rejects a referenceImages entry that would escape the workspace root, before any fetch call (ticket 013-002, SUC-025 defense-in-depth)', async () => {
+    const fetchImpl = vi.fn();
+
+    const error = await generateImage(
+      { prompt: 'x', size: '1024x1024', referenceImages: ['../escape-attempt.png'] },
+      { openaiApiKey: 'test-openai-key', fetchImpl }
+    ).catch((e) => e);
+
+    expect(error).toBeInstanceOf(ImagingServiceError);
+    expect(error.provider).toBe('openai');
+    expect(error.message).toContain('escapes workspace root');
+    // The escape is caught before the read even starts, so no HTTP call
+    // is ever attempted -- proving containment is enforced independent of
+    // whether the caller (turn.ts) already validated the path.
+    expect(fetchImpl).not.toHaveBeenCalled();
   });
 
   it('throws (no bytes returned) when OpenAI responds with a failure status', async () => {
@@ -182,24 +227,23 @@ describe('generateImage', () => {
   });
 
   it('rejects with ImagingServiceError when the edits call (reference-images path) never resolves before the injected timeout', async () => {
-    const tmpDir = await fs.mkdtemp(path.join(os.tmpdir(), 'imaging-timeout-test-'));
-    const refPath = path.join(tmpDir, 'reference.png');
-    await fs.writeFile(refPath, Buffer.from('fake-reference-png-bytes'));
+    // Ticket 013-002 (SUC-025): fixture under the test-scoped
+    // WORKSPACE_DIR, referenced by its workspace-relative path.
+    const refRelPath = 'refs/timeout-reference.png';
+    const refAbsPath = resolveWorkspacePath(refRelPath);
+    await fs.mkdir(path.dirname(refAbsPath), { recursive: true });
+    await fs.writeFile(refAbsPath, Buffer.from('fake-reference-png-bytes'));
 
-    try {
-      const fetchImpl = vi.fn().mockImplementation(() => new Promise<never>(() => {}));
+    const fetchImpl = vi.fn().mockImplementation(() => new Promise<never>(() => {}));
 
-      const error = await generateImage(
-        { prompt: 'x', size: '1024x1024', referenceImages: [refPath] },
-        { openaiApiKey: 'test-openai-key', fetchImpl, timeoutMs: 20 }
-      ).catch((e) => e);
+    const error = await generateImage(
+      { prompt: 'x', size: '1024x1024', referenceImages: [refRelPath] },
+      { openaiApiKey: 'test-openai-key', fetchImpl, timeoutMs: 20 }
+    ).catch((e) => e);
 
-      expect(error).toBeInstanceOf(ImagingServiceError);
-      expect(error.provider).toBe('openai');
-      expect(error.message).toMatch(/timed out/i);
-    } finally {
-      await fs.rm(tmpDir, { recursive: true, force: true });
-    }
+    expect(error).toBeInstanceOf(ImagingServiceError);
+    expect(error.provider).toBe('openai');
+    expect(error.message).toMatch(/timed out/i);
   });
 
   it('rejects with ImagingServiceError when the image-download-by-URL fallback never resolves before the injected timeout', async () => {
