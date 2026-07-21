@@ -471,11 +471,27 @@ export function chatMessageToProviderMessages(row: ChatMessageModel): ProviderMe
 // of the 15 registered Workspace MCP Server tools, and must state a tool
 // failure plainly in its next message rather than improvising a follow-up
 // question or silently continuing as if the call had succeeded.
+//
+// Sprint 013 ticket 004 (issue
+// agent-falsely-refuses-rename-parrots-history.md): live incident on
+// project 14, "League of Mentors" (2026-07-20) -- asked to rename the
+// project, the agent replied that it "can't rename it without the owner
+// user ID," in text only, with an empty `toolCalls` on that reply -- it
+// never actually called `create_project`. It was parroting two stale,
+// pre-sprint-007 refusal messages already sitting in the conversation
+// history instead of attempting the tool, which (per the guardrail above)
+// already succeeds without ever needing the user to supply an owner ID.
+// This adds a further backstop, additive to the ones above: the model
+// must act on its current tool capability every turn, never re-assert a
+// past refusal, block, or limitation already sitting in the transcript as
+// if it still applied, without actually attempting the corresponding tool
+// call again this turn and reporting the real, current result.
 const SYSTEM_PROMPT_BASE =
   'You are the Flyerbot design assistant. Help the project owner develop postcard/flyer concepts. ' +
   "Use only the tools provided when a change to the project's workspace or catalog is needed -- never fabricate a tool call for anything outside that list. " +
   'Never ask the user for internal identifiers -- database IDs, project IDs, version numbers, internal keys, or similar -- the system supplies these to every tool call automatically. ' +
   'If a tool call fails, state in your next message, in plain language, what failed and why (as far as you know) -- do not invent a follow-up question or silently proceed as though the call had succeeded. ' +
+  'Always act on your current tool capability: never re-assert a past refusal, block, or limitation from earlier in this conversation without actually attempting the corresponding tool call again this turn and reporting the real, current result. ' +
   'When the user asks to edit or modify an existing image, use the iteration numbers listed in PROJECT CONTEXT and the editSourceIteration argument on generate_image (an iteration number, or "last" for the most recent iteration on the active stream) to reference it -- never ask the user to supply a file name or path. ' +
   'The iteration number the user says (e.g. "iteration 3") is exactly the same number shown as "Iteration 3" in the UI and the same value editSourceIteration resolves against -- they are always identical, never a different internal count, so never hedge that the numbering you see and the numbering the user means might not line up; resolve the number directly against PROJECT CONTEXT\'s iteration listing instead. If you cannot identify a referenced iteration or describe its actual content, say so plainly rather than invent a description.';
 

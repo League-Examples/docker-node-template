@@ -2242,6 +2242,100 @@ describe('runTurn -- system prompt guardrail against internal IDs and silent too
       expect(prompt).toContain('If a tool call fails, state in your next message, in plain language, what failed');
     }
   });
+
+  // Sprint 013 ticket 004 (issue
+  // agent-falsely-refuses-rename-parrots-history.md): live incident,
+  // project 14, 2026-07-20 -- asked to rename the project, the agent
+  // replied with a stale "I can't rename it without the owner user ID"
+  // refusal, parroting two earlier, pre-sprint-007 refusal messages
+  // already sitting in the conversation history, rather than attempting
+  // the (already-working) `create_project` call. This asserts the new
+  // anti-parroting sentence is present, mirroring the assertion style
+  // above for the existing internal-ID and iteration-numbering guardrails.
+  it('sends a system prompt instructing the model to act on its current tool capability and never re-assert a past refusal or limitation from the transcript (ticket 013-004)', async () => {
+    const sentPrompts: string[] = [];
+    const script: MockProviderScript = [{ kind: 'message', content: 'Sure, what would you like to work on?' }];
+
+    await runTurn(
+      { projectId: projectAId, message: 'Hello.' },
+      {
+        provider: createMockAdapter(script, { onSendTurn: (input) => sentPrompts.push(input.systemPrompt) }),
+        versioning: makeVersioningSpy(),
+      }
+    );
+
+    expect(sentPrompts).toHaveLength(1);
+    expect(sentPrompts[0]).toContain(
+      'Always act on your current tool capability: never re-assert a past refusal, block, or limitation from earlier in this conversation without actually attempting the corresponding tool call again this turn and reporting the real, current result.'
+    );
+  });
+
+  // Regression test for the live incident itself: seeds a poisoned-history
+  // fixture matching the real `ChatMessage` shape (a prior assistant
+  // refusal with an EMPTY/absent `toolCalls` column -- id 92 in the
+  // incident, never a real tool failure), then sends a new rename request
+  // and asserts the turn dispatches a REAL, populated `create_project`
+  // call rather than short-circuiting to a text-only reply. Per the
+  // ticket's own testing note (and matching ticket 007-003's precedent for
+  // the internal-ID guardrail): the mock adapter is scripted to call
+  // `create_project` here, since a unit test cannot itself verify the real
+  // model's behavior given the updated prompt -- this proves a rename
+  // attempt reaches `create_project` normally even with poisoned history
+  // in context, not that the live model will always comply.
+  it('does not repeat a stale, poisoned-history refusal: a new rename request still dispatches a real, populated create_project call (ticket 013-004)', async () => {
+    const project = await prisma.project.create({
+      data: { title: `${marker}-poisoned-history-project`, ownerUserId: ownerId },
+    });
+    cleanup.projectIds.push(project.id);
+
+    await prisma.chatMessage.create({
+      data: { projectId: project.id, role: 'user', content: 'Please rename this to League of Mentors.' },
+    });
+    // The stale refusal itself: role 'assistant', text-only content, and
+    // an EMPTY/absent toolCalls column -- exactly the incident's
+    // ChatMessage id 92 shape. No tool was ever called for this reply.
+    await prisma.chatMessage.create({
+      data: {
+        projectId: project.id,
+        role: 'assistant',
+        content: "I can't rename it without the owner user ID -- every attempt to set the title fails at that step.",
+      },
+    });
+
+    const receivedArgs: unknown[] = [];
+    const handlers: Record<string, WorkspaceToolHandler> = {
+      create_project: async (args: any, options: any) => {
+        receivedArgs.push(args);
+        return createProject(args, options);
+      },
+    };
+    const script: MockProviderScript = [
+      {
+        kind: 'tool_calls',
+        calls: [{ id: 'ap-1', name: 'create_project', args: { id: project.id, title: 'League of Mentors' } }],
+      },
+      { kind: 'message', content: 'Renamed the project to League of Mentors.' },
+    ];
+
+    const result = await runTurn(
+      { projectId: project.id, message: 'Please try renaming it to League of Mentors again.' },
+      { provider: createMockAdapter(script), toolHandlers: handlers, versioning: makeVersioningSpy() }
+    );
+
+    // A REAL, populated create_project call was dispatched this turn --
+    // not a text-only reply repeating the old refusal.
+    expect(receivedArgs).toHaveLength(1);
+    expect(receivedArgs[0]).toMatchObject({ id: project.id, title: 'League of Mentors' });
+
+    const createCall = result.toolCalls.find((c) => c.name === 'create_project');
+    expect(createCall).toBeDefined();
+    expect((createCall!.result as any).error).toBeUndefined();
+    expect((createCall!.result as any).id).toBe(project.id);
+    expect((createCall!.result as any).title).toBe('League of Mentors');
+
+    const after = await prisma.project.findUniqueOrThrow({ where: { id: project.id } });
+    expect(after.title).toBe('League of Mentors');
+  });
 });
 
 // ---------------------------------------------------------------------------
