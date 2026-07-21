@@ -1,5 +1,6 @@
 import request from 'supertest';
 import express from 'express';
+import type { Server } from 'http';
 import {
   ServiceError,
   NotFoundError,
@@ -9,6 +10,7 @@ import {
   ConflictError,
 } from '../../server/src/errors';
 import { errorHandler } from '../../server/src/middleware/errorHandler';
+import { startTestServer, stopTestServer } from './helpers/testServer';
 
 // --- Unit tests for error classes ---
 
@@ -71,54 +73,70 @@ describe('ServiceError hierarchy', () => {
 
 // --- Integration tests for error handler middleware ---
 
+// This describe's `app` is a small, fixture-only Express app (never the
+// real `server/src/app.ts`) whose one route rethrows whatever error the
+// currently-running test wants to exercise -- previously a fresh
+// `createTestApp(errorToThrow)` instance (and thus, via supertest's
+// per-call ephemeral-server wrap, a fresh `http.Server`) per test. Sprint
+// 013-001: one persistent server is created once for this describe block,
+// wrapping a route that reads the error to throw from a mutable variable
+// (`errorToThrow`) set by each test immediately before its request --
+// same assertions, same per-test error, no per-test ephemeral server.
 describe('Error handler middleware', () => {
-  function createTestApp(errorToThrow: Error) {
-    const app = express();
-    app.get('/test', () => {
+  let errorToThrow: Error;
+  let server: Server;
+
+  beforeAll(async () => {
+    const fixtureApp = express();
+    fixtureApp.get('/test', () => {
       throw errorToThrow;
     });
-    app.use(errorHandler);
-    return app;
-  }
+    fixtureApp.use(errorHandler);
+    server = await startTestServer(fixtureApp);
+  });
+
+  afterAll(async () => {
+    await stopTestServer(server);
+  });
 
   it('returns 404 for NotFoundError', async () => {
-    const app = createTestApp(new NotFoundError('Item not found'));
-    const res = await request(app).get('/test');
+    errorToThrow = new NotFoundError('Item not found');
+    const res = await request(server).get('/test');
     expect(res.status).toBe(404);
     expect(res.body).toEqual({ error: 'Item not found' });
   });
 
   it('returns 400 for ValidationError', async () => {
-    const app = createTestApp(new ValidationError('Bad input'));
-    const res = await request(app).get('/test');
+    errorToThrow = new ValidationError('Bad input');
+    const res = await request(server).get('/test');
     expect(res.status).toBe(400);
     expect(res.body).toEqual({ error: 'Bad input' });
   });
 
   it('returns 401 for UnauthorizedError', async () => {
-    const app = createTestApp(new UnauthorizedError());
-    const res = await request(app).get('/test');
+    errorToThrow = new UnauthorizedError();
+    const res = await request(server).get('/test');
     expect(res.status).toBe(401);
     expect(res.body).toEqual({ error: 'Not authenticated' });
   });
 
   it('returns 403 for ForbiddenError', async () => {
-    const app = createTestApp(new ForbiddenError());
-    const res = await request(app).get('/test');
+    errorToThrow = new ForbiddenError();
+    const res = await request(server).get('/test');
     expect(res.status).toBe(403);
     expect(res.body).toEqual({ error: 'Insufficient permissions' });
   });
 
   it('returns 409 for ConflictError', async () => {
-    const app = createTestApp(new ConflictError('Duplicate entry'));
-    const res = await request(app).get('/test');
+    errorToThrow = new ConflictError('Duplicate entry');
+    const res = await request(server).get('/test');
     expect(res.status).toBe(409);
     expect(res.body).toEqual({ error: 'Duplicate entry' });
   });
 
   it('returns 500 with generic message for unknown errors', async () => {
-    const app = createTestApp(new Error('secret internal details'));
-    const res = await request(app).get('/test');
+    errorToThrow = new Error('secret internal details');
+    const res = await request(server).get('/test');
     expect(res.status).toBe(500);
     expect(res.body).toEqual({ error: 'Internal server error' });
     // Must NOT leak the original error message
@@ -129,9 +147,19 @@ describe('Error handler middleware', () => {
 // --- Test that health endpoint includes version ---
 
 describe('Health endpoint version', () => {
-  it('GET /api/health includes version field', async () => {
+  let server: Server;
+
+  beforeAll(async () => {
     const app = (await import('../../server/src/app')).default;
-    const res = await request(app).get('/api/health');
+    server = await startTestServer(app);
+  });
+
+  afterAll(async () => {
+    await stopTestServer(server);
+  });
+
+  it('GET /api/health includes version field', async () => {
+    const res = await request(server).get('/api/health');
     expect(res.status).toBe(200);
     expect(res.body).toHaveProperty('version');
     expect(typeof res.body.version).toBe('string');

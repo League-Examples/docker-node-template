@@ -46,6 +46,12 @@ export interface ProjectDetailDTO {
   id: number;
   title: string;
   status: string;
+  /** Optimistic-lock counter (ticket 013-003): `GET /api/projects/:id`
+   * already returns this scalar column (Prisma's default `findUnique`
+   * includes every scalar field; only this client type was missing it) --
+   * needed so `EditableProjectTitle`'s `PATCH /api/projects/:id` can send
+   * the current `version` `create_project`'s update path requires. */
+  version: number;
   detailsHeader?: Record<string, unknown> | null;
   iterations: IterationDTO[];
   references: ReferenceDTO[];

@@ -411,17 +411,19 @@ projectsRouter.delete('/projects/:id/iterations/:iterId', requireAuth, async (re
   res.status(200).json(result);
 });
 
-/** OOP follow-up (2026-07-15): `ProjectList.tsx`'s bulk-select action bar --
- * archive (My/All views) and restore (Archive view) are the same PATCH,
- * differing only in the `status` value the client sends. Delegates to
- * `create_project`'s update path (its `id`+`version` optimistic-lock branch
- * already supports a bare `status` change) rather than a new tool function --
- * no other project fields are involved here. Reads the current row first (a
- * read, not a write, matching every other existing-row check in this file)
- * both to 404 on a missing project and to supply the `version`
- * `create_project`'s update path requires; a concurrent update losing that
- * race surfaces as `create_project`'s own `VersionConflictError` (409), not
- * a special case here. */
+/** OOP follow-up (2026-07-15); broadened by ticket 013-003 (SUC-026) to
+ * also accept `title`: `ProjectList.tsx`'s bulk-select action bar --
+ * archive (My/All views) and restore (Archive view) -- and `ProjectDetail`'s
+ * inline click-to-edit title control both PATCH this same route, differing
+ * only in which field(s) the client sends. Delegates to `create_project`'s
+ * update path (its `id`+`version` optimistic-lock branch already supports a
+ * bare `status` and/or `title` change) rather than a new route or a new tool
+ * function. Reads the current row first (a read, not a write, matching
+ * every other existing-row check in this file) both to 404 on a missing
+ * project and to supply the `version` `create_project`'s update path
+ * requires; a concurrent update losing that race surfaces as
+ * `create_project`'s own `VersionConflictError` (409), not a special case
+ * here. */
 projectsRouter.patch('/projects/:id', requireAuth, async (req, res) => {
   const id = Number.parseInt(String(req.params.id), 10);
   if (Number.isNaN(id)) {
@@ -430,8 +432,23 @@ projectsRouter.patch('/projects/:id', requireAuth, async (req, res) => {
   }
 
   const status = req.body?.status;
-  if (status !== 'active' && status !== 'archived') {
+  if (status !== undefined && status !== 'active' && status !== 'archived') {
     res.status(400).json({ error: "status must be 'active' or 'archived'" });
+    return;
+  }
+
+  const rawTitle = req.body?.title;
+  let title: string | undefined;
+  if (rawTitle !== undefined) {
+    if (typeof rawTitle !== 'string' || !rawTitle.trim()) {
+      res.status(400).json({ error: 'title must be a non-empty string' });
+      return;
+    }
+    title = rawTitle.trim();
+  }
+
+  if (status === undefined && title === undefined) {
+    res.status(400).json({ error: 'title or status is required' });
     return;
   }
 
@@ -443,7 +460,7 @@ projectsRouter.patch('/projects/:id', requireAuth, async (req, res) => {
 
   let updated;
   try {
-    updated = await createProject({ id, version: existing.version, status });
+    updated = await createProject({ id, version: existing.version, title, status });
   } catch (err) {
     res.status(statusForToolError(err)).json({ error: toolErrorMessage(err) });
     return;

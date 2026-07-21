@@ -1,15 +1,29 @@
 import request from 'supertest';
+import type { Server } from 'http';
 
 process.env.NODE_ENV = 'test';
 process.env.DATABASE_URL = process.env.DATABASE_URL || 'postgresql://app:devpassword@localhost:5433/app';
 
 import app from '../../server/src/app';
+import { startTestServer, stopTestServer } from './helpers/testServer';
+
+// One persistent http.Server for this file (sprint 013-001) -- see
+// helpers/testServer.ts for why. Registered first so it closes last.
+let server: Server;
+
+afterAll(async () => {
+  await stopTestServer(server);
+});
+
+beforeAll(async () => {
+  server = await startTestServer(app);
+});
 
 describe('Admin Backups API', () => {
   let adminAgent: any;
 
   beforeAll(async () => {
-    adminAgent = request.agent(app);
+    adminAgent = request.agent(server);
     await adminAgent.post('/api/auth/test-login').send({
       email: 'backup-admin@example.com',
       displayName: 'Backup Admin',
@@ -38,7 +52,7 @@ describe('Admin Backups API', () => {
   });
 
   it('returns 403 for non-admin on export', async () => {
-    const userAgent = request.agent(app);
+    const userAgent = request.agent(server);
     await userAgent.post('/api/auth/test-login').send({
       email: 'backup-user@example.com',
       displayName: 'Backup User',
@@ -50,12 +64,12 @@ describe('Admin Backups API', () => {
   });
 
   it('returns 401 for unauthenticated on export', async () => {
-    const res = await request(app).get('/api/admin/export/json');
+    const res = await request(server).get('/api/admin/export/json');
     expect(res.status).toBe(401);
   });
 
   it('returns 403 for non-admin on backup routes', async () => {
-    const userAgent = request.agent(app);
+    const userAgent = request.agent(server);
     await userAgent.post('/api/auth/test-login').send({
       email: 'backup-user2@example.com',
       displayName: 'Backup User 2',
@@ -66,7 +80,7 @@ describe('Admin Backups API', () => {
   });
 
   it('returns 401 for unauthenticated on backup routes', async () => {
-    const res = await request(app).get('/api/admin/backups');
+    const res = await request(server).get('/api/admin/backups');
     expect(res.status).toBe(401);
   });
 });

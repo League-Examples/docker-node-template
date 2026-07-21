@@ -17,6 +17,7 @@ function projectFixture(overrides: Record<string, unknown> = {}) {
     id: 7,
     title: 'Spring Open House Flyer',
     status: 'active',
+    version: 1,
     iterations: [
       { id: 1, projectId: 7, seq: 1, imagePath: 'projects/7/iterations/1.png', accepted: true, role: 'front' },
     ],

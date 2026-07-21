@@ -10,6 +10,7 @@
  */
 
 import request from 'supertest';
+import type { Server } from 'http';
 
 process.env.NODE_ENV = 'test';
 
@@ -17,6 +18,20 @@ import app from '../../server/src/app';
 import { findOrCreateOAuthUser } from '../../server/src/routes/auth';
 import { prisma } from '../../server/src/services/prisma';
 import { cleanupTestDb } from './helpers/db';
+import { startTestServer, stopTestServer } from './helpers/testServer';
+
+// One persistent http.Server for this file (sprint 013-001) -- see
+// helpers/testServer.ts for why. Registered first so it closes last,
+// after the cleanupTestDb afterAll below.
+let server: Server;
+
+afterAll(async () => {
+  await stopTestServer(server);
+});
+
+beforeAll(async () => {
+  server = await startTestServer(app);
+});
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -57,7 +72,7 @@ describe('OAuth initiate routes — 501 when not configured', () => {
   });
 
   it('GET /api/auth/google returns 501 with error and docs link', async () => {
-    const res = await request(app).get('/api/auth/google');
+    const res = await request(server).get('/api/auth/google');
     expect(res.status).toBe(501);
     expect(res.body).toHaveProperty('error');
     expect(res.body.error).toMatch(/not configured/i);

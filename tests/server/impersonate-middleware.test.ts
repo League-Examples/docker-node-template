@@ -6,13 +6,27 @@
  */
 import { vi, describe, it, expect, beforeAll, afterAll } from 'vitest';
 import type { Request, Response, NextFunction } from 'express';
+import type { Server } from 'http';
 import request from 'supertest';
 import app from '../../server/src/app';
 import { requireAdmin } from '../../server/src/middleware/requireAdmin';
 import { prisma } from '../../server/src/services/prisma';
+import { startTestServer, stopTestServer } from './helpers/testServer';
 
 // Set test environment
 process.env.NODE_ENV = 'test';
+
+// One persistent http.Server for this file (sprint 013-001) -- see
+// helpers/testServer.ts for why.
+let server: Server;
+
+beforeAll(async () => {
+  server = await startTestServer(app);
+});
+
+afterAll(async () => {
+  await stopTestServer(server);
+});
 
 // =============================================================================
 // Helpers
@@ -180,7 +194,7 @@ describe('Impersonation integration via app', () => {
   it('no impersonation: req.user is the logged-in user, req.realAdmin is absent', async () => {
     // Without impersonation, /api/auth/me returns the logged-in user's data.
     // If realAdmin were leaking, the response would differ.
-    const agent = request.agent(app);
+    const agent = request.agent(server);
     await agent.post('/api/auth/test-login').send({
       email: 'imp-admin@example.com',
       displayName: 'Imp Admin',
@@ -193,7 +207,7 @@ describe('Impersonation integration via app', () => {
   });
 
   it('admin can access admin routes when logged in normally', async () => {
-    const agent = request.agent(app);
+    const agent = request.agent(server);
     await agent.post('/api/auth/test-login').send({
       email: 'imp-admin@example.com',
       displayName: 'Imp Admin',
@@ -204,7 +218,7 @@ describe('Impersonation integration via app', () => {
   });
 
   it('regular user is blocked from admin routes (403)', async () => {
-    const agent = request.agent(app);
+    const agent = request.agent(server);
     await agent.post('/api/auth/test-login').send({
       email: 'imp-target@example.com',
       displayName: 'Imp Target',
@@ -216,7 +230,7 @@ describe('Impersonation integration via app', () => {
   });
 
   it('unauthenticated request is rejected with 401', async () => {
-    const res = await request(app).get('/api/admin/users');
+    const res = await request(server).get('/api/admin/users');
     expect(res.status).toBe(401);
   });
 

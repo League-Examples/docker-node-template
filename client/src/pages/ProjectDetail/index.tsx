@@ -4,6 +4,7 @@ import OutputPane from './OutputPane';
 import ChatPanel from './ChatPanel';
 import ReferenceStrip from './ReferenceStrip';
 import ProjectDetailsHeader from './ProjectDetailsHeader';
+import EditableProjectTitle from './EditableProjectTitle';
 import LibraryDrawer from './LibraryDrawer';
 import FaceTabs from './FaceTabs';
 import { usePostcardEditorState } from './usePostcardEditorState';
@@ -143,6 +144,16 @@ export default function ProjectDetail() {
     }
   }
 
+  /** `EditableProjectTitle`'s success callback (ticket 013-003, SUC-026):
+   * updates local state so the header re-renders the new title without a
+   * full page reload, mirroring `handleIterationsChange`/
+   * `handleReferenceAdded`'s local-state-update pattern. `version` is
+   * updated alongside `title` so a subsequent edit sends the now-current
+   * optimistic-lock value. */
+  function handleTitleSaved(next: { title: string; version: number }) {
+    setProject((current) => (current ? { ...current, title: next.title, version: next.version } : current));
+  }
+
   /** `LibraryDrawer`'s double-click-add callback (SUC-003): appends the
    * newly created `Reference` to local state so the strip updates
    * immediately, deduping by id in case of a double-fire. */
@@ -262,7 +273,12 @@ export default function ProjectDetail() {
           >
             ←
           </Link>
-          <h1 className="text-lg font-semibold text-slate-800">{project.title}</h1>
+          <EditableProjectTitle
+            projectId={projectId}
+            title={project.title}
+            version={project.version}
+            onSaved={handleTitleSaved}
+          />
 
           <div className="mx-auto">
             <FaceTabs active={activeTab} onChange={setActiveTab} />

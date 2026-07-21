@@ -17,8 +17,21 @@ import os from 'os';
 import path from 'path';
 import { describe, it, expect, beforeAll, afterAll } from 'vitest';
 import request from 'supertest';
+import type { Server } from 'http';
+import { startTestServer, stopTestServer } from './helpers/testServer';
 
 process.env.NODE_ENV = 'test';
+
+// One persistent http.Server for this file (sprint 013-001) -- started
+// once `app` is available below (after WORKSPACE_DIR is set). Its
+// afterAll is registered first, before any other hook in this file, so
+// it closes last -- after the WORKSPACE_DIR-restore and user-cleanup
+// afterAlls further down.
+let server: Server;
+
+afterAll(async () => {
+  await stopTestServer(server);
+});
 
 let testRoot: string;
 let previousWorkspaceDir: string | undefined;
@@ -44,6 +57,7 @@ let prisma: typeof import('../../server/src/services/prisma').prisma;
 beforeAll(async () => {
   app = (await import('../../server/src/app')).default;
   prisma = (await import('../../server/src/services/prisma')).prisma;
+  server = await startTestServer(app);
 });
 
 const marker = `t004files${Date.now()}`;
@@ -67,7 +81,7 @@ afterAll(async () => {
 });
 
 async function loginAsUser() {
-  const agent = request.agent(app);
+  const agent = request.agent(server);
   await agent.post('/api/auth/test-login').send({
     email: `${marker}-user@example.com`,
     displayName: 'Files Route User',
@@ -78,7 +92,7 @@ async function loginAsUser() {
 
 describe('GET /api/files/* -- auth gate', () => {
   it('rejects an unauthenticated request with 401 before touching the filesystem', async () => {
-    const res = await request(app).get('/api/files/projects/1/iterations/iter-1.png');
+    const res = await request(server).get('/api/files/projects/1/iterations/iter-1.png');
     expect(res.status).toBe(401);
   });
 });

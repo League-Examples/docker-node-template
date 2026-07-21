@@ -1,7 +1,22 @@
 import request from 'supertest';
+import type { Server } from 'http';
 
 import app from '../../server/src/app';
 import { cleanupTestDb, findUserByEmail, findUserById } from './helpers/db';
+import { startTestServer, stopTestServer } from './helpers/testServer';
+
+// One persistent http.Server for this file (sprint 013-001) -- see
+// helpers/testServer.ts for why. Registered first so it closes last,
+// after the cleanupTestDb afterAll below.
+let server: Server;
+
+afterAll(async () => {
+  await stopTestServer(server);
+});
+
+beforeAll(async () => {
+  server = await startTestServer(app);
+});
 
 beforeAll(async () => {
   await cleanupTestDb();
@@ -13,7 +28,7 @@ afterAll(async () => {
 
 describe('POST /api/auth/test-login', () => {
   it('creates a user and establishes a session', async () => {
-    const agent = request.agent(app);
+    const agent = request.agent(server);
     const res = await agent.post('/api/auth/test-login').send({
       email: 'testuser@example.com',
       displayName: 'Test User',
@@ -27,7 +42,7 @@ describe('POST /api/auth/test-login', () => {
   });
 
   it('creates an admin user when role=ADMIN', async () => {
-    const agent = request.agent(app);
+    const agent = request.agent(server);
     const res = await agent.post('/api/auth/test-login').send({
       email: 'admin@example.com',
       displayName: 'Admin User',
@@ -38,7 +53,7 @@ describe('POST /api/auth/test-login', () => {
   });
 
   it('defaults to test@example.com when no email provided', async () => {
-    const agent = request.agent(app);
+    const agent = request.agent(server);
     const res = await agent.post('/api/auth/test-login').send({});
     expect(res.status).toBe(200);
     expect(res.body.email).toBe('test@example.com');
@@ -48,12 +63,12 @@ describe('POST /api/auth/test-login', () => {
 
 describe('GET /api/auth/me', () => {
   it('returns 401 when not authenticated', async () => {
-    const res = await request(app).get('/api/auth/me');
+    const res = await request(server).get('/api/auth/me');
     expect(res.status).toBe(401);
   });
 
   it('returns the authenticated user', async () => {
-    const agent = request.agent(app);
+    const agent = request.agent(server);
     await agent.post('/api/auth/test-login').send({
       email: 'metest@example.com',
       displayName: 'Me Test',
@@ -69,7 +84,7 @@ describe('GET /api/auth/me', () => {
 
 describe('POST /api/auth/logout', () => {
   it('clears the session', async () => {
-    const agent = request.agent(app);
+    const agent = request.agent(server);
     await agent.post('/api/auth/test-login').send({
       email: 'logouttest@example.com',
       displayName: 'Logout Test',
@@ -86,7 +101,7 @@ describe('POST /api/auth/logout', () => {
 
 describe('Role-based access control', () => {
   it('blocks non-admin from admin routes with 403', async () => {
-    const agent = request.agent(app);
+    const agent = request.agent(server);
     await agent.post('/api/auth/test-login').send({
       email: 'regularuser@example.com',
       displayName: 'Regular User',
@@ -98,7 +113,7 @@ describe('Role-based access control', () => {
   });
 
   it('allows admin to access admin routes', async () => {
-    const agent = request.agent(app);
+    const agent = request.agent(server);
     await agent.post('/api/auth/test-login').send({
       email: 'adminaccess@example.com',
       displayName: 'Admin Access',
@@ -110,7 +125,7 @@ describe('Role-based access control', () => {
   });
 
   it('returns 401 for unauthenticated requests to admin routes', async () => {
-    const res = await request(app).get('/api/admin/users');
+    const res = await request(server).get('/api/admin/users');
     expect(res.status).toBe(401);
   });
 });
@@ -119,7 +134,7 @@ describe('Admin user management API', () => {
   let adminAgent: any;
 
   beforeAll(async () => {
-    adminAgent = request.agent(app);
+    adminAgent = request.agent(server);
     await adminAgent.post('/api/auth/test-login').send({
       email: 'useradmin@example.com',
       displayName: 'User Admin',

@@ -1,5 +1,8 @@
 ---
-status: pending
+status: done
+sprint: '013'
+tickets:
+- 013-002
 ---
 
 # Iteration.modelParams persists and serializes an absolute filesystem path

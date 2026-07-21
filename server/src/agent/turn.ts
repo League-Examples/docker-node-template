@@ -63,6 +63,7 @@ import * as catalogTools from '../agent-mcp/catalogTools';
 import type { VersioningRecorder } from '../agent-mcp/fsTools';
 import type { ChatMessageModel } from '../generated/prisma/models/ChatMessage';
 import type { ProjectModel } from '../generated/prisma/models/Project';
+import type { IterationModel } from '../generated/prisma/models/Iteration';
 
 // ---------------------------------------------------------------------------
 // Lock acquisition: bounded wait/retry on top of locks.ts's reject-on-
@@ -142,8 +143,16 @@ export type WorkspaceToolHandler = (args: any, options: WorkspaceToolOptions) =>
 
 /** The 11 tools tickets 002/003 registered on `workspaceMcpServer`, plus
  * ticket 005-002's four more (`add_reference`, `remove_reference`,
- * `set_iteration_state`, `search_catalog`) -- 15 total, dispatched here by
- * name -- and no others (R2: fixed, statically-registered tool surface). */
+ * `set_iteration_state`, `search_catalog`), plus ticket 013-005's three
+ * more (`archive_project`, `delete_project`, `delete_iteration`) -- 18
+ * total, dispatched here by name -- and no others (R2: fixed,
+ * statically-registered tool surface). `archive_project` is a thin alias
+ * over `createProject`'s existing update path (no new persistence
+ * function); `delete_project`/`delete_iteration` reuse the existing
+ * `removeProject`/`removeIteration` -- `dispatchToolCall` below resolves
+ * each tool's agent-facing arguments (no project id ever accepted;
+ * `seq` instead of a raw `iterationId`) into the shape these handlers
+ * already expect before calling them. */
 export const DEFAULT_TOOL_HANDLERS: Record<string, WorkspaceToolHandler> = {
   read_file: (args) => fsTools.readFile(args),
   stat: (args) => fsTools.statPath(args),
@@ -160,13 +169,20 @@ export const DEFAULT_TOOL_HANDLERS: Record<string, WorkspaceToolHandler> = {
   remove_reference: (args, options) => catalogTools.removeReference(args, options),
   set_iteration_state: (args, options) => catalogTools.setIterationState(args, options),
   search_catalog: (args, options) => catalogTools.searchCatalog(args, options),
+  archive_project: (args, options) => catalogTools.createProject(args, options),
+  delete_project: (args, options) => catalogTools.removeProject(args, options),
+  delete_iteration: (args, options) => catalogTools.removeIteration(args, options),
 };
 
 /** Tool definitions handed to `ProviderAdapter.sendTurn` -- the
  * provider-neutral shape (name/description/JSON-schema-ish inputSchema)
  * mirroring the zod schemas `fsTools.ts`/`catalogTools.ts` register on
- * `workspaceMcpServer` (kept in sync by hand; both describe the same 15
- * tools, not two independent tool surfaces). */
+ * `workspaceMcpServer` (kept in sync by hand; both describe the same 18
+ * `DEFAULT_TOOL_HANDLERS` tools, not two independent tool surfaces), plus
+ * `generate_image` (see below -- a second, non-`catalogTools.ts` dispatch
+ * target). Ticket 013-005: `archive_project`/`delete_project`/
+ * `delete_iteration` are new; `set_iteration_state` is addressed by `seq`
+ * (never a raw `iterationId` -- see this ticket's Design Rationale R2). */
 export const WORKSPACE_TOOL_DEFINITIONS: ProviderToolDefinition[] = [
   {
     name: 'read_file',
@@ -340,15 +356,58 @@ export const WORKSPACE_TOOL_DEFINITIONS: ProviderToolDefinition[] = [
   {
     name: 'set_iteration_state',
     description:
-      "Update an Iteration's accepted/role flags. role is stream membership ('front'|'back'); many Iterations may share a role. Setting accepted: true clears accepted from every OTHER Iteration sharing the same (projectId, role) stream only. Setting role never affects any other Iteration's role.",
+      "Update an Iteration's accepted/role flags, or move it between the front/back streams by setting role -- addressed by its UI seq number (never a raw iteration id). role is stream membership ('front'|'back'); many Iterations may share a role. Setting accepted: true clears accepted from every OTHER Iteration sharing the same (projectId, role) stream only. Setting role never affects any other Iteration's role.",
     inputSchema: {
       type: 'object',
       properties: {
-        iterationId: { type: 'integer' },
+        seq: { type: 'integer', description: 'The iteration number shown in PROJECT CONTEXT to update.' },
         accepted: { type: 'boolean' },
         role: { type: ['string', 'null'], enum: ['front', 'back', null] },
       },
-      required: ['iterationId'],
+      required: ['seq'],
+    },
+  },
+  {
+    name: 'archive_project',
+    description:
+      "Archive or restore the current project (always the one this chat turn is scoped to -- no project id is accepted or needed) by setting its status.",
+    inputSchema: {
+      type: 'object',
+      properties: {
+        archived: { type: 'boolean', description: 'true to archive the project, false to restore it to active.' },
+      },
+      required: ['archived'],
+    },
+  },
+  {
+    name: 'delete_project',
+    description:
+      'Permanently delete the current project (always the one this chat turn is scoped to -- no project id is accepted or needed), including its chat history, references, and iterations, and best-effort remove its workspace files. Irreversible -- requires confirm: true, which must only be set after the user has explicitly asked, in this conversation, to delete this specific project.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        confirm: {
+          type: 'boolean',
+          description: 'Must be true to perform the deletion. Omitting it or setting it to false is rejected before anything is deleted.',
+        },
+      },
+      required: ['confirm'],
+    },
+  },
+  {
+    name: 'delete_iteration',
+    description:
+      'Permanently delete one iteration from the current project, addressed by its UI seq number (never a raw iteration id), and best-effort remove its backing image file. Irreversible -- requires confirm: true, which must only be set after the user has explicitly asked, in this conversation, to delete that specific iteration.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        seq: { type: 'integer', description: 'The iteration number shown in PROJECT CONTEXT to delete.' },
+        confirm: {
+          type: 'boolean',
+          description: 'Must be true to perform the deletion. Omitting it or setting it to false is rejected before anything is deleted.',
+        },
+      },
+      required: ['seq', 'confirm'],
     },
   },
   {
@@ -471,13 +530,38 @@ export function chatMessageToProviderMessages(row: ChatMessageModel): ProviderMe
 // of the 15 registered Workspace MCP Server tools, and must state a tool
 // failure plainly in its next message rather than improvising a follow-up
 // question or silently continuing as if the call had succeeded.
+//
+// Sprint 013 ticket 004 (issue
+// agent-falsely-refuses-rename-parrots-history.md): live incident on
+// project 14, "League of Mentors" (2026-07-20) -- asked to rename the
+// project, the agent replied that it "can't rename it without the owner
+// user ID," in text only, with an empty `toolCalls` on that reply -- it
+// never actually called `create_project`. It was parroting two stale,
+// pre-sprint-007 refusal messages already sitting in the conversation
+// history instead of attempting the tool, which (per the guardrail above)
+// already succeeds without ever needing the user to supply an owner ID.
+// This adds a further backstop, additive to the ones above: the model
+// must act on its current tool capability every turn, never re-assert a
+// past refusal, block, or limitation already sitting in the transcript as
+// if it still applied, without actually attempting the corresponding tool
+// call again this turn and reporting the real, current result.
+//
+// Sprint 013 ticket 005 (issue agent-full-data-control-tools.md): adds
+// `archive_project`, `delete_project`, and `delete_iteration` -- the last
+// two irreversible. `dispatchToolCall` below structurally rejects
+// `delete_project`/`delete_iteration` unless `confirm: true` is set (R3/
+// R4), but that gate alone doesn't stop the model from setting `confirm:
+// true` speculatively; this sentence is the accompanying behavioral
+// guard, mirroring the internal-ID and anti-parroting guardrails above.
 const SYSTEM_PROMPT_BASE =
   'You are the Flyerbot design assistant. Help the project owner develop postcard/flyer concepts. ' +
   "Use only the tools provided when a change to the project's workspace or catalog is needed -- never fabricate a tool call for anything outside that list. " +
   'Never ask the user for internal identifiers -- database IDs, project IDs, version numbers, internal keys, or similar -- the system supplies these to every tool call automatically. ' +
   'If a tool call fails, state in your next message, in plain language, what failed and why (as far as you know) -- do not invent a follow-up question or silently proceed as though the call had succeeded. ' +
+  'Always act on your current tool capability: never re-assert a past refusal, block, or limitation from earlier in this conversation without actually attempting the corresponding tool call again this turn and reporting the real, current result. ' +
   'When the user asks to edit or modify an existing image, use the iteration numbers listed in PROJECT CONTEXT and the editSourceIteration argument on generate_image (an iteration number, or "last" for the most recent iteration on the active stream) to reference it -- never ask the user to supply a file name or path. ' +
-  'The iteration number the user says (e.g. "iteration 3") is exactly the same number shown as "Iteration 3" in the UI and the same value editSourceIteration resolves against -- they are always identical, never a different internal count, so never hedge that the numbering you see and the numbering the user means might not line up; resolve the number directly against PROJECT CONTEXT\'s iteration listing instead. If you cannot identify a referenced iteration or describe its actual content, say so plainly rather than invent a description.';
+  'The iteration number the user says (e.g. "iteration 3") is exactly the same number shown as "Iteration 3" in the UI and the same value editSourceIteration resolves against -- they are always identical, never a different internal count, so never hedge that the numbering you see and the numbering the user means might not line up; resolve the number directly against PROJECT CONTEXT\'s iteration listing instead. If you cannot identify a referenced iteration or describe its actual content, say so plainly rather than invent a description. ' +
+  'Only set confirm: true on delete_project or delete_iteration after the user has explicitly asked, in this conversation, to delete that specific project or iteration -- never speculatively, and never inferred from an ambiguous or general request.';
 
 // ---------------------------------------------------------------------------
 // Project + active-stream context (Sprint 005 OOP change, 2026-07-15): the
@@ -818,6 +902,10 @@ export interface RunTurnResult {
 const DEFAULT_MAX_TOOL_ROUNDS = 8;
 
 const CREATE_PROJECT_TOOL_NAME = 'create_project';
+const ARCHIVE_PROJECT_TOOL_NAME = 'archive_project';
+const DELETE_PROJECT_TOOL_NAME = 'delete_project';
+const DELETE_ITERATION_TOOL_NAME = 'delete_iteration';
+const SET_ITERATION_STATE_TOOL_NAME = 'set_iteration_state';
 
 /**
  * `create_project`-only pre-dispatch injection (ticket 007-002, SUC-002:
@@ -914,6 +1002,43 @@ async function resolveEditSourceIteration(
   return iteration.imagePath;
 }
 
+/**
+ * Resolves an agent-facing `seq` number to its real `Iteration` row for
+ * `ctx.projectId`, regardless of stream/role/accepted status (ticket
+ * 013-005, R2) -- shared by `delete_iteration` and `set_iteration_state`'s
+ * dispatch branches below. Mirrors `resolveEditSourceIteration`'s
+ * numeric-seq branch exactly (same lookup, same "no matching row" failure
+ * mode), but returns the full row rather than just `imagePath` -- both
+ * callers here need the real `Iteration.id` to pass into the unchanged
+ * `catalogTools.removeIteration`/`setIterationState`. Kept as its own
+ * function rather than folded into `resolveEditSourceIteration` (a
+ * different concern: that one resolves a *source image path* for
+ * `generate_image`'s edit flow, this one resolves a *target row* for a
+ * delete/state-change) per this ticket's Implementation Plan.
+ *
+ * Throws a plain `Error` -- "no iteration #N found for this project" --
+ * surfaced through the existing tool-call `isError`/catch path in the
+ * dispatch loop, no new failure channel, when `seq` doesn't match any
+ * `Iteration` row for this project.
+ */
+async function resolveIterationBySeq(
+  seq: unknown,
+  ctx: { projectId: number; prismaClient: any }
+): Promise<IterationModel> {
+  const seqNum = typeof seq === 'number' ? seq : Number(seq);
+  if (!Number.isFinite(seqNum)) {
+    throw new Error(`Invalid seq value ${JSON.stringify(seq)}`);
+  }
+
+  const iteration = await ctx.prismaClient.iteration.findFirst({
+    where: { projectId: ctx.projectId, seq: seqNum },
+  });
+  if (!iteration) {
+    throw new Error(`No iteration #${seqNum} found for this project`);
+  }
+  return iteration;
+}
+
 async function dispatchToolCall(
   call: ProviderToolCall,
   ctx: {
@@ -954,8 +1079,20 @@ async function dispatchToolCall(
       // Containment check (the same one fsTools.ts/catalogTools.ts and
       // realImageVisionClient.ts already apply to every other
       // workspace-rooted path) before this path ever reaches
-      // imaging.ts's callOpenAiEdits.
-      modelParams.referenceImages = [resolveWorkspacePath(sourceImagePath)];
+      // imaging.ts's callOpenAiEdits -- an escaping path throws here and
+      // is surfaced through the existing tool-call isError path, exactly
+      // as before this ticket. Ticket 013-002 (SUC-025): the *resolved,
+      // absolute* return value is discarded, never stored --
+      // modelParams.referenceImages keeps the original, already-
+      // workspace-relative sourceImagePath, so Iteration.modelParams (and
+      // GET /api/projects*, which serializes it unmodified) never carries
+      // the server's absolute host filesystem layout. imaging.ts's
+      // callOpenAiEdits independently re-resolves this same relative path
+      // (with its own containment check) immediately before reading the
+      // file, so the containment guarantee holds even if some future
+      // caller of imaging.generateImage isn't this dispatch path.
+      resolveWorkspacePath(sourceImagePath);
+      modelParams.referenceImages = [sourceImagePath];
     }
 
     const result: GenerateImageResult = await ctx.imageVisionClient.generateImage({
@@ -972,13 +1109,61 @@ async function dispatchToolCall(
     throw new Error(`No Workspace MCP Server tool named "${call.name}"`);
   }
 
-  const args =
-    call.name === CREATE_PROJECT_TOOL_NAME
-      ? await injectCreateProjectArgs((call.args ?? {}) as Record<string, unknown>, {
-          authenticatedUserId: ctx.authenticatedUserId,
-          prismaClient: ctx.prismaClient,
-        })
-      : call.args;
+  let args: unknown = call.args;
+
+  if (call.name === CREATE_PROJECT_TOOL_NAME) {
+    args = await injectCreateProjectArgs((call.args ?? {}) as Record<string, unknown>, {
+      authenticatedUserId: ctx.authenticatedUserId,
+      prismaClient: ctx.prismaClient,
+    });
+  } else if (call.name === ARCHIVE_PROJECT_TOOL_NAME) {
+    // Thin alias over create_project's existing update path (ticket
+    // 013-005, R3) -- no project id argument is ever accepted; the target
+    // is always this turn's own ctx.projectId. injectCreateProjectArgs
+    // fills version/ownerUserId from that project's current row, exactly
+    // as it already does for a create_project rename.
+    const archiveArgs = (call.args ?? {}) as { archived?: boolean };
+    args = await injectCreateProjectArgs(
+      { id: ctx.projectId, status: archiveArgs.archived ? 'archived' : 'active' },
+      { authenticatedUserId: ctx.authenticatedUserId, prismaClient: ctx.prismaClient }
+    );
+  } else if (call.name === DELETE_PROJECT_TOOL_NAME) {
+    // Hard-delete gate (ticket 013-005, R3/R4): rejected before
+    // removeProject is ever called unless confirm is exactly true --
+    // never inferred from a truthy-but-not-boolean value.
+    const deleteArgs = (call.args ?? {}) as { confirm?: boolean };
+    if (deleteArgs.confirm !== true) {
+      throw new Error(
+        'delete_project: confirm must be true to delete this project -- omitting or falsifying confirm is rejected before any deletion.'
+      );
+    }
+    args = { projectId: ctx.projectId };
+  } else if (call.name === DELETE_ITERATION_TOOL_NAME) {
+    // Same confirm gate as delete_project, plus seq->row resolution
+    // (ticket 013-005, R2) before the existing removeIteration is called.
+    const deleteArgs = (call.args ?? {}) as { seq?: unknown; confirm?: boolean };
+    if (deleteArgs.confirm !== true) {
+      throw new Error(
+        'delete_iteration: confirm must be true to delete this iteration -- omitting or falsifying confirm is rejected before any deletion.'
+      );
+    }
+    const iteration = await resolveIterationBySeq(deleteArgs.seq, {
+      projectId: ctx.projectId,
+      prismaClient: ctx.prismaClient,
+    });
+    args = { iterationId: iteration.id };
+  } else if (call.name === SET_ITERATION_STATE_TOOL_NAME) {
+    // Re-addressed from a raw iterationId to seq (ticket 013-005, R2): the
+    // model has no legitimate way to know a raw Iteration.id (Codebase
+    // Alignment) -- resolve the seq it does have to the real row before
+    // calling the existing, unchanged setIterationState.
+    const stateArgs = (call.args ?? {}) as { seq?: unknown; accepted?: boolean; role?: 'front' | 'back' | null };
+    const iteration = await resolveIterationBySeq(stateArgs.seq, {
+      projectId: ctx.projectId,
+      prismaClient: ctx.prismaClient,
+    });
+    args = { iterationId: iteration.id, accepted: stateArgs.accepted, role: stateArgs.role };
+  }
 
   return handler(args, {
     versioning: ctx.versioning,
@@ -1055,6 +1240,18 @@ export async function runTurn(input: RunTurnInput, options: TurnControllerOption
     // dispatched so far (starting at 1) -- never a pre-announced "of N"
     // total (sprint.md Design Rationale).
     let generateImageCallCount = 0;
+    // Ticket 013-005: set once a delete_project call for THIS turn's own
+    // input.projectId succeeds. removeProject's cascade already deletes
+    // every ChatMessage row for that project (including the one this
+    // function created for the incoming user message, above) -- so once
+    // it fires, input.projectId no longer exists and any further
+    // `prismaClient.chatMessage.create({ projectId: input.projectId, ... })`
+    // call would fail its foreign-key constraint. The turn still finishes
+    // normally (further provider.sendTurn calls need no DB access -- the
+    // system prompt was already built above) and still returns a real
+    // finalMessage/toolCalls to the caller; it just stops attempting any
+    // further ChatMessage persistence for a project that is already gone.
+    let projectDeleted = false;
 
     while (finalContent === undefined) {
       rounds += 1;
@@ -1112,14 +1309,20 @@ export async function runTurn(input: RunTurnInput, options: TurnControllerOption
         emit({ type: 'tool_call_finished', callId: call.id, name: call.name, args: call.args, result: callResult, isError });
         records.push({ name: call.name, args: call.args, result: callResult });
         toolResults.push({ toolCallId: call.id, result: callResult, isError });
+
+        if (call.name === DELETE_PROJECT_TOOL_NAME && !isError) {
+          projectDeleted = true;
+        }
       }
 
       allToolCallRecords.push(...records);
 
-      const toolCallRow = await prismaClient.chatMessage.create({
-        data: { projectId: input.projectId, role: 'assistant', content: '', toolCalls: records as any },
-      });
-      createdMessages.push(toolCallRow);
+      if (!projectDeleted) {
+        const toolCallRow = await prismaClient.chatMessage.create({
+          data: { projectId: input.projectId, role: 'assistant', content: '', toolCalls: records as any },
+        });
+        createdMessages.push(toolCallRow);
+      }
 
       messages.push({ role: 'assistant', toolCalls: result.calls });
       messages.push({ role: 'user', toolResults });
@@ -1127,10 +1330,12 @@ export async function runTurn(input: RunTurnInput, options: TurnControllerOption
       hadToolCallRound = true;
     }
 
-    const finalRow = await prismaClient.chatMessage.create({
-      data: { projectId: input.projectId, role: 'assistant', content: finalContent },
-    });
-    createdMessages.push(finalRow);
+    if (!projectDeleted) {
+      const finalRow = await prismaClient.chatMessage.create({
+        data: { projectId: input.projectId, role: 'assistant', content: finalContent },
+      });
+      createdMessages.push(finalRow);
+    }
     emit({ type: 'message', content: finalContent });
 
     const commit = await versioning.commitTurn(`Agent turn: project ${input.projectId}`);
