@@ -56,8 +56,16 @@ vi.mock('../../server/src/agent-mcp/catalogTools', async (importOriginal) => {
   const actual = await importOriginal<typeof import('../../server/src/agent-mcp/catalogTools')>();
   return {
     ...actual,
-    createProject: (...args: Parameters<typeof actual.createProject>) => {
-      mockCreateProject(...args);
+    // `await`s `mockCreateProject`'s own return (ticket 013-003): lets a
+    // single test install a one-time async side effect (via
+    // `mockImplementationOnce`) that runs and completes *before*
+    // `actual.createProject` is invoked -- used to deterministically
+    // simulate a concurrent write landing between this route's version
+    // read and its own `createProject` call, mirroring `agent-turn.test.ts`'s
+    // "concurrent update after injection" precedent. A no-op implementation
+    // (the default, every other test) just resolves `undefined` immediately.
+    createProject: async (...args: Parameters<typeof actual.createProject>) => {
+      await mockCreateProject(...args);
       return actual.createProject(...args);
     },
     addReference: (...args: Parameters<typeof actual.addReference>) => {
@@ -804,6 +812,109 @@ describe('PATCH /api/projects/:id -- archive/restore (OOP follow-up, 2026-07-15)
     const project = await makeProject(userAId, `${marker}-patch-unauth`);
     const res = await request(server).patch(`/api/projects/${project.id}`).send({ status: 'archived' });
     expect(res.status).toBe(401);
+  });
+});
+
+describe('PATCH /api/projects/:id -- inline title edit (ticket 013-003, SUC-026, edit-project-title-inline.md)', () => {
+  it('updates the title through create_project, not raw Prisma, when {title} alone is sent', async () => {
+    const project = await makeProject(userAId, `${marker}-patch-title-only`);
+    const agent = await loginAsUserA();
+
+    const res = await agent.patch(`/api/projects/${project.id}`).send({ title: 'A Brand New Title' });
+
+    expect(res.status).toBe(200);
+    expect(res.body.title).toBe('A Brand New Title');
+    expect(mockCreateProject).toHaveBeenCalledTimes(1);
+    expect(mockCreateProject.mock.calls[0][0]).toMatchObject({
+      id: project.id,
+      version: project.version,
+      title: 'A Brand New Title',
+    });
+
+    const persisted = await prisma.project.findUnique({ where: { id: project.id } });
+    expect(persisted?.title).toBe('A Brand New Title');
+  });
+
+  it('trims surrounding whitespace off the title before persisting', async () => {
+    const project = await makeProject(userAId, `${marker}-patch-title-trim`);
+    const agent = await loginAsUserA();
+
+    const res = await agent.patch(`/api/projects/${project.id}`).send({ title: '  Trimmed Title  ' });
+
+    expect(res.status).toBe(200);
+    expect(res.body.title).toBe('Trimmed Title');
+  });
+
+  it('updates both title and status together when both are present in one request', async () => {
+    const project = await makeProject(userAId, `${marker}-patch-title-and-status`);
+    const agent = await loginAsUserA();
+
+    const res = await agent.patch(`/api/projects/${project.id}`).send({ title: 'Renamed And Archived', status: 'archived' });
+
+    expect(res.status).toBe(200);
+    expect(res.body.title).toBe('Renamed And Archived');
+    expect(res.body.status).toBe('archived');
+    expect(mockCreateProject.mock.calls[0][0]).toMatchObject({
+      id: project.id,
+      title: 'Renamed And Archived',
+      status: 'archived',
+    });
+
+    const persisted = await prisma.project.findUnique({ where: { id: project.id } });
+    expect(persisted?.title).toBe('Renamed And Archived');
+    expect(persisted?.status).toBe('archived');
+  });
+
+  it('rejects a request with neither title nor status with 400, without calling create_project', async () => {
+    const project = await makeProject(userAId, `${marker}-patch-neither-field`);
+    const agent = await loginAsUserA();
+
+    const res = await agent.patch(`/api/projects/${project.id}`).send({});
+
+    expect(res.status).toBe(400);
+    expect(mockCreateProject).not.toHaveBeenCalled();
+  });
+
+  it('rejects a whitespace-only title with 400, without calling create_project', async () => {
+    const project = await makeProject(userAId, `${marker}-patch-blank-title`);
+    const agent = await loginAsUserA();
+
+    const res = await agent.patch(`/api/projects/${project.id}`).send({ title: '   ' });
+
+    expect(res.status).toBe(400);
+    expect(mockCreateProject).not.toHaveBeenCalled();
+  });
+
+  it('rejects a non-string title with 400, without calling create_project', async () => {
+    const project = await makeProject(userAId, `${marker}-patch-non-string-title`);
+    const agent = await loginAsUserA();
+
+    const res = await agent.patch(`/api/projects/${project.id}`).send({ title: 42 });
+
+    expect(res.status).toBe(400);
+    expect(mockCreateProject).not.toHaveBeenCalled();
+  });
+
+  it('returns 409 (VersionConflictError, unchanged mapping) when a concurrent update races the version this request read', async () => {
+    const project = await makeProject(userAId, `${marker}-patch-title-conflict`);
+    const agent = await loginAsUserA();
+
+    // Simulate a concurrent write landing after this request's own
+    // `existing.version` read but before its `createProject` call
+    // executes -- the version this request is about to use is now stale.
+    // Mirrors `agent-turn.test.ts`'s "concurrent update after injection"
+    // precedent (raceHandlers), just injected via the call-through spy
+    // instead of a tool-handler override.
+    mockCreateProject.mockImplementationOnce(async () => {
+      const current = await prisma.project.findUniqueOrThrow({ where: { id: project.id } });
+      await prisma.project.update({ where: { id: project.id }, data: { version: current.version + 1 } });
+    });
+
+    const res = await agent.patch(`/api/projects/${project.id}`).send({ title: 'Raced Title' });
+
+    expect(res.status).toBe(409);
+    const persisted = await prisma.project.findUnique({ where: { id: project.id } });
+    expect(persisted?.title).not.toBe('Raced Title');
   });
 });
 
