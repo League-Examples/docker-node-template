@@ -1965,14 +1965,21 @@ describe('runTurn -- ticket 005-002 tools dispatch through the mock adapter', ()
     expect(dbReference).toBeNull();
   });
 
-  it('dispatches a set_iteration_state tool call, updating Iteration.accepted', async () => {
+  // Ticket 013-005 (R2): re-addressed from a raw iterationId (which the
+  // model has no legitimate way to know -- PROJECT CONTEXT only ever
+  // exposes seq) to the UI-facing seq number. The recorded tool-call args
+  // are the model's own { seq, accepted } -- dispatchToolCall's
+  // seq->iterationId resolution happens internally and is never what gets
+  // persisted as the call's args (same pattern as create_project's
+  // ownerUserId/version injection above).
+  it('dispatches a set_iteration_state tool call addressed by seq, updating Iteration.accepted', async () => {
     const iteration = await createIteration(
       { projectId: projectAId, imagePath: 'turn-state.png', promptUsed: 'p' },
       { versioning: makeVersioningSpy() }
     );
     cleanup.iterationIds.push(iteration.id);
 
-    const toolCallArgs = { iterationId: iteration.id, accepted: true };
+    const toolCallArgs = { seq: iteration.seq, accepted: true };
     const script: MockProviderScript = [
       { kind: 'tool_calls', calls: [{ id: 'state-1', name: 'set_iteration_state', args: toolCallArgs }] },
       { kind: 'message', content: 'Marked as accepted.' },
@@ -1990,6 +1997,52 @@ describe('runTurn -- ticket 005-002 tools dispatch through the mock adapter', ()
     expect(dbIteration!.accepted).toBe(true);
   });
 
+  // Closes the ticket's verified reachability gap: proves the
+  // move-between-streams path (setting role, not just accepted) is
+  // genuinely agent-reachable through the new seq addressing.
+  it('dispatches a set_iteration_state tool call addressed by seq, moving a front-stream iteration to the back stream', async () => {
+    const iteration = await createIteration(
+      { projectId: projectAId, imagePath: 'turn-state-move.png', promptUsed: 'p', role: 'front' },
+      { versioning: makeVersioningSpy() }
+    );
+    cleanup.iterationIds.push(iteration.id);
+
+    const toolCallArgs = { seq: iteration.seq, role: 'back' };
+    const script: MockProviderScript = [
+      { kind: 'tool_calls', calls: [{ id: 'state-2', name: 'set_iteration_state', args: toolCallArgs }] },
+      { kind: 'message', content: 'Moved it to the back.' },
+    ];
+
+    const result = await runTurn(
+      { projectId: projectAId, message: 'Move this iteration to the back.' },
+      { provider: createMockAdapter(script), versioning: makeVersioningSpy() }
+    );
+
+    expect(result.toolCalls[0]).toMatchObject({ name: 'set_iteration_state', args: toolCallArgs });
+    expect((result.toolCalls[0].result as any).role).toBe('back');
+
+    const dbIteration = await prisma.iteration.findUnique({ where: { id: iteration.id } });
+    expect(dbIteration!.role).toBe('back');
+  });
+
+  it('a nonexistent seq passed to set_iteration_state surfaces a clear error via isError, without crashing the turn', async () => {
+    const events: TurnEvent[] = [];
+    const script: MockProviderScript = [
+      { kind: 'tool_calls', calls: [{ id: 'state-3', name: 'set_iteration_state', args: { seq: 999999, accepted: true } }] },
+      { kind: 'message', content: "That iteration doesn't exist." },
+    ];
+
+    const result = await runTurn(
+      { projectId: projectAId, message: 'Accept iteration 999999.' },
+      { provider: createMockAdapter(script), versioning: makeVersioningSpy(), onEvent: (e) => events.push(e) }
+    );
+
+    expect((result.toolCalls[0].result as any).error).toContain('999999');
+    expect(
+      events.some((e) => e.type === 'tool_call_finished' && e.name === 'set_iteration_state' && e.isError === true)
+    ).toBe(true);
+  });
+
   it('dispatches a search_catalog tool call, returning a well-formed (possibly empty) match array with zero network calls', async () => {
     const toolCallArgs = { query: `turnsearch${marker.replace(/[^a-zA-Z0-9]/g, '')}`, k: 5 };
     const script: MockProviderScript = [
@@ -2004,6 +2057,221 @@ describe('runTurn -- ticket 005-002 tools dispatch through the mock adapter', ()
 
     expect(result.toolCalls[0]).toMatchObject({ name: 'search_catalog', args: toolCallArgs });
     expect(Array.isArray(result.toolCalls[0].result)).toBe(true);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Ticket 013-005: archive_project/delete_project/delete_iteration --
+// closes the remaining scope of agent-full-data-control-tools.md (rename
+// itself already works via create_project, ticket 013-004's own scope).
+// archive_project is a thin turn.ts-level alias over create_project's
+// existing update path; delete_project/delete_iteration reuse the
+// existing, already-tested-at-the-persistence-layer
+// removeProject/removeIteration (agent-mcp-catalog-tools.test.ts) -- no
+// new catalogTools.ts function for any of this (sprint.md Scope, Out of
+// Scope). None of these tools accept a project-identifying argument;
+// dispatch always targets ctx.projectId (R3).
+// ---------------------------------------------------------------------------
+
+describe('runTurn -- archive_project/delete_project/delete_iteration (ticket 013-005)', () => {
+  it('dispatches archive_project with { archived: true }, setting the project status to archived, and { archived: false } restores it to active', async () => {
+    const project = await prisma.project.create({
+      data: { title: `${marker}-archive-project`, ownerUserId: ownerId },
+    });
+    cleanup.projectIds.push(project.id);
+
+    const archiveScript: MockProviderScript = [
+      { kind: 'tool_calls', calls: [{ id: 'archive-1', name: 'archive_project', args: { archived: true } }] },
+      { kind: 'message', content: 'Archived the project.' },
+    ];
+    const archiveResult = await runTurn(
+      { projectId: project.id, message: 'Archive this project.' },
+      { provider: createMockAdapter(archiveScript), versioning: makeVersioningSpy() }
+    );
+
+    expect(archiveResult.toolCalls[0]).toMatchObject({ name: 'archive_project', args: { archived: true } });
+    expect((archiveResult.toolCalls[0].result as any).status).toBe('archived');
+
+    const archived = await prisma.project.findUniqueOrThrow({ where: { id: project.id } });
+    expect(archived.status).toBe('archived');
+
+    const restoreScript: MockProviderScript = [
+      { kind: 'tool_calls', calls: [{ id: 'archive-2', name: 'archive_project', args: { archived: false } }] },
+      { kind: 'message', content: 'Restored the project.' },
+    ];
+    const restoreResult = await runTurn(
+      { projectId: project.id, message: 'Restore this project.' },
+      { provider: createMockAdapter(restoreScript), versioning: makeVersioningSpy() }
+    );
+
+    expect((restoreResult.toolCalls[0].result as any).status).toBe('active');
+    const restored = await prisma.project.findUniqueOrThrow({ where: { id: project.id } });
+    expect(restored.status).toBe('active');
+  });
+
+  it('archive_project never accepts or needs a project id -- always targets ctx.projectId, filling version/ownerUserId via the existing injectCreateProjectArgs', async () => {
+    const project = await prisma.project.create({
+      data: { title: `${marker}-archive-injection-project`, ownerUserId: ownerId },
+    });
+    cleanup.projectIds.push(project.id);
+
+    const receivedArgs: unknown[] = [];
+    const handlers: Record<string, WorkspaceToolHandler> = {
+      archive_project: async (args: any, options: any) => {
+        receivedArgs.push(args);
+        return createProject(args, options);
+      },
+    };
+    const script: MockProviderScript = [
+      { kind: 'tool_calls', calls: [{ id: 'archive-3', name: 'archive_project', args: { archived: true } }] },
+      { kind: 'message', content: 'Archived it.' },
+    ];
+
+    await runTurn(
+      { projectId: project.id, message: 'Archive this.' },
+      { provider: createMockAdapter(script), toolHandlers: handlers, versioning: makeVersioningSpy() }
+    );
+
+    expect(receivedArgs).toHaveLength(1);
+    expect(receivedArgs[0]).toMatchObject({
+      id: project.id,
+      status: 'archived',
+      version: project.version,
+      ownerUserId: ownerId,
+    });
+    expect(receivedArgs[0]).not.toHaveProperty('projectId');
+  });
+
+  it('dispatches delete_project with { confirm: true }, deleting the project and its dependent Iteration row', async () => {
+    const project = await prisma.project.create({
+      data: { title: `${marker}-delete-project`, ownerUserId: ownerId },
+    });
+    const iteration = await createIteration(
+      { projectId: project.id, imagePath: `projects/${project.id}/iterations/iter-1.png`, promptUsed: 'p' },
+      { versioning: makeVersioningSpy() }
+    );
+
+    const script: MockProviderScript = [
+      { kind: 'tool_calls', calls: [{ id: 'delp-1', name: 'delete_project', args: { confirm: true } }] },
+      { kind: 'message', content: 'Deleted the project.' },
+    ];
+
+    const result = await runTurn(
+      { projectId: project.id, message: 'Delete this project.' },
+      { provider: createMockAdapter(script), versioning: makeVersioningSpy() }
+    );
+
+    expect(result.toolCalls[0]).toMatchObject({ name: 'delete_project', args: { confirm: true } });
+    expect((result.toolCalls[0].result as any).deleted).toBe(true);
+
+    const dbProject = await prisma.project.findUnique({ where: { id: project.id } });
+    expect(dbProject).toBeNull();
+    const dbIteration = await prisma.iteration.findUnique({ where: { id: iteration.id } });
+    expect(dbIteration).toBeNull();
+  });
+
+  it('delete_project without confirm: true is rejected before any deletion -- both omitted and explicit false', async () => {
+    const project = await prisma.project.create({
+      data: { title: `${marker}-delete-project-guard`, ownerUserId: ownerId },
+    });
+    cleanup.projectIds.push(project.id);
+
+    const events: TurnEvent[] = [];
+    const omittedScript: MockProviderScript = [
+      { kind: 'tool_calls', calls: [{ id: 'delp-2', name: 'delete_project', args: {} }] },
+      { kind: 'message', content: "I won't delete it without confirmation." },
+    ];
+    const omittedResult = await runTurn(
+      { projectId: project.id, message: 'Delete this project.' },
+      { provider: createMockAdapter(omittedScript), versioning: makeVersioningSpy(), onEvent: (e) => events.push(e) }
+    );
+
+    expect((omittedResult.toolCalls[0].result as any).error).toContain('confirm');
+    expect(
+      events.some((e) => e.type === 'tool_call_finished' && e.name === 'delete_project' && e.isError === true)
+    ).toBe(true);
+    expect(await prisma.project.findUnique({ where: { id: project.id } })).not.toBeNull();
+
+    const falseScript: MockProviderScript = [
+      { kind: 'tool_calls', calls: [{ id: 'delp-3', name: 'delete_project', args: { confirm: false } }] },
+      { kind: 'message', content: "I won't delete it without confirmation." },
+    ];
+    const falseResult = await runTurn(
+      { projectId: project.id, message: 'Delete this project.' },
+      { provider: createMockAdapter(falseScript), versioning: makeVersioningSpy() }
+    );
+
+    expect((falseResult.toolCalls[0].result as any).error).toContain('confirm');
+    expect(await prisma.project.findUnique({ where: { id: project.id } })).not.toBeNull();
+  });
+
+  it('dispatches delete_iteration with a valid { seq, confirm: true }, deleting the targeted Iteration row', async () => {
+    const iteration = await createIteration(
+      { projectId: projectAId, imagePath: 'turn-delete-iteration.png', promptUsed: 'p' },
+      { versioning: makeVersioningSpy() }
+    );
+
+    const toolCallArgs = { seq: iteration.seq, confirm: true };
+    const script: MockProviderScript = [
+      { kind: 'tool_calls', calls: [{ id: 'deli-1', name: 'delete_iteration', args: toolCallArgs }] },
+      { kind: 'message', content: 'Deleted that iteration.' },
+    ];
+
+    const result = await runTurn(
+      { projectId: projectAId, message: 'Delete that iteration.' },
+      { provider: createMockAdapter(script), versioning: makeVersioningSpy() }
+    );
+
+    expect(result.toolCalls[0]).toMatchObject({ name: 'delete_iteration', args: toolCallArgs });
+    expect((result.toolCalls[0].result as any).deleted).toBe(true);
+
+    const dbIteration = await prisma.iteration.findUnique({ where: { id: iteration.id } });
+    expect(dbIteration).toBeNull();
+  });
+
+  it('delete_iteration without confirm: true is rejected before any deletion, and the row still exists', async () => {
+    const iteration = await createIteration(
+      { projectId: projectAId, imagePath: 'turn-delete-iteration-guard.png', promptUsed: 'p' },
+      { versioning: makeVersioningSpy() }
+    );
+    cleanup.iterationIds.push(iteration.id);
+
+    const events: TurnEvent[] = [];
+    const script: MockProviderScript = [
+      { kind: 'tool_calls', calls: [{ id: 'deli-2', name: 'delete_iteration', args: { seq: iteration.seq } }] },
+      { kind: 'message', content: "I won't delete it without confirmation." },
+    ];
+
+    const result = await runTurn(
+      { projectId: projectAId, message: 'Delete that iteration.' },
+      { provider: createMockAdapter(script), versioning: makeVersioningSpy(), onEvent: (e) => events.push(e) }
+    );
+
+    expect((result.toolCalls[0].result as any).error).toContain('confirm');
+    expect(
+      events.some((e) => e.type === 'tool_call_finished' && e.name === 'delete_iteration' && e.isError === true)
+    ).toBe(true);
+
+    const dbIteration = await prisma.iteration.findUnique({ where: { id: iteration.id } });
+    expect(dbIteration).not.toBeNull();
+  });
+
+  it('delete_iteration with a nonexistent seq surfaces a clear "no iteration #N found" error via isError, without crashing the turn', async () => {
+    const events: TurnEvent[] = [];
+    const script: MockProviderScript = [
+      { kind: 'tool_calls', calls: [{ id: 'deli-3', name: 'delete_iteration', args: { seq: 888888, confirm: true } }] },
+      { kind: 'message', content: "That iteration doesn't exist." },
+    ];
+
+    const result = await runTurn(
+      { projectId: projectAId, message: 'Delete iteration 888888.' },
+      { provider: createMockAdapter(script), versioning: makeVersioningSpy(), onEvent: (e) => events.push(e) }
+    );
+
+    expect((result.toolCalls[0].result as any).error).toContain('No iteration #888888 found');
+    expect(
+      events.some((e) => e.type === 'tool_call_finished' && e.name === 'delete_iteration' && e.isError === true)
+    ).toBe(true);
   });
 });
 
@@ -2335,6 +2603,29 @@ describe('runTurn -- system prompt guardrail against internal IDs and silent too
 
     const after = await prisma.project.findUniqueOrThrow({ where: { id: project.id } });
     expect(after.title).toBe('League of Mentors');
+  });
+
+  // Ticket 013-005 (issue agent-full-data-control-tools.md, R3/R4): the
+  // confirm: true structural gate on delete_project/delete_iteration
+  // (asserted via dispatch tests above) is backed by this accompanying
+  // behavioral guard, mirroring the assertion style used for the other
+  // guardrail sentences in this describe block.
+  it('sends a system prompt instructing the model to only set confirm: true on delete_project/delete_iteration after explicit user intent for that specific target (ticket 013-005)', async () => {
+    const sentPrompts: string[] = [];
+    const script: MockProviderScript = [{ kind: 'message', content: 'Sure, what would you like to work on?' }];
+
+    await runTurn(
+      { projectId: projectAId, message: 'Hello.' },
+      {
+        provider: createMockAdapter(script, { onSendTurn: (input) => sentPrompts.push(input.systemPrompt) }),
+        versioning: makeVersioningSpy(),
+      }
+    );
+
+    expect(sentPrompts).toHaveLength(1);
+    expect(sentPrompts[0]).toContain(
+      'Only set confirm: true on delete_project or delete_iteration after the user has explicitly asked, in this conversation, to delete that specific project or iteration -- never speculatively, and never inferred from an ambiguous or general request.'
+    );
   });
 });
 
