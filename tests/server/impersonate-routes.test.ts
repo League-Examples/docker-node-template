@@ -6,11 +6,26 @@
  *   GET  /api/auth/me                      — returns impersonating + realAdmin fields
  */
 import { describe, it, expect, beforeAll, afterAll } from 'vitest';
+import type { Server } from 'http';
 import request from 'supertest';
 import app from '../../server/src/app';
 import { prisma } from '../../server/src/services/prisma';
+import { startTestServer, stopTestServer } from './helpers/testServer';
 
 process.env.NODE_ENV = 'test';
+
+// One persistent http.Server for this file (sprint 013-001) -- see
+// helpers/testServer.ts for why. Registered first so it closes last,
+// after the user-cleanup afterAll below.
+let server: Server;
+
+afterAll(async () => {
+  await stopTestServer(server);
+});
+
+beforeAll(async () => {
+  server = await startTestServer(app);
+});
 
 // =============================================================================
 // Test data
@@ -66,7 +81,7 @@ afterAll(async () => {
 
 /** Returns a supertest agent logged in as the admin user. */
 async function loginAsAdmin() {
-  const agent = request.agent(app);
+  const agent = request.agent(server);
   await agent.post('/api/auth/test-login').send({
     email: 'imp-route-admin@example.com',
     displayName: 'Route Admin',
@@ -77,7 +92,7 @@ async function loginAsAdmin() {
 
 /** Returns a supertest agent logged in as the regular target user. */
 async function loginAsUser() {
-  const agent = request.agent(app);
+  const agent = request.agent(server);
   await agent.post('/api/auth/test-login').send({
     email: 'imp-route-target@example.com',
     displayName: 'Route Target',
@@ -151,7 +166,7 @@ describe('POST /api/admin/users/:id/impersonate', () => {
   });
 
   it('unauthenticated request receives 401', async () => {
-    const res = await request(app).post(`/api/admin/users/${targetUserId}/impersonate`);
+    const res = await request(server).post(`/api/admin/users/${targetUserId}/impersonate`);
     expect(res.status).toBe(401);
   });
 });
@@ -223,7 +238,7 @@ describe('POST /api/admin/stop-impersonating', () => {
   });
 
   it('unauthenticated stop-impersonating returns 401', async () => {
-    const res = await request(app).post('/api/admin/stop-impersonating');
+    const res = await request(server).post('/api/admin/stop-impersonating');
     expect(res.status).toBe(401);
   });
 });

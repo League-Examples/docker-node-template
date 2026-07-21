@@ -18,6 +18,8 @@
  */
 import { describe, it, expect, beforeAll, afterAll, vi } from 'vitest';
 import request from 'supertest';
+import type { Server } from 'http';
+import { startTestServer, stopTestServer } from './helpers/testServer';
 
 process.env.NODE_ENV = 'test';
 
@@ -28,6 +30,15 @@ let indexKnowledgeEntry: typeof import('../../server/src/services/search').index
 let removeFromKeywordIndex: typeof import('../../server/src/services/search').removeFromKeywordIndex;
 let versioningService: typeof import('../../server/src/services/versioning').versioningService;
 
+// One persistent http.Server for this file (sprint 013-001) -- created
+// once `app` is available below. Its afterAll is registered first so it
+// closes last, after the fixture-cleanup afterAll further down.
+let server: Server;
+
+afterAll(async () => {
+  await stopTestServer(server);
+});
+
 beforeAll(async () => {
   app = (await import('../../server/src/app')).default;
   prisma = (await import('../../server/src/services/prisma')).prisma;
@@ -36,6 +47,7 @@ beforeAll(async () => {
   indexKnowledgeEntry = search.indexKnowledgeEntry;
   removeFromKeywordIndex = search.removeFromKeywordIndex;
   versioningService = (await import('../../server/src/services/versioning')).versioningService;
+  server = await startTestServer(app);
 });
 
 const marker = `t005005${Date.now()}`;
@@ -149,7 +161,7 @@ afterAll(async () => {
 });
 
 async function loginAsUser() {
-  const agent = request.agent(app);
+  const agent = request.agent(server);
   await agent.post('/api/auth/test-login').send({
     email: `${marker}-user@example.com`,
     displayName: 'Catalog Route User',
@@ -160,7 +172,7 @@ async function loginAsUser() {
 
 describe('GET /api/catalog/tree -- auth gate', () => {
   it('rejects an unauthenticated request with 401', async () => {
-    const res = await request(app).get('/api/catalog/tree');
+    const res = await request(server).get('/api/catalog/tree');
     expect(res.status).toBe(401);
   });
 
@@ -223,7 +235,7 @@ describe('GET /api/catalog/tree -- shape', () => {
 
 describe('GET /api/catalog/search -- auth gate', () => {
   it('rejects an unauthenticated request with 401', async () => {
-    const res = await request(app).get('/api/catalog/search').query({ q: marker });
+    const res = await request(server).get('/api/catalog/search').query({ q: marker });
     expect(res.status).toBe(401);
   });
 

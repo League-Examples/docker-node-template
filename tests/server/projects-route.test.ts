@@ -28,8 +28,21 @@ import os from 'os';
 import path from 'path';
 import { describe, it, expect, vi, beforeAll, beforeEach, afterAll } from 'vitest';
 import request from 'supertest';
+import type { Server } from 'http';
+import { startTestServer, stopTestServer } from './helpers/testServer';
 
 process.env.NODE_ENV = 'test';
+
+// One persistent http.Server for this file (sprint 013-001) -- started
+// once `app` is available below (after WORKSPACE_DIR/WORKSPACE_GIT_ROOT
+// are set). Its afterAll is registered first, before any other hook in
+// this file, so it closes last -- after the env-var-restore and
+// fixture-cleanup afterAlls further down.
+let server: Server;
+
+afterAll(async () => {
+  await stopTestServer(server);
+});
 
 const mockCreateProject = vi.hoisted(() => vi.fn());
 const mockAddReference = vi.hoisted(() => vi.fn());
@@ -103,6 +116,7 @@ let prisma: typeof import('../../server/src/services/prisma').prisma;
 beforeAll(async () => {
   app = (await import('../../server/src/app')).default;
   prisma = (await import('../../server/src/services/prisma')).prisma;
+  server = await startTestServer(app);
 });
 
 let userAId: number;
@@ -188,7 +202,7 @@ beforeEach(() => {
 });
 
 async function loginAsUserA() {
-  const agent = request.agent(app);
+  const agent = request.agent(server);
   await agent.post('/api/auth/test-login').send({
     email: `${marker}-a@example.com`,
     displayName: 'Projects Route User A',
@@ -198,7 +212,7 @@ async function loginAsUserA() {
 }
 
 async function loginAsUserB() {
-  const agent = request.agent(app);
+  const agent = request.agent(server);
   await agent.post('/api/auth/test-login').send({
     email: `${marker}-b@example.com`,
     displayName: 'Projects Route User B',
@@ -221,7 +235,7 @@ async function makeIteration(projectId: number, imagePath: string, seq: number) 
 
 describe('GET /api/projects -- auth gate', () => {
   it('rejects an unauthenticated request with 401', async () => {
-    const res = await request(app).get('/api/projects');
+    const res = await request(server).get('/api/projects');
     expect(res.status).toBe(401);
   });
 });
@@ -697,7 +711,7 @@ describe('DELETE /api/projects/:id/iterations/:iterId -- remove_iteration (OOP f
   });
 
   it('rejects an unauthenticated request with 401', async () => {
-    const res = await request(app).delete('/api/projects/1/iterations/1');
+    const res = await request(server).delete('/api/projects/1/iterations/1');
     expect(res.status).toBe(401);
   });
 });
@@ -757,7 +771,7 @@ describe('PATCH /api/projects/:id -- archive/restore (OOP follow-up, 2026-07-15)
 
   it('rejects an unauthenticated request with 401', async () => {
     const project = await makeProject(userAId, `${marker}-patch-unauth`);
-    const res = await request(app).patch(`/api/projects/${project.id}`).send({ status: 'archived' });
+    const res = await request(server).patch(`/api/projects/${project.id}`).send({ status: 'archived' });
     expect(res.status).toBe(401);
   });
 });
@@ -794,7 +808,7 @@ describe('DELETE /api/projects/:id -- bulk delete (OOP follow-up, 2026-07-15)', 
   });
 
   it('rejects an unauthenticated request with 401', async () => {
-    const res = await request(app).delete('/api/projects/1');
+    const res = await request(server).delete('/api/projects/1');
     expect(res.status).toBe(401);
   });
 });

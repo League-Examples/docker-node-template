@@ -1,20 +1,34 @@
 import request from 'supertest';
+import type { Server } from 'http';
 
 // Set test environment before importing app
 process.env.NODE_ENV = 'test';
 
 import app from '../../server/src/app';
+import { startTestServer, stopTestServer } from './helpers/testServer';
+
+// One persistent http.Server for this file (sprint 013-001) -- see
+// helpers/testServer.ts for why.
+let server: Server;
+
+beforeAll(async () => {
+  server = await startTestServer(app);
+});
+
+afterAll(async () => {
+  await stopTestServer(server);
+});
 
 describe('Auth routes', () => {
   it('GET /api/auth/me returns 401 when not logged in', async () => {
-    const res = await request(app).get('/api/auth/me');
+    const res = await request(server).get('/api/auth/me');
     expect(res.status).toBe(401);
     expect(res.body).toHaveProperty('error');
     expect(res.body.error).toMatch(/not authenticated/i);
   });
 
   it('POST /api/auth/logout handles gracefully when not logged in', async () => {
-    const res = await request(app).post('/api/auth/logout');
+    const res = await request(server).post('/api/auth/logout');
     // Should either succeed (200) or not crash — both are acceptable
     expect([200, 401]).toContain(res.status);
     if (res.status === 200) {
@@ -26,7 +40,7 @@ describe('Auth routes', () => {
     const saved = { id: process.env.GOOGLE_CLIENT_ID, secret: process.env.GOOGLE_CLIENT_SECRET };
     delete process.env.GOOGLE_CLIENT_ID;
     delete process.env.GOOGLE_CLIENT_SECRET;
-    const res = await request(app).get('/api/auth/google');
+    const res = await request(server).get('/api/auth/google');
     if (saved.id) process.env.GOOGLE_CLIENT_ID = saved.id;
     if (saved.secret) process.env.GOOGLE_CLIENT_SECRET = saved.secret;
     expect(res.status).toBe(501);

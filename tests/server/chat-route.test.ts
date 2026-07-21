@@ -13,6 +13,7 @@
  */
 import { describe, it, expect, vi, beforeAll, afterAll, beforeEach } from 'vitest';
 import request from 'supertest';
+import type { Server } from 'http';
 
 process.env.NODE_ENV = 'test';
 
@@ -28,6 +29,20 @@ vi.mock('../../server/src/agent/turn', async (importOriginal) => {
 
 import app from '../../server/src/app';
 import { prisma } from '../../server/src/services/prisma';
+import { startTestServer, stopTestServer } from './helpers/testServer';
+
+// One persistent http.Server for this file (sprint 013-001) -- see
+// helpers/testServer.ts for why. Registered first so it closes last,
+// after the user-cleanup afterAll below.
+let server: Server;
+
+afterAll(async () => {
+  await stopTestServer(server);
+});
+
+beforeAll(async () => {
+  server = await startTestServer(app);
+});
 
 const marker = `t005chat${Date.now()}`;
 
@@ -67,7 +82,7 @@ beforeEach(() => {
 });
 
 async function loginAsAdmin() {
-  const agent = request.agent(app);
+  const agent = request.agent(server);
   await agent.post('/api/auth/test-login').send({
     email: `${marker}-admin@example.com`,
     displayName: 'Chat Route Admin',
@@ -77,7 +92,7 @@ async function loginAsAdmin() {
 }
 
 async function loginAsUser() {
-  const agent = request.agent(app);
+  const agent = request.agent(server);
   await agent.post('/api/auth/test-login').send({
     email: `${marker}-user@example.com`,
     displayName: 'Chat Route User',
@@ -107,7 +122,7 @@ function parseSseEvents(body: string): unknown[] {
 
 describe('POST /api/projects/:projectId/chat -- auth gate', () => {
   it('rejects an unauthenticated request with 401', async () => {
-    const res = await request(app).post('/api/projects/1/chat').send({ message: 'hi' });
+    const res = await request(server).post('/api/projects/1/chat').send({ message: 'hi' });
     expect(res.status).toBe(401);
     expect(mockRunTurn).not.toHaveBeenCalled();
   });

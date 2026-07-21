@@ -6,9 +6,24 @@
  */
 
 import request from 'supertest';
+import type { Server } from 'http';
 import { prisma } from '../../server/src/services/prisma';
 import app from '../../server/src/app';
 import { cleanupTestDb } from './helpers/db';
+import { startTestServer, stopTestServer } from './helpers/testServer';
+
+// One persistent http.Server for this file (sprint 013-001) -- see
+// helpers/testServer.ts for why. Registered first so it closes last,
+// after the cleanupTestDb afterAll below.
+let server: Server;
+
+afterAll(async () => {
+  await stopTestServer(server);
+});
+
+beforeAll(async () => {
+  server = await startTestServer(app);
+});
 
 // ---------------------------------------------------------------------------
 // Setup / teardown
@@ -33,7 +48,7 @@ async function loginAsTestUser(
   email: string,
   opts: { provider?: string; providerId?: string; role?: string } = {},
 ): Promise<ReturnType<typeof request.agent>> {
-  const agent = request.agent(app);
+  const agent = request.agent(server);
   await agent.post('/api/auth/test-login').send({
     email,
     displayName: 'Test User',
@@ -51,7 +66,7 @@ async function loginAsTestUser(
 describe('GET /api/auth/me — linkedProviders field', () => {
   it('returns linkedProviders: [] for a user with no OAuth providers', async () => {
     // Create a user with no provider fields and no UserProvider rows
-    const agent = request.agent(app);
+    const agent = request.agent(server);
     const createRes = await agent.post('/api/auth/test-login').send({
       email: 'noprovider@example.com',
       displayName: 'No Provider',
@@ -72,7 +87,7 @@ describe('GET /api/auth/me — linkedProviders field', () => {
   });
 
   it('returns linkedProviders: ["github"] when a UserProvider row exists', async () => {
-    const agent = request.agent(app);
+    const agent = request.agent(server);
     const createRes = await agent.post('/api/auth/test-login').send({
       email: 'oneprovider@example.com',
       displayName: 'One Provider',
@@ -96,7 +111,7 @@ describe('GET /api/auth/me — linkedProviders field', () => {
   });
 
   it('deduplicates when User.provider matches a UserProvider row', async () => {
-    const agent = request.agent(app);
+    const agent = request.agent(server);
     const createRes = await agent.post('/api/auth/test-login').send({
       email: 'dedup@example.com',
       displayName: 'Dedup User',
@@ -122,7 +137,7 @@ describe('GET /api/auth/me — linkedProviders field', () => {
   });
 
   it('includes both User.provider and additional UserProvider rows', async () => {
-    const agent = request.agent(app);
+    const agent = request.agent(server);
     const createRes = await agent.post('/api/auth/test-login').send({
       email: 'multiprovider@example.com',
       displayName: 'Multi Provider',
@@ -157,14 +172,14 @@ describe('GET /api/auth/me — linkedProviders field', () => {
 
 describe('POST /api/auth/unlink/:provider — authentication', () => {
   it('returns 401 when not authenticated', async () => {
-    const res = await request(app).post('/api/auth/unlink/github');
+    const res = await request(server).post('/api/auth/unlink/github');
     expect(res.status).toBe(401);
   });
 });
 
 describe('POST /api/auth/unlink/:provider — 404 when not linked', () => {
   it('returns 404 when provider is not linked to the user', async () => {
-    const agent = request.agent(app);
+    const agent = request.agent(server);
     const createRes = await agent.post('/api/auth/test-login').send({
       email: 'notlinked@example.com',
       displayName: 'Not Linked',
@@ -183,7 +198,7 @@ describe('POST /api/auth/unlink/:provider — 404 when not linked', () => {
 
 describe('POST /api/auth/unlink/:provider — guardrail (only one method)', () => {
   it('returns 400 when user has only one UserProvider row', async () => {
-    const agent = request.agent(app);
+    const agent = request.agent(server);
     const createRes = await agent.post('/api/auth/test-login').send({
       email: 'onemethod@example.com',
       displayName: 'One Method',
@@ -207,7 +222,7 @@ describe('POST /api/auth/unlink/:provider — guardrail (only one method)', () =
   });
 
   it('returns 400 when only method is User.provider (no UserProvider row)', async () => {
-    const agent = request.agent(app);
+    const agent = request.agent(server);
     const createRes = await agent.post('/api/auth/test-login').send({
       email: 'primaryonly@example.com',
       displayName: 'Primary Only',
@@ -225,7 +240,7 @@ describe('POST /api/auth/unlink/:provider — guardrail (only one method)', () =
   });
 
   it('returns 400 when primary + row are the same provider (counted once = 1 method)', async () => {
-    const agent = request.agent(app);
+    const agent = request.agent(server);
     const createRes = await agent.post('/api/auth/test-login').send({
       email: 'dupcounted@example.com',
       displayName: 'Dup Counted',
@@ -246,7 +261,7 @@ describe('POST /api/auth/unlink/:provider — guardrail (only one method)', () =
 
 describe('POST /api/auth/unlink/:provider — successful unlink', () => {
   it('deletes UserProvider row when user has two providers', async () => {
-    const agent = request.agent(app);
+    const agent = request.agent(server);
     const createRes = await agent.post('/api/auth/test-login').send({
       email: 'twomethods@example.com',
       displayName: 'Two Methods',
@@ -278,7 +293,7 @@ describe('POST /api/auth/unlink/:provider — successful unlink', () => {
   });
 
   it('clears User.provider and User.providerId when unlinking the primary', async () => {
-    const agent = request.agent(app);
+    const agent = request.agent(server);
     const createRes = await agent.post('/api/auth/test-login').send({
       email: 'clearprimary@example.com',
       displayName: 'Clear Primary',
@@ -308,7 +323,7 @@ describe('POST /api/auth/unlink/:provider — successful unlink', () => {
   });
 
   it('returns the updated linkedProviders list on success', async () => {
-    const agent = request.agent(app);
+    const agent = request.agent(server);
     const createRes = await agent.post('/api/auth/test-login').send({
       email: 'returnlist@example.com',
       displayName: 'Return List',
@@ -348,7 +363,7 @@ describe('OAuth initiate routes — 401 when ?link=1 and not authenticated', () 
   it('GET /api/auth/google?link=1 returns 401 when not authenticated (configured)', async () => {
     process.env.GOOGLE_CLIENT_ID = 'test-id';
     process.env.GOOGLE_CLIENT_SECRET = 'test-secret';
-    const res = await request(app).get('/api/auth/google?link=1');
+    const res = await request(server).get('/api/auth/google?link=1');
     expect(res.status).toBe(401);
     delete process.env.GOOGLE_CLIENT_ID;
     delete process.env.GOOGLE_CLIENT_SECRET;

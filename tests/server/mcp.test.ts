@@ -1,6 +1,20 @@
 import request from 'supertest';
+import type { Server } from 'http';
 import app from '../../server/src/app';
 import { prisma } from '../../server/src/services/prisma';
+import { startTestServer, stopTestServer } from './helpers/testServer';
+
+// One persistent http.Server for this file (sprint 013-001) -- see
+// helpers/testServer.ts for why.
+let server: Server;
+
+beforeAll(async () => {
+  server = await startTestServer(app);
+});
+
+afterAll(async () => {
+  await stopTestServer(server);
+});
 
 describe('MCP endpoint — POST /api/mcp', () => {
   const validToken = 'test-mcp-token';
@@ -12,7 +26,7 @@ describe('MCP endpoint — POST /api/mcp', () => {
   // ---- Auth tests ----
 
   it('returns 401 without Authorization header', async () => {
-    const res = await request(app)
+    const res = await request(server)
       .post('/api/mcp')
       .send({ jsonrpc: '2.0', method: 'initialize', id: 1 });
     expect(res.status).toBe(401);
@@ -20,7 +34,7 @@ describe('MCP endpoint — POST /api/mcp', () => {
   });
 
   it('returns 401 with invalid token', async () => {
-    const res = await request(app)
+    const res = await request(server)
       .post('/api/mcp')
       .set('Authorization', 'Bearer wrong-token')
       .send({ jsonrpc: '2.0', method: 'initialize', id: 1 });
@@ -29,7 +43,7 @@ describe('MCP endpoint — POST /api/mcp', () => {
   });
 
   it('does not return 401 with valid token', async () => {
-    const res = await request(app)
+    const res = await request(server)
       .post('/api/mcp')
       .set('Authorization', `Bearer ${validToken}`)
       .send({ jsonrpc: '2.0', method: 'initialize', id: 1 });
@@ -39,7 +53,7 @@ describe('MCP endpoint — POST /api/mcp', () => {
   // ---- Bot user creation ----
 
   it('creates MCP bot user on valid token request', async () => {
-    await request(app)
+    await request(server)
       .post('/api/mcp')
       .set('Authorization', `Bearer ${validToken}`)
       .send({ jsonrpc: '2.0', method: 'initialize', id: 2 });

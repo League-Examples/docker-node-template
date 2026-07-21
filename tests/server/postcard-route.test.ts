@@ -32,8 +32,21 @@ import os from 'os';
 import path from 'path';
 import { describe, it, expect, beforeAll, afterAll } from 'vitest';
 import request from 'supertest';
+import type { Server } from 'http';
+import { startTestServer, stopTestServer } from './helpers/testServer';
 
 process.env.NODE_ENV = 'test';
+
+// One persistent http.Server for this file (sprint 013-001) -- started
+// once `app` is available below (after WORKSPACE_DIR/WORKSPACE_GIT_ROOT
+// are set). Its afterAll is registered first, before any other hook in
+// this file, so it closes last -- after the env-var-restore and
+// fixture-cleanup afterAlls further down.
+let server: Server;
+
+afterAll(async () => {
+  await stopTestServer(server);
+});
 
 const marker = `t005postcard${Date.now()}`;
 
@@ -75,6 +88,7 @@ beforeAll(async () => {
   app = (await import('../../server/src/app')).default;
   prisma = (await import('../../server/src/services/prisma')).prisma;
   resolveWorkspacePath = (await import('../../server/src/services/workspaceDirectorySync')).resolveWorkspacePath;
+  server = await startTestServer(app);
 });
 
 let adminUserId: number;
@@ -141,7 +155,7 @@ async function makeIteration(projectId: number, imagePath: string, seq: number) 
 }
 
 async function loginAsAdmin() {
-  const agent = request.agent(app);
+  const agent = request.agent(server);
   await agent.post('/api/auth/test-login').send({
     email: `${marker}-admin@example.com`,
     displayName: 'Postcard Route Admin',
@@ -151,7 +165,7 @@ async function loginAsAdmin() {
 }
 
 async function loginAsUser() {
-  const agent = request.agent(app);
+  const agent = request.agent(server);
   await agent.post('/api/auth/test-login').send({
     email: `${marker}-user@example.com`,
     displayName: 'Postcard Route User',
@@ -175,7 +189,7 @@ function region(overrides: Partial<Record<string, unknown>> = {}) {
 
 describe('PUT /api/postcards/:projectId -- auth gate (AC7)', () => {
   it('rejects an unauthenticated request with 401', async () => {
-    const res = await request(app).put('/api/postcards/1').send({ front_image: 'x' });
+    const res = await request(server).put('/api/postcards/1').send({ front_image: 'x' });
     expect(res.status).toBe(401);
   });
 
@@ -463,7 +477,7 @@ describe('PUT /api/postcards/:projectId -- malformed content JSON', () => {
 
 describe('GET /api/postcards/:projectId -- read-back for the editor (OOP follow-up, 2026-07-15)', () => {
   it('rejects an unauthenticated request with 401', async () => {
-    const res = await request(app).get('/api/postcards/1');
+    const res = await request(server).get('/api/postcards/1');
     expect(res.status).toBe(401);
   });
 

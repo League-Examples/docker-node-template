@@ -1,9 +1,23 @@
 import request from 'supertest';
+import type { Server } from 'http';
 
 // Set test environment before importing app
 process.env.NODE_ENV = 'test';
 
 import app from '../../server/src/app';
+import { startTestServer, stopTestServer } from './helpers/testServer';
+
+// One persistent http.Server for this file (sprint 013-001) -- see
+// helpers/testServer.ts for why.
+let server: Server;
+
+beforeAll(async () => {
+  server = await startTestServer(app);
+});
+
+afterAll(async () => {
+  await stopTestServer(server);
+});
 
 describe('GET /api/integrations/status', () => {
   const originalEnv = process.env;
@@ -24,7 +38,7 @@ describe('GET /api/integrations/status', () => {
     delete process.env.ANTHROPIC_API_KEY;
     delete process.env.OPENAI_API_KEY;
 
-    const res = await request(app).get('/api/integrations/status');
+    const res = await request(server).get('/api/integrations/status');
     expect(res.status).toBe(200);
     expect(res.body).toEqual({
       google: { configured: false },
@@ -38,7 +52,7 @@ describe('GET /api/integrations/status', () => {
     process.env.GOOGLE_CLIENT_ID = 'test-id';
     process.env.GOOGLE_CLIENT_SECRET = 'test-secret';
 
-    const res = await request(app).get('/api/integrations/status');
+    const res = await request(server).get('/api/integrations/status');
     expect(res.status).toBe(200);
     expect(res.body.google.configured).toBe(true);
   });
@@ -47,7 +61,7 @@ describe('GET /api/integrations/status', () => {
     process.env.GOOGLE_CLIENT_ID = 'google-id-12345';
     process.env.GOOGLE_CLIENT_SECRET = 'google-secret-67890';
 
-    const res = await request(app).get('/api/integrations/status');
+    const res = await request(server).get('/api/integrations/status');
     const body = JSON.stringify(res.body);
 
     expect(body).not.toContain('google-id-12345');
@@ -55,7 +69,7 @@ describe('GET /api/integrations/status', () => {
   });
 
   it('response shape includes all four services with configured boolean', async () => {
-    const res = await request(app).get('/api/integrations/status');
+    const res = await request(server).get('/api/integrations/status');
     expect(res.status).toBe(200);
 
     const keys = Object.keys(res.body);

@@ -1,7 +1,23 @@
 import request from 'supertest';
+import type { Server } from 'http';
 
 import app from '../../server/src/app';
 import { prisma, initPrisma } from '../../server/src/services/prisma';
+import { startTestServer, stopTestServer } from './helpers/testServer';
+
+// One persistent http.Server for this file (sprint 013-001) -- see
+// helpers/testServer.ts for why. Registered first so it closes last,
+// after the "restore jobs" afterAll below (which uses prisma directly,
+// not the server, but this ordering is the file's general convention).
+let server: Server;
+
+afterAll(async () => {
+  await stopTestServer(server);
+});
+
+beforeAll(async () => {
+  server = await startTestServer(app);
+});
 
 async function seedJobs() {
   // Ensure Prisma is initialized before direct use
@@ -39,7 +55,7 @@ describe('Admin Scheduler API', () => {
   let adminAgent: any;
 
   beforeAll(async () => {
-    adminAgent = request.agent(app);
+    adminAgent = request.agent(server);
     await adminAgent.post('/api/auth/test-login').send({
       email: 'sched-admin@example.com',
       displayName: 'Scheduler Admin',
@@ -84,7 +100,7 @@ describe('Admin Scheduler API', () => {
   });
 
   it('returns 403 for non-admin', async () => {
-    const userAgent = request.agent(app);
+    const userAgent = request.agent(server);
     await userAgent.post('/api/auth/test-login').send({
       email: 'sched-user@example.com',
       displayName: 'Scheduler User',
@@ -96,7 +112,7 @@ describe('Admin Scheduler API', () => {
   });
 
   it('returns 401 for unauthenticated', async () => {
-    const res = await request(app).get('/api/admin/scheduler/jobs');
+    const res = await request(server).get('/api/admin/scheduler/jobs');
     expect(res.status).toBe(401);
   });
 });
